@@ -73,7 +73,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 | | 谁 |
 | --- | --- |
 | 对话里的 agent | 用 21 个 `study_*` 工具读和写全部数据；随包 `skills/study-coach/SKILL.md` 是工作法 |
-| 学生 | 只在面板上看：自评档位、勾任务，以及在对话页 / 悬浮窗里直接跟教练说话。学习内容本身对他只读，全由 agent 写 |
+| 学生 | 面板上他能自己动手的只有几样：自评档位、勾改加今天任务、管清单、切/新建档案、过记忆卡、点「拆成页图」，以及在对话页 / 悬浮窗里直接跟教练说话。**学习内容本身只由 agent 写** —— 目标、材料、地图、错题、画像、每天排什么，都在对话里说 |
 
 ## 界面风格：动 CSS 之前先读 `design.md`
 
@@ -309,7 +309,7 @@ node --test
 - **每级一份掌握档案**：`lib/map.js` 的 `archiveFor(map, mastery, level, key)` 给大类 / 模块 / 单元三级各生成一份账（`progress` / `total` / `touched` / `avgConfidence` / `byStage` / `due` / 逐点状态与证据流水 / 该级证据汇总）。面板上大类的头、模块的头、单元那行后面各挂一个「档案」小按钮，弹层里就是它。工具侧是 `study_archive`，HTTP 侧是 `GET /study/api/archive?level=&key=`。三级算的是同一套东西，所以「函数 60%」跟它底下模块的百分比永远对得上。
 - **总体能力**：`abilityReport(state)` 横着把所有大类、所有点、所有基本工具、最近七天的完成节奏摊成一份大盘，外加一句判词（`judgement {text, level, updatedAt}`，由 `study_ability action=set` 写）。面板顶部那张「总体能力」卡就是它：大盘百分比 + 六段构成条 + 各大类 / 卡住的地方 / 该复习了 / 最近七天四块。工具侧 `study_ability`，HTTP 侧 `GET|POST /study/api/ability`。
 - **任务能跳过去，也能改能删**：任务多了 `note`；`taskView()` 把一条任务摊成带按钮的形状——命中 `target` 那个单元就自动补上「看这节网课」（`point.video`）、「这一节的讲义」（`point.practice`）、「做题 / 看掌握度」（`/study/practice?point=`）；`kind=watch` 的任务改成**看课优先**：「看这节网课」排第一，最后一个按钮是「看完去做练习」（同一页，只是把练习接在看课后面）。面板上任务行里可以**改**（标题 / 类型 / 分钟）和**删**。工具侧 `study_plan` 从 `add|toggle` 扩成 `add|toggle|update|remove`；HTTP 侧多了 `POST /study/api/task/update` 和 `POST /study/api/task/remove`。
-- **学习目标库**：`lib/library.js` 的 `Library` 类把「档案根 → 每个目标一个子目录」管起来（`list / create / select / rename / remove`，删掉是移到回收站，最后一个删不掉）。换目标、加一门课、清掉不学的，面板最后一张卡上就能做；工具侧是 `study_library`，HTTP 侧是 `GET|POST /study/api/library`。老的单档案根仍然能用（`library.supported` 是 false，那几个 action 会老实说「装不下第二个」）。
+- **学习目标库**：`lib/library.js` 的 `Library` 类把「档案根 → 每个目标一个子目录」管起来（`list / create / select / rename / remove`，删掉是移到回收站，最后一个删不掉）。换目标、加一门课、清掉不学的，面板最后一张卡上就能做；工具侧是 `study_library`，HTTP 侧是 `GET|POST /study/api/library`。老的单档案根仍然能用（`library.supported` 是 false，那几个 action 会老实回「这个档案根只装得下一个档案，换不了」）。
 - **文件工具**：`study_files`（`list` 列目录 / `stat` 看存在 / `url` 换成 `/study/file` 链接），只能看登记过的材料范围内的路径，好让 agent 在写 `video` / `practice` / `open` 之前先确认文件真在。
 - **全部 agent 化**：随包 `skills/study-coach/SKILL.md` 新增第 9 节「面板、档案、目标库、文件」，讲清面板上有什么、每一级档案什么时候翻、总体能力判词什么时候写、目标库怎么切、文件工具怎么用；并把「不许把面板/档案/目标库当摆设」「不给打不开的路径」写进禁令。`study_report` 的返回里 `panelUrl` 现在是必读项。
 - **通用性**：`lib/`、`assets/`、`skills/` 里没有作者测试用的学科内容了（举例一律中性化）。测试 fixture 里的线性代数 / 行列式是故意留的中性数据。
