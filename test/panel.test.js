@@ -98,6 +98,7 @@ const PROBE_PATHS = [
   '/study/api/archive?level=group&key=',
   '/study/api/library',
   '/study/practice',
+  '/study/api/mistakes',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -273,16 +274,10 @@ test('主页面：只回答「现在什么情况、下一步点哪儿」，活�
 
   // 先把两份数据拿回来（探测要用 state 里登记过的材料路径，得排在它后面）
   assert.deepEqual(calls.slice(0, 2), ['/study/api/state', '/study/api/summary'])
-  // 再探一遍新路由在不在
-  assert.deepEqual(calls.slice(2, 7), [
-    '/study/api/ability',
-    '/study/api/archive?level=group&key=',
-    '/study/api/library',
-    '/study/practice',
-    '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
-  ])
+  // 再探一遍新路由在不在（顺序就是 PROBE_PATHS 那一串，加一条探针这里不用再改）
+  assert.deepEqual(calls.slice(2, 2 + PROBE_PATHS.length), PROBE_PATHS)
   // 多门课的时候顺带把「今天每门各有什么」拉一遍
-  assert.match(calls[7] || '', /^\/study\/api\/tasks\?all=1&date=\d{4}-\d{2}-\d{2}$/)
+  assert.match(calls[2 + PROBE_PATHS.length] || '', /^\/study\/api\/tasks\?all=1&date=\d{4}-\d{2}-\d{2}$/)
 
   // 假 fetch 什么都回 200，所以不该出现「服务端是旧代码」那条横幅
   assert.doesNotMatch(html(), /服务端还是旧代码/)

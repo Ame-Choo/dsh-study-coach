@@ -47,6 +47,9 @@ html[data-mode="sidebar"] .pg-btn { font-size: 12px; }
 .pick-block .two { display: flex; gap: 8px; }
 .pick-block .two input:first-child { flex: 1; min-width: 0; }
 .pick-block .two input:last-child { width: 74px; flex: none; }
+/* 「这题做错了」那一块：输入框要占满，别跟上面几块的窄控件挤在一起 */
+.pick-block.wrong input { width: 100%; font: inherit; }
+.pick-block.wrong { border-left: 2px solid var(--warn, #b8760a); padding-left: 10px; }
 
 .why { margin: 0 0 10px; font-size: 13px; color: var(--dim); }
 .quick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

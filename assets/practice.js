@@ -43,7 +43,7 @@ function openLink(target, page) {
 }
 
 let data = null
-let ui = { note: '', busy: '', askText: '', selfTitle: '', selfMinutes: 30 }
+let ui = { note: '', busy: '', askText: '', selfTitle: '', selfMinutes: 30, wrongOrigin: '', wrongText: '' }
 
 function materialPath(materialId) {
   const hit = (data.materials || []).find((m) => m.id === materialId)
@@ -149,6 +149,14 @@ function pickBlock() {
         </div>
         <button class="btn" data-act="ask-self" ${busy('self')}>${label('self', '排入今日任务')}</button>
       </div>
+
+      <div class="pick-block wrong">
+        <b>这题做错了</b>
+        <p class="dim">填上题号和错在哪。我会判断错因、给出订正，并把这道题记进错题本；过几天再让你重做一遍。</p>
+        <input id="wrong-origin" type="text" placeholder="题号 / 出处，如「第九组 第 3 题」" value="${esc(ui.wrongOrigin)}">
+        <textarea id="wrong-text" rows="2" placeholder="错在哪，比如「A 是空集那种情况我没管」">${esc(ui.wrongText)}</textarea>
+        <button class="btn" data-act="ask-wrong" ${busy('wrong')}>${label('wrong', '交给教练判错因')}</button>
+      </div>
     </div>
   </section>`
 }
@@ -226,16 +234,22 @@ document.addEventListener('click', async (event) => {
   if (!btn) return
   const act = btn.dataset.act
 
-  if (act === 'ask-ai' || act === 'ask-self') {
+  if (act === 'ask-ai' || act === 'ask-self' || act === 'ask-wrong') {
     // 重渲染会把输入框清空，先把学生写的收进 ui 再动手。
     ui.askText = (document.querySelector('#ask-text') || {}).value || ''
     ui.selfTitle = (document.querySelector('#self-title') || {}).value || ''
     ui.selfMinutes = (document.querySelector('#self-minutes') || {}).value || 30
+    ui.wrongOrigin = (document.querySelector('#wrong-origin') || {}).value || ''
+    ui.wrongText = (document.querySelector('#wrong-text') || {}).value || ''
 
-    const which = act === 'ask-ai' ? 'ai' : 'self'
+    const which = act === 'ask-ai' ? 'ai' : act === 'ask-wrong' ? 'mistake' : 'self'
     if (ui.busy) return
     if (which === 'self' && !ui.selfTitle.trim()) {
       toast('请先填写今天打算练习的内容')
+      return
+    }
+    if (which === 'mistake' && !ui.wrongOrigin.trim() && !ui.wrongText.trim()) {
+      toast('写一句错在哪，或者填上题号')
       return
     }
     ui.busy = which
@@ -243,7 +257,10 @@ document.addEventListener('click', async (event) => {
     try {
       const body = { pointId: data.pointId, mode: which }
       if (which === 'ai') body.text = ui.askText
-      else {
+      else if (which === 'mistake') {
+        body.origin = ui.wrongOrigin
+        body.text = ui.wrongText
+      } else {
         body.text = ui.selfTitle
         body.minutes = Number(ui.selfMinutes) || 0
         body.open = data.point.practice
@@ -254,6 +271,14 @@ document.addEventListener('click', async (event) => {
         ui.selfTitle = ''
         render()
         toast('已排入今日任务，可在面板查看')
+      } else if (which === 'mistake') {
+        ui.wrongOrigin = ''
+        ui.wrongText = ''
+        render()
+        // 记没记上是教练的活儿，这里只保证「这道题已经摆到他面前了」。
+        toast(out.pushed
+          ? '已交给教练：他会判错因、给订正，并记进错题本'
+          : '已暂存（未送达对话：' + (out.pushError || '通道未通') + '），请回到对话中说明')
       } else {
         ui.askText = ''
         render()

@@ -106,7 +106,8 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_goal` | 改学习目标 |
 | `study_map` | 写知识地图：`set` 整份替换 / `append` 追加模块 / `confirm` 定稿。三层结构（大类 `group` → 模块 → 最小单元，最小单元就是一节网课），每个最小单元要挂 `video`（那一节网课的路径）和 `practice`（配套练习的路径） |
 | `study_analysis` | 把一份材料通读的结论写下来：教学定位、跟别的材料怎么配、每章页码范围 / 例题 / 习题 / 难度 / 教学作用。做题页的页码题号就从这儿出 |
-| `study_record` | 记一条掌握度证据，推进状态 |
+| `study_record` | 记一条掌握度证据，推进状态。带 `mistake` 就是「这次错了，顺带把错题记下来」（`origin` 必填，标成「已订正」必须同时有 `cause` 和 `fix`）；带 `mistakeId` 则只改那条错题的状态，不新增证据、不动档位 |
+| `study_mistakes` | 读错题本：错在哪一步、错因、订正、该哪天复做、现在到哪一档。可按 `status` / `pointId` 筛 |
 | `study_plan` | 排每日任务：`add` / `toggle` / `update` / `remove` |
 | `study_material` | 加/删材料 |
 | `study_tool_level` | 记基本工具的水平 |
@@ -118,7 +119,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_guide` | 在面板顶上放一句指引，把学生叫回对话 |
 | `study_inbox` | 读学生在面板上的留言，读完标掉 |
 
-这 15 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
+这 16 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
 
 「先把整本教辅读一遍、分析它教什么」这件事不是靠谁记得，是写死在随包 SKILL.md 第 2 节里的：材料登记完就得通读，结论写进 `study_analysis`，画地图和排任务都从这份结论里取。册子厚就分批喂 `chapters`，或者拉几个子 agent 并行读——同一个 `no` 会覆盖，读到哪写到哪。
 
@@ -387,7 +388,7 @@ node --test
 | `/study` | 主页 | 一屏说清「现在什么水平、今天还剩什么、下一步点哪儿」，只放入口不放编辑表单 |
 | `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
 | `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿 |
-| `/study/ability` | 能力 | 大盘数字、各大类、薄弱环节、待复习、最近七天 |
+| `/study/ability` | 能力 | 大盘数字、各大类、薄弱环节、待复习、最近七天、错题本 |
 | `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
 | `/study/coach` | 对话 | 整页就是一个聊天窗口：听教练说、直接回话 |
 
@@ -415,5 +416,17 @@ node --test
 - **悬浮窗和整页共用一份状态。** 同一个 `chat` 对象渲染两处，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉，所以点开悬浮窗就是接着刚才那段说。悬浮窗是简化版：只留消息列表 + 输入框，不显示工具胶囊和时间戳；`×` 或 `Esc` 关掉，`Enter` 发送、`Shift+Enter` 换行。FAB 在主页以外的每一页都在。
 - **定时器判据跟着改。** `syncChatPolling()` 原来只看 `page === 'coach'`，现在看 `chatVisible()`（在对话页**或**悬浮窗开着）；两者都不满足就 `clearInterval`。这条不只是省电：`node --test` 的假 DOM 里，一个停不下来的 interval 会让整个测试进程跑不完。
 - **脱开 DSH 也能看长相。** `DSH_STUDY_PREVIEW_CHAT=1 node scripts/preview.mjs` 会挂一份假对话，不必重启 DSH 就能把对话页和悬浮窗点一遍。真跑起来那段对话仍是 `sessionController` 给的。
+
+### 六、错题本：不新开一张表，挂在证据上
+
+参考 `good-learning-skill`（MIT）里「错题本」那一节之后补的。它的错题本是**产出物**——排版成 PDF 给人打印；这边的错题本是**档案的一部分**，得能跟掌握度、跟知识点、跟复习日期对上。所以没另建 `mistakes.json`：一条错题就是某条证据的细节，分开存迟早会对不上。
+
+- **存哪儿**：`mastery.json` 里 `points[<id>].evidence[i].mistake`。`normalizeMistake()` 产出 `{id, origin, step, cause, fix, redoAt, status, at, updatedAt}`，`at` 是「什么时候错的」，`updatedAt` 是「最后一次改动」。
+- **规矩写在代码里，不写在提示词里**：`status` 只有 `待验证 / 已订正 / 已复做对` 三档，**标后两档必须同时有 `cause` 和 `fix`**，否则直接抛错；`origin` 缺失、`redoAt` 不是 `YYYY-MM-DD`、`status` 写了个不认识的词，一样抛。这条是整套设计里最值得抄的一条手法——业务规矩做成数据自校验，才真的是规矩，不然只是提醒。
+- **订正不算证据**：`study_record` 传 `mistakeId` 时只改那条错题（`patchMistake`），**不新增证据、不动档位**。「改对了答案」和「掌握了」是两件事，档位得靠另一条证据推。
+- **读的入口**：工具 `study_mistakes`（可按 `status` / `pointId` 筛）和 `GET /study/api/mistakes`，两边读同一个 `mistakesOf(map, mastery, {status, pointId, limit})`。排序键是 `at` 不是 `updatedAt`——改一下状态就把老错题顶到最上面，学生看到的第一条会跳来跳去。
+- **面板**：「能力」页多一张错题本卡（按状态筛 + 每条「再练」），`capabilities.mistakes` 探针失效时整张卡不出现；做题页多一个「这题做错了」入口（填题号 + 错在哪），走 `POST /study/api/practice/ask` 的第三个 `mode: 'mistake'`，投出去的 prompt 以 `【面板·错题】` 开头，里面直接写着「用 `study_record` 记下来」。
+- **档案跟着一起出**：`study_archive` 的证据行**有错题才带 `mistake` 字段**（写成 `mistake: item?.mistake ?? null` 会被宿主的 `additionalProperties: false` 拒掉，报 `"evidence[0].mistake" is not a declared property`）。
+- **一个踩过的坑**：`findMistake()` 返回的是 `{ pointId, item }`，错题在 `hit.item.mistake` 上——写成 `hit.mistake` 不会报错，只会静默拿到 `undefined`，症状是 `study_record` 更新完返回的 `mistakeStatus` 是空串。
 
 

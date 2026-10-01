@@ -709,6 +709,23 @@ html[data-mode="browser"] .chat-page .card {
   }
 }
 
+/* ── 错题本 ───────────────────────────────────────────────────────────────
+ * 状态标签在这张卡里排在最左边，所以要把 .stage-tag 那个 margin-left:auto 压掉，
+ * 不然「待验证」会被顶到行的右端，跟正文对不上。
+ */
+.mistakes .list.tight li > .stage-tag {
+  margin-left: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  line-height: 1.6;
+}
+.stage-tag.ms-todo { color: var(--warn, #b8760a); }
+.stage-tag.ms-fixed { color: var(--accent); }
+.stage-tag.ms-done { color: var(--ok, #1f9d63); }
+.mistakes .chips .mini.on { border-color: var(--accent); color: var(--accent); }
+.mistakes .list.tight li { align-items: flex-start; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

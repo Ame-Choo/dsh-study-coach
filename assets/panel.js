@@ -17,6 +17,8 @@ try {
 }
 
 const STAGES = ['没接触过', '见过', '能跟做', '能独立做', '熟练稳定', '能讲明白']
+/* 与 lib/store.js 的 MISTAKE_STATUS 同序：待验证 → 已订正 → 已复做对 */
+const MISTAKE_STATUS = ['待验证', '已订正', '已复做对']
 
 const STAGE_COLOR = {
   '没接触过': 'var(--stage-1)',
@@ -48,6 +50,7 @@ const STALE_NEED = [
   ['archive', '每级掌握档案'],
   ['library', '学习目标库'],
   ['practice', '做题页'],
+  ['mistakes', '错题本'],
   ['file', '打开网课 / 讲义'],
 ]
 
@@ -57,6 +60,8 @@ let summary = null
 let agenda = null
 /* 学习目标清单 + 回收站（回收站只有 /study/api/library 这条接口给） */
 let library = null
+/* 错题本（只有 /study/api/mistakes 这条接口给，state 里没有） */
+let mistakes = null
 /* 对话那份快照：{ available, sessionId, messages, sessions, error } */
 let chat = null
 /* 「对话」页开着时的轮询句柄；离开这一页就停 */
@@ -95,6 +100,8 @@ const ui = {
   chatSending: false,
   /* 右下角那个悬浮小窗开着没有 */
   float: false,
+  /* 错题本只看哪一档，空串 = 全看 */
+  mistakeStatus: '',
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -273,13 +280,14 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice] = await Promise.all([
+  const [ability, archive, library, practice, mistakes] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
     alive('/study/practice'),
+    alive('/study/api/mistakes'),
   ])
-  return { ability, archive, library, practice, file: await fileAlive() }
+  return { ability, archive, library, practice, mistakes, file: await fileAlive() }
 }
 
 /**
@@ -334,6 +342,7 @@ async function load() {
     if (!capabilities) capabilities = await probeCapabilities()
     agenda = await loadAgenda()
     library = await loadLibrary()
+    mistakes = await loadMistakes()
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
     // 只有「对话」页才顺带多要一份会话清单。
     await loadChat({ withSessions: page === 'coach' })
@@ -372,6 +381,21 @@ async function loadLibrary() {
   if (!capabilities || !capabilities.library) return null
   try {
     return await api('/study/api/library')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 错题本。挂在知识点证据上的那些 mistake，服务端汇总成一张平表给面板看。
+ * 服务端是旧代码（没有这条路由）就返回 null，能力页少画那一段，别让整页挂掉。
+ */
+async function loadMistakes() {
+  if (!capabilities || !capabilities.mistakes) return null
+  try {
+    const out = await api('/study/api/mistakes?limit=60')
+    if (!Array.isArray(out.items)) return null
+    return { items: out.items, total: Number(out.total) || out.items.length, byStatus: out.byStatus || {} }
   } catch {
     return null
   }
@@ -473,7 +497,12 @@ function resolvePage() {
 const PAGE_CARDS = {
   today: { main: [['today', '今日任务', tasksCard]] },
   map: { main: [['map', '知识地图', mapCard]] },
-  ability: { main: [['ability', '总体能力', abilityCard]] },
+  ability: {
+    main: [
+      ['ability', '总体能力', abilityCard],
+      ['mistakes', '错题本', mistakesCard],
+    ],
+  },
   library: {
     main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
@@ -956,6 +985,62 @@ function abilityCard() {
     <h3 class="sub">最近七天</h3>
     <div class="pace">${pace}</div>
     <p class="dim">完成 ${a.pace.done}/${a.pace.total} 条 · ${a.pace.minutesDone}/${a.pace.minutesTotal} 分钟（${a.pace.completion}%）</p>
+  </section>`
+}
+
+/**
+ * 错题本：他做错过的题、错在哪一步、错因、订正、该哪天复做。
+ * 学生在这儿只能看和喊教练——记和改都是教练的活儿（study_record 的 mistake）。
+ */
+function mistakesCard() {
+  const book = mistakes
+  if (!book || !book.items.length) return ''
+  const by = book.byStatus || {}
+  const filter = ui.mistakeStatus
+  const shown = filter ? book.items.filter((m) => m.status === filter) : book.items
+  const MS_CLASS = { 待验证: 'ms-todo', 已订正: 'ms-fixed', 已复做对: 'ms-done' }
+
+  const chips = ['']
+    .concat(MISTAKE_STATUS)
+    .map((s) => {
+      const n = s ? by[s] || 0 : book.total
+      const on = filter === s ? ' on' : ''
+      return `<button class="mini${on}" data-act="mistake-filter" data-status="${esc(s)}">${s || '全部'} ${n}</button>`
+    })
+    .join(' ')
+
+  const rows = shown
+    .map((m) => {
+      const cls = MS_CLASS[m.status] || 'ms-todo'
+      const why = [
+        m.step ? `错步：${esc(m.step)}` : '',
+        m.cause ? `错因：${esc(m.cause)}` : '',
+        m.fix ? `订正：${esc(m.fix)}` : '',
+        m.redoAt ? `复做：${esc(m.redoAt)}` : '',
+      ]
+        .filter(Boolean)
+        .map((line) => `<div class="dim">${line}</div>`)
+        .join('')
+      return `<li>
+        <span class="stage-tag ${cls}">${esc(m.status)}</span>
+        <div style="flex:1;min-width:0">
+          <b>${esc(m.pointTitle || m.pointId)}</b>
+          <span class="dim">${esc(m.group || '')} · ${esc(m.origin || '')}</span>
+          ${why}
+        </div>
+        <button class="mini" data-act="mistake-ask" data-point="${esc(m.pointId)}" data-origin="${esc(m.origin || '')}" title="把这道题交给教练再看一遍">再练</button>
+      </li>`
+    })
+    .join('')
+
+  return `<section class="card mistakes">
+    <div class="card-head">
+      <h2>错题本</h2>
+      <span class="dim">共 ${book.total} 条 · 待验证 ${by['待验证'] || 0}</span>
+    </div>
+    <div class="chips">${chips}</div>
+    ${shown.length ? `<ul class="list tight">${rows}</ul>` : '<p class="dim">这一档暂时没有。</p>'}
+    <p class="dim">在做题页点「这题做错了」就能记一条。错因和订正没写清之前，这条会一直挂在「待验证」。</p>
   </section>`
 }
 
@@ -1635,6 +1720,26 @@ document.addEventListener('click', async (event) => {
     } else if (act === 'mat-more') {
       ui.matMore = !ui.matMore
       render()
+    } else if (act === 'mistake-filter') {
+      ui.mistakeStatus = el.dataset.status || ''
+      render()
+    } else if (act === 'mistake-ask') {
+      const pointId = el.dataset.point || ''
+      const origin = el.dataset.origin || ''
+      el.disabled = true
+      try {
+        const out = await api('/study/api/practice/ask', { pointId, mode: 'mistake', origin })
+        toast(
+          out.pushed
+            ? '已交给教练：他会重判这道题的错因，再出一道同类题。'
+            : '已记下，但这次没送进对话。等通道通了会自动带上。（' + (out.pushError || '') + '）',
+          !out.pushed,
+        )
+      } catch (error) {
+        toast('没送出去：' + error.message, true)
+      } finally {
+        el.disabled = false
+      }
     } else if (act === 'card-toggle') {
       const cardId = el.dataset.card
       if (ui.open.has(cardId)) ui.open.delete(cardId)
