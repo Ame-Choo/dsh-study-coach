@@ -8,7 +8,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Store, STAGES, masterySummary, pointState } from '../lib/store.js'
+import { Store, STAGES } from '../lib/store.js'
+import { masterySummary, pointState } from '../lib/map.js'
 import { createRouter } from '../lib/routes.js'
 
 function fresh() {
@@ -221,7 +222,8 @@ test('masterySummary 对空地图不炸', () => {
 /* ── 指引与留言 ─────────────────────────────────────────────────────────── */
 
 test('指引与留言：写、读、标掉', async () => {
-  const { emptyGuide, emptyInbox, setGuide, addInboxItem, unreadInbox, markInboxRead } = await import('../lib/store.js')
+  const { emptyGuide, emptyInbox } = await import('../lib/store.js')
+  const { setGuide, addInboxItem, unreadInbox, markInboxRead } = await import('../lib/notice.js')
   const g = setGuide(emptyGuide(), '回对话里答三个问题', 'ask')
   assert.equal(g.text, '回对话里答三个问题')
   assert.equal(g.kind, 'ask')

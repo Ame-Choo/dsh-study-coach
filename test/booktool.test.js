@@ -12,7 +12,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Store, pageFileOf, upsertAnalysis } from '../lib/store.js'
+import { Store } from '../lib/store.js'
+import { pageFileOf, upsertAnalysis } from '../lib/analysis.js'
 import { buildTools } from '../lib/tools.js'
 import { MANIFEST, pagesDirFor } from '../lib/pages.js'
 

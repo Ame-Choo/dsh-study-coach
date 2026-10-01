@@ -12,7 +12,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Store, MISTAKE_STATUS, normalizeMistake, mistakesOf } from '../lib/store.js'
+import { Store, MISTAKE_STATUS } from '../lib/store.js'
+import { normalizeMistake, mistakesOf } from '../lib/map.js'
 import { buildTools } from '../lib/tools.js'
 import { createRouter } from '../lib/routes.js'
 

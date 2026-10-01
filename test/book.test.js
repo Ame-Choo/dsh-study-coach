@@ -7,9 +7,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
 
+import { emptyAnalysis } from '../lib/store.js'
 import {
   analysisOf,
-  emptyAnalysis,
   expandSpans,
   outOfRange,
   pageFileOf,
@@ -18,7 +18,7 @@ import {
   spansOf,
   tocOf,
   upsertAnalysis,
-} from '../lib/store.js'
+} from '../lib/analysis.js'
 
 test('expandSpans：区间铺成逐页，pages 逐页来，缺口如实报', () => {
   const { rows, gaps } = expandSpans(

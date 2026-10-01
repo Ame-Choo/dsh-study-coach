@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { emptyStudent, emptyMastery, emptyMap, recordEvidence, FACT_KINDS, Store } from '../lib/store.js'
+import { emptyStudent, emptyMastery, emptyMap, FACT_KINDS, Store } from '../lib/store.js'
+import { recordEvidence } from '../lib/map.js'
 import { createRouter } from '../lib/routes.js'
 import { buildTools } from '../lib/tools.js'
 import {
