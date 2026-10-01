@@ -1066,6 +1066,61 @@ test('浮窗能拖着走：位置记在样式里、重画不跳回角落，双�
   assert.doesNotMatch(home.html(), /class="float moved"/)
 })
 
+test('图标状态的浮标也能拖：挪一下记下位置，松手那记点不算「点开」', async () => {
+  const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
+
+  // 收起时是一颗切角方块，图标是画出来的 SVG —— 不再是各平台画法不一的 emoji
+  assert.match(home.html(), /data-act="float-open"[^>]*>\s*<svg class="fab-ico"/)
+  assert.doesNotMatch(home.html(), /💬/)
+
+  const fab = {
+    style: {},
+    offsetWidth: 48,
+    offsetHeight: 48,
+    getBoundingClientRect: () => ({ left: 1140, top: 740, width: 48, height: 48 }),
+  }
+  const target = { closest: (sel) => (sel === '.fab' ? fab : null) }
+  const down = home.listeners.get('pointerdown')
+  const move = home.listeners.get('pointermove')
+  const up = home.listeners.get('pointerup')
+
+  // 没按住就动：一动不动
+  move({ clientX: 10, clientY: 10 })
+  assert.equal(fab.style.left, undefined)
+
+  // 按在按钮里的 (10, 10)，拖到 (110, 210) → 落在 (100, 200)
+  down({ button: 0, clientX: 1150, clientY: 750, target, preventDefault() {} })
+  move({ clientX: 110, clientY: 210 })
+  assert.equal(fab.style.left, '100px')
+  assert.equal(fab.style.top, '200px')
+  assert.equal(fab.style.right, 'auto', 'right 得让开，不然两头顶着')
+  up()
+  assert.equal(home.window.localStorage.getItem('study-coach:float-pos'), '{"left":100,"top":200}')
+
+  // 松手之后浏览器还会补一记 click：那一记不能把窗子点开（手是在拖，不是在点）
+  await home.clickAct({ act: 'float-open' })
+  assert.doesNotMatch(home.html(), /class="float"/, '拖动那一下不算点开')
+
+  // 再点一次才是真要点开，而且开在刚拖到的地方
+  await home.clickAct({ act: 'float-open' })
+  assert.match(home.html(), /class="float moved" style="left:100px;top:200px"/)
+
+  // 收起：图标回到同一处，不是回右下角——两态共用同一个位置
+  await home.clickAct({ act: 'float-close' })
+  assert.match(home.html(), /class="fab moved" style="left:100px;top:200px"/)
+
+  // 右键那颗图标：回右下角（图标状态没地方双击——第一下就把窗子点开了）
+  let defaulted = false
+  const icon = { closest: (sel) => (sel === '.fab' ? fab : null) }
+  home.listeners.get('contextmenu')({ target: icon, preventDefault() { defaulted = true } })
+  assert.equal(defaulted, true)
+  assert.equal(fab.style.left, '', '回到 CSS 那个右下角')
+  assert.equal(fab.style.top, '')
+  assert.equal(home.window.localStorage.getItem('study-coach:float-pos'), null)
+  assert.match(home.html(), /class="fab" data-act="float-open"/)
+  assert.doesNotMatch(home.html(), /class="fab moved"/)
+})
+
 test('浮窗记的位置是另一块屏幕上拖的：重画时按当前视口收回来看得见', async () => {
   const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
   await home.clickAct({ act: 'float-open' })

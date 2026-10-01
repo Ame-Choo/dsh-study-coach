@@ -91,6 +91,20 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   `node --test` 卡着不退出（`test/panel.test.js` 里那些 `hidden: true` 就是为这条）。
 - 图片字节由 `lib/handler.js` 的 `sendRaw(res, raw)` 发：路由回 `{ code, raw: { type, body, cache } }`。
 
+## 右下角那颗悬浮窗（`assets/panel.js` 的 `.float` / `.fab`）
+
+- **展开和收起共用一份位置**（`ui.floatPos` ↔ `localStorage` 的 `study-coach:float-pos`）：收起成图标时
+  **整颗 `.fab` 都是抓手**，拖到哪儿、点开就在哪儿，收起来又回同一处。找元素用 `floatBox()`
+  （**分两次 `querySelector`**：`.float` → 没有才找 `.fab`；合成一个选择器会把测试里只认 `'.float'` 的
+  `__query` 桩打空），别在别处再写一份。
+- 拖完那一下**不算「点开」**：挪过 3px 才算拖（`moved`），`pointerup` 记 `floatNudged = fromFab && moved`，
+  click 分支先吃掉它一次。少了这条，图标拖完手一松就弹窗。
+- 复位两条路：窗子**双击标题栏**、图标**右键**（`contextmenu`，图标状态没地方双击）——都走 `resetFloatPos()`。
+  `clampFloatToView()` 每次重画都按一遍（位置可能是在外接屏上拖的）。
+- 图标是手画的 SVG 常量 `FAB_ICON`（右上切角对话方块 + 两行短规 + 左下小尾巴，`stroke: currentColor`），
+  **不要退回 emoji**；`.fab` 自己带 `cursor: grab` / `touch-action: none`，`.fab.moved` 把 `right/bottom` 让开。
+- 钉在 `test/panel.test.js`「浮窗能拖着走…」/「图标状态的浮标也能拖…」/「浮窗记的位置是另一块屏幕上拖的…」。
+
 ## 正文一律走 `assets/md.js`（markdown + 数学）
 
 - **全仓只此一份渲染器**：读卷页、做题页、面板都用它，别再写第二份，也别引 marked

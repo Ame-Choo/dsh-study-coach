@@ -3190,19 +3190,36 @@ function chatCard() {
 }
 
 /**
+ * 图标状态那颗按钮里的图案。
+ *
+ * 不用 emoji：面板是方角 + 细规那一套，💬 在中间既不是这套语言、各平台画的还都不一样。
+ * 这里画一个自己切的方块（右上角一道斜切，跟按钮 `clip-path` 那个角同一个动机），
+ * 底下一小截尾巴当对话框，里面两行短规当字。线色走 `currentColor`，跟着按钮的前景色。
+ */
+const FAB_ICON = `<svg class="fab-ico" viewBox="0 0 24 24" width="24" height="24" fill="none"
+  stroke="currentColor" stroke-width="1.6" stroke-linejoin="miter" aria-hidden="true" focusable="false">
+  <path d="M3.4 3.6h11.4l5.8 5.8v9.2H3.4z"/>
+  <path d="M5.6 18.6v2.8l3.8-2.8"/>
+  <path d="M7.2 8.4h6.4M7.2 12.2h9.8"/>
+</svg>`
+
+/**
  * 右下角那个悬浮小窗。
  *
- * 面板任何一页都挂一颗圆按钮，点开就是简化版的聊天窗：同一份快照、同一条投递通道，
+ * 面板任何一页都挂一颗切角方块，点开就是简化版的聊天窗：同一份快照、同一条投递通道，
  * 只是字号和留白收一档，宽度固定。走到哪一页都能顺手说一句，不用先绕回「对话」页。
  * 「对话」页本身已经整屏是聊天窗口了，那一页不再挂。
  *
- * 拖过之后位置记在 `ui.floatPos` 里，**每帧重画都带着它**——不然每 2.5 秒刷一次
- * 快照，窗子就自己跳回右下角了。
+ * **收起、展开两态都能拖**（用户要的：图标状态原来挪不动，挡着东西只能先点开）。两态共用
+ * 同一份 `ui.floatPos`：在图标状态拖到哪儿，点开的小窗就在哪儿；收起来又回到同一处。
+ * 位置**每帧重画都带着它**——不然每 2.5 秒刷一次快照，它就自己跳回右下角了。
  */
 function floatChat() {
   if (page === 'coach') return ''
   if (!ui.float) {
-    return `<button class="fab" data-act="float-open" title="与教练对话" aria-label="与教练对话">💬</button>`
+    const pos = ui.floatPos
+    const place = pos ? ` style="left:${pos.left}px;top:${pos.top}px"` : ''
+    return `<button class="fab${pos ? ' moved' : ''}"${place} data-act="float-open" title="与教练对话（按住可以拖走，右键回到右下角）" aria-label="与教练对话">${FAB_ICON}</button>`
   }
   const snapshot = chat
   const on = Boolean(snapshot && snapshot.available)
@@ -3226,16 +3243,29 @@ function floatChat() {
 }
 
 /* ══ 浮窗拖着走 ═══════════════════════════════════════════════════════════
- * 浮窗本来是钉在右下角的，挡着东西的时候想挪开。按住标题栏就能拖，松开记住位置
- * （localStorage，刷新还在老地方）；双击标题栏回到右下角——拖跑了找不回来最气人。
+ * 浮窗本来是钉在右下角的，挡着东西的时候想挪开。**收起时整颗图标按钮都能拖**，
+ * 展开着只有标题栏能拖（消息和输入框上按一下就跑，没法选中文字）；松开记住位置
+ * （localStorage，刷新还在老地方）；双击标题栏、或者右键那颗图标，回到右下角
+ * ——拖跑了找不回来最气人。
  *
  * 用指针事件，鼠标 / 触屏 / 触控笔一套写完。监听挂在 **document** 上而不是窗口
  * 自己身上：拖到窗口外面再松手也得收到 pointerup，挂元素上会漏，然后就变成
  * 「手松了它还跟着鼠标跑」。
+ *
+ * 图标状态多一件事：它同时也是「点开」的按钮，所以挪动超过 3px 就记一笔
+ * `floatNudged`，把松手后那记 click 吃掉——否则拖一下顺手就把窗子打开了。
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** 拖动中的中间状态：{ box, dx, dy }。null = 没在拖。 */
+/** 拖动中的中间状态：{ box, dx, dy, ox, oy, fromFab, moved }。null = 没在拖。 */
 let floatDrag = null
+/** 图标状态被真的拖动过：吃掉松手后那记 click，别让「挪开它」变成「点开它」。 */
+let floatNudged = false
+
+/** 现在该去改谁：展开着是 `.float`，收起来是那颗 `.fab`。两个都找一遍，都没有就 null。 */
+function floatBox() {
+  if (!document.querySelector) return null
+  return document.querySelector('.float') || document.querySelector('.fab') || null
+}
 
 /** 把窗口按在视口里：整扇都看得见，拖不出去。视口比窗口还小就贴在左上角。 */
 function clampPos(left, top, size, view) {
@@ -3281,7 +3311,7 @@ function applyFloatPos(box, pos) {
  */
 function clampFloatToView() {
   if (!ui.floatPos) return
-  const box = document.querySelector ? document.querySelector('.float') : null
+  const box = floatBox()
   if (!box) return
   const pos = clampPos(ui.floatPos.left, ui.floatPos.top, floatSize(box), {
     width: window.innerWidth || 0,
@@ -3322,21 +3352,39 @@ function readFloatPos() {
 
 document.addEventListener('pointerdown', (event) => {
   if (event.button) return // 只认左键 / 单指
-  const box = event.target.closest && event.target.closest('.float')
+  const target = event.target
+  if (!target || !target.closest) return
+  // 收起时整颗图标按钮都是抓手；展开着只有标题栏能拖（消息、输入框上按一下不能就跑）。
+  const fab = target.closest('.fab')
+  const box = fab || target.closest('.float')
   if (!box) return
-  if (!event.target.closest('.float-head')) return
-  if (event.target.closest('button')) return // 标题栏上那两颗按钮还是按钮
+  if (!fab) {
+    if (!target.closest('.float-head')) return
+    if (target.closest('button')) return // 标题栏上那两颗按钮还是按钮
+  }
   const rect = box.getBoundingClientRect ? box.getBoundingClientRect() : { left: 0, top: 0 }
-  floatDrag = { box, dx: event.clientX - rect.left, dy: event.clientY - rect.top }
+  floatDrag = {
+    box,
+    dx: event.clientX - rect.left,
+    dy: event.clientY - rect.top,
+    ox: rect.left || 0,
+    oy: rect.top || 0,
+    fromFab: Boolean(fab),
+    moved: false,
+  }
   if (event.preventDefault) event.preventDefault()
 })
 
 document.addEventListener('pointermove', (event) => {
   if (!floatDrag) return
-  // 每次都重新找一下窗子：面板每 2.5 秒可能整块重画一次，手里那个引用会变成脱离文档的旧节点。
-  const box = (document.querySelector && document.querySelector('.float')) || floatDrag.box
+  // 每次都重新找一下：面板每 2.5 秒可能整块重画一次，手里那个引用会变成脱离文档的旧节点。
+  const box = floatBox() || floatDrag.box
   floatDrag.box = box
-  const pos = clampPos(event.clientX - floatDrag.dx, event.clientY - floatDrag.dy, floatSize(box), {
+  const left = event.clientX - floatDrag.dx
+  const top = event.clientY - floatDrag.dy
+  // 挪过 3px 才算拖：图标状态那颗按钮也是「点开」，手抖一下不该变成拖动。
+  if (Math.abs(left - floatDrag.ox) + Math.abs(top - floatDrag.oy) > 3) floatDrag.moved = true
+  const pos = clampPos(left, top, floatSize(box), {
     width: window.innerWidth || 0,
     height: window.innerHeight || 0,
   })
@@ -3346,17 +3394,33 @@ document.addEventListener('pointermove', (event) => {
 
 document.addEventListener('pointerup', () => {
   if (!floatDrag) return
+  // 只有「在图标上真的挪动过」才需要吃掉随后那记 click：拖标题栏时松手那一下
+  // 落在 header 上，本来也没有 data-act，不用管。
+  floatNudged = floatDrag.fromFab && floatDrag.moved
   floatDrag = null
   saveFloatPos(ui.floatPos)
 })
 
+/** 回到右下角：位置忘掉、行内样式清掉、重画一遍（两态共用这一条路）。 */
+function resetFloatPos(box) {
+  ui.floatPos = null
+  saveFloatPos(null)
+  applyFloatPos(box, null)
+  render()
+}
+
 /* 双击标题栏：回到右下角，顺手忘掉记着的位置。 */
 document.addEventListener('dblclick', (event) => {
   if (!event.target.closest || !event.target.closest('.float-head')) return
-  ui.floatPos = null
-  saveFloatPos(null)
-  applyFloatPos(event.target.closest('.float'), null)
-  render()
+  resetFloatPos(event.target.closest('.float'))
+})
+
+/* 右键那颗图标：也是回右下角（图标状态没地方双击——第一下就把窗子点开了）。 */
+document.addEventListener('contextmenu', (event) => {
+  const el = event.target.closest && event.target.closest('.fab')
+  if (!el) return
+  if (event.preventDefault) event.preventDefault()
+  resetFloatPos(el)
 })
 
 /* ── 交互 ─────────────────────────────────────────────────────────────── */
@@ -3778,11 +3842,17 @@ document.addEventListener('click', async (event) => {
         toast('开不出来：' + error.message, true)
       }
     } else if (act === 'float-open') {
-      ui.float = true
-      // 浮窗里也要能选会话：清单还没拉过就趁这次拉一份——load() 那次只问了快照，
-      // 那时候 ui.float 还是 false，所以 sessions 是空的。
-      if (!chat || !(chat.sessions || []).length) await loadChat({ withSessions: true })
-      render()
+      // 刚把图标拖到别处的那一下不算「点开」——松手时手会顺带点一下，
+      // 不然想挪开它反而每次都被它拦住。下一次点才是真要点开。
+      if (floatNudged) {
+        floatNudged = false
+      } else {
+        ui.float = true
+        // 浮窗里也要能选会话：清单还没拉过就趁这次拉一份——load() 那次只问了快照，
+        // 那时候 ui.float 还是 false，所以 sessions 是空的。
+        if (!chat || !(chat.sessions || []).length) await loadChat({ withSessions: true })
+        render()
+      }
     } else if (act === 'float-close') {
       ui.float = false
       render()

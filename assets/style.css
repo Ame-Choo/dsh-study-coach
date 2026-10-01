@@ -1017,7 +1017,7 @@ html[data-mode="browser"] .chat-page .card {
 .chat-page .chat-log { flex: 1 1 auto; min-height: 0; max-height: none; }
 .chat-page .chat-form { margin-top: 10px; }
 
-/* 右下角：一颗圆按钮，点开是简化版聊天窗 */
+/* 右下角：一颗切角方块，点开是简化版聊天窗。收起、展开两态都能拖，所以两态都要 `touch-action` */
 .fab {
   position: fixed;
   right: 20px;
@@ -1031,10 +1031,18 @@ html[data-mode="browser"] .chat-page .card {
   color: var(--on-accent);
   font-size: 20px;
   line-height: 1;
-  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
   box-shadow: var(--shadow-pop);
 }
 .fab:hover { filter: brightness(1.06); }
+.fab:active { cursor: grabbing; }
+.fab .fab-ico { display: block; }
+/* 被拖过：位置由行内样式说了算，别让 right/bottom 再把它拽回角落。 */
+.fab.moved { right: auto; bottom: auto; }
 
 .float {
   position: fixed;
