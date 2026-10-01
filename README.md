@@ -111,8 +111,9 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_plan` | 排每日任务：`add` / `toggle` / `update` / `remove` |
 | `study_material` | 加/删材料。`kind` 六选一：`book` 教辅 / `video` 网课 / `notes` 讲义 / `past` 真题 / **`ai` AI 出题** / `other`。写错的类别会被拒（以前照单全收，材料会从所有分组里悄悄漏掉） |
 | `study_tool_level` | 记基本工具的水平 |
-| `study_archive` | 读某一级的掌握档案（`level=group/module/point` + `key`），含进度、逐点状态、证据流水 |
-| `study_ability` | 学生的总体能力：读大盘（`action=get`）或写一句判词（`action=set`） |
+| `study_archive` | 读某一级的掌握档案（`level=group/module/point` + `key`），含进度、逐点状态、证据流水（`evidence[].id` 就是写学生画像时要挂的那个） |
+| `study_ability` | 学生的总体能力：读大盘（`action=get`）或写一句判词（`action=set`，可以带 `from` 说明这句判词综合了学生画像里哪几条判断） |
+| `study_student` | 学生画像：`action=list`（默认）/ `add` / `patch` / `remove`。一条一句结论（不超过 120 字，类别 `习惯\|强项\|弱项\|偏好\|背景`），**必须挂 `evidence`**（证据 id 从 `study_archive` 的 `evidence[].id` 拿）。挂不上就不许记 |
 | `study_library` | 管学习目标本身：`list` / `create` / `select` / `rename` / `remove` |
 | `study_files` | 看材料目录：`list` 列目录 / `stat` 看存在 / `url` 换成 `/study/file` 链接 |
 | `study_pages` | 把扫描版 PDF 的某几页渲成编号 PNG（`材料/路径 + from/to`），拿去看图认页码——「这一页讲的是哪个知识点」只能这么看出来 |
@@ -123,7 +124,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_guide` | 在面板顶上放一句指引，把学生叫回对话 |
 | `study_inbox` | 读学生在面板上的留言，读完标掉 |
 
-这 20 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
+这 21 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
 
 「先把整本教辅读一遍、分析它教什么」这件事不是靠谁记得，是写死在随包 SKILL.md 第 2 节里的：材料登记完就得通读，结论写进 `study_analysis`，画地图和排任务都从这份结论里取。册子厚就分批喂 `chapters`，或者拉几个子 agent 并行读——同一个 `no` 会覆盖，读到哪写到哪。
 
@@ -141,7 +142,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
 `/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
-`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`。
+`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`、`/study/api/student`。
 
 写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
@@ -149,7 +150,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 `/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
 `/study/api/practice/ask`、`/study/api/reset`、`/study/api/materials/import`、
 `/study/api/materials/build`、`/study/api/material/upload`、`/study/api/focus`、`/study/api/todo`、
-`/study/api/memory`。
+`/study/api/memory`、`/study/api/student`。
 
 还有两条不走 router 的：`/study/page?path=…` 把拆出来的页图发出去（只放行数据根 `pages/` 底下的文件），
 `/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」）。
@@ -696,6 +697,59 @@ prompt 里带了四步收尾指令，最后一步是「告诉他去资料页书�
 #### 六、测试
 
 `test/store.test.js` 的类别校验（`textbook` 被拒且不落盘、`ai` 落盘且 `path` 为空）、`test/tools.test.js` 的 `study_material` 校验、`test/panel.test.js` 的书架分组与 AI 入口（挑类型 / 挑单元 / 递一句话，断言打的是 `/study/api/practice/ask` 而不是别的）、`test/practice-ui.test.js` 的两条（按页直达里的 AI 行用「题」；材料对应位置认出 AI 卷、不写「仅能打开整份 PDF」）。
+
+## 补：学生画像 —— 结论要能追回到哪一次
+
+`mastery` 里每条证据是**流水**（L1）：「10 月 1 日，M1.4，quiz，第九组第 3 题做错」。它一条条攒着，谁也不会去读第 40 条。
+
+学生画像（L2）是**结论**：「含参讨论时容易漏掉 A=∅ 那一支」。一句话，读完就知道下次该怎么教。存在 `student.json`，**跟 mastery 分开**：流水一直涨、寿命长；结论要能被推翻改写，寿命短。混在一起的话，「上次的判断是什么」会被新证据淹没。
+
+#### 一、一条判断必须挂证据，挂不上就不许记
+
+```
+判断 = { id, kind, text(≤120 字), evidence: [{pointId, key}], note, at, updatedAt }
+```
+
+`kind` 五选一：习惯 / 强项 / 弱项 / 偏好 / 背景。`evidence` 至少一条，`lib/student.js` 的 `normalizeEvidence()` 会逐条验：
+
+- 编一个不存在的 id → `没有任何一条证据的 id 是「e-xxx」。别编 id，去 study_archive 里看真有哪些`
+- 只给 id、全库对上不止一条 → 让它把 `pointId` 一起写上
+- 单元号不在当前地图里 → `地图里没有这个单元：M9.9`
+- 单元对、但那一条不在这个单元下 → 指出该去 `study_archive` 重看一眼
+
+**这条约束就是这层跟「随口评价」的分界线**，也是它跟向量库的分界线：兑不上要显式报出来，不是算个相似度蒙混过去。
+
+#### 二、证据从匿名行变成有 id 的了
+
+原来证据就是 `{kind, at, note}`——一行流水，匿名无所谓。但 L2 要一条条挂回去，没 id 就只能挂到整个单元，那等于「我记得你这一节学得不好」，说不出是哪一次让你这么想。
+
+所以 `recordEvidence` 现在发 `id: 'e-…'`（`newEvidenceId()`），`study_archive` 的 `evidence[]` 也跟着端出来。**加 id 之前记的老证据**没有 id，档案里按 `evidenceKey()` 的同一套算法推一个：`单元@时刻`，同一毫秒同一单元撞了才补 `#序号`。两边必须同算法，否则今天抄下来的引用明天就兑不上。
+
+#### 三、兑不上的显式记账，不隐藏
+
+判断不会过期，但它引的那次可能没了：地图重画换了单元 id、证据被删。`auditFacts()` 把它们列出来（`地图里没这个单元了` / `这条证据找不到了`），面板照实画：
+
+- 卡头写 `3 条判断 · 1 条要修`
+- 那一格写「集合的表示 **证据没了**」
+- 底下补一句「在对话里说一声，让教练核一下」
+
+静默过滤掉是最省事的写法，也是最坏的：学生会慢慢不信这张卡。
+
+#### 四、L3 判词可以引用 L2
+
+`abilityReport` 的 `judgement` 多了 `from`（判断 id 数组），`study_ability action=set` 可以带 `from`。这样面板顶上的「这句判词综合了哪几条」，也是能点回去的。
+
+`setAbility` 里 `from` 不传就留上一次的——只改措辞的时候，不该把「综合了哪几条」冲掉。
+
+#### 五、写和读的分工
+
+写只有两条路，都在对话里：`study_student` 工具，或面板上删（`fact-del` → `POST /study/api/student {action:'remove'}`）。面板**不能加也不能改**——加一条判断要先去 `study_archive` 挑证据，那是 agent 的活。
+
+`study_report` 加了 `studentFacts`（只给 `id / kind / text / note / evidenceCount`，不摊开证据）——**开场读完它就等于认了一遍这个人**，这就是这一层最直接的收益。要看细节再调 `study_student` 或直接读 `/study/api/student`。
+
+#### 六、测试
+
+`test/student.test.js` 7 条：证据 id 与老数据推 key、`addFact` 的四类拒绝、改措辞与改证据互不冲掉、`byKind` 每档都在、证据/单元消失后 `ok:false` 与 `orphans`、`renderFact` 一真一假、路由层（400 文案 + 被拒的不落盘）、工具层（`study_report.studentFacts`、`study_ability.from`）、档案里 `evidence[].id` 跟 `evidenceKey()` 同算法。面板那条在 `test/panel.test.js`（`学生画像：一句话带着当年的那次证据，证据没了要当着面说`）。
 
 
 

@@ -19,6 +19,8 @@ try {
 const STAGES = ['没接触过', '见过', '能跟做', '能独立做', '熟练稳定', '能讲明白']
 /* 与 lib/store.js 的 MISTAKE_STATUS 同序：待验证 → 已订正 → 已复做对 */
 const MISTAKE_STATUS = ['待验证', '已订正', '已复做对']
+/** 学生画像那五档，跟 lib/store.js 的 FACT_KINDS 同序同字。 */
+const FACT_KINDS = ['习惯', '强项', '弱项', '偏好', '背景']
 
 const STAGE_COLOR = {
   '没接触过': 'var(--stage-1)',
@@ -50,6 +52,7 @@ let capabilities = null
 const STALE_NEED = [
   ['ability', '总体能力判断'],
   ['archive', '每级掌握档案'],
+  ['student', '学生画像'],
   ['library', '学习目标库'],
   ['practice', '做题页'],
   ['mistakes', '错题本'],
@@ -68,6 +71,8 @@ let agenda = null
 let library = null
 /* 错题本（只有 /study/api/mistakes 这条接口给，state 里没有） */
 let mistakes = null
+/* 学生画像：历次攒下来的「关于这个人」的判断，每条挂着几条真证据。state 里没有。 */
+let student = null
 /* 今日复盘图：{ date, data, svg }；这一天没动过任何单元就是 null */
 let review = null
 /* 书架：{ materials: [...], pagesRoot }；只有「资料」页拉 */
@@ -122,6 +127,8 @@ const ui = {
   float: false,
   /* 错题本只看哪一档，空串 = 全看 */
   mistakeStatus: '',
+  factKind: '',
+  factMore: false,
   /* 资料页：正在上传/登记，别让人连点两下 */
   importing: false,
   /* 上传到哪儿了（一行一句，最多留五句） */
@@ -360,12 +367,13 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, review, shelfAlive, toolboxAlive, memoryAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
     alive('/study/practice'),
     alive('/study/api/mistakes'),
+    alive('/study/api/student'),
     alive('/study/api/review'),
     alive('/study/api/materials'),
     alive('/study/api/toolbox'),
@@ -377,6 +385,7 @@ async function probeCapabilities() {
     library,
     practice,
     mistakes,
+    student: studentAlive,
     review,
     shelf: shelfAlive,
     toolbox: toolboxAlive,
@@ -438,6 +447,7 @@ async function load() {
     agenda = await loadAgenda()
     library = await loadLibrary()
     mistakes = await loadMistakes()
+    student = await loadStudent()
     // 复盘图只有「今天」这一页要。其余页不拉，省一趟请求和 9 KB。
     review = page === 'today' ? await loadReview() : null
     // 书架只有「资料」这一页要。
@@ -500,6 +510,26 @@ async function loadMistakes() {
     const out = await api('/study/api/mistakes?limit=60')
     if (!Array.isArray(out.items)) return null
     return { items: out.items, total: Number(out.total) || out.items.length, byStatus: out.byStatus || {} }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 学生画像。跟错题本一个路数：服务端汇总成一份带「兑好的证据」的东西给面板看。
+ * 服务端是旧代码（没有这条路由）就返回 null，能力页少画那一段，别让整页挂掉。
+ */
+async function loadStudent() {
+  if (!capabilities || !capabilities.student) return null
+  try {
+    const out = await api('/study/api/student?limit=40')
+    if (!Array.isArray(out.facts)) return null
+    return {
+      facts: out.facts,
+      total: Number(out.total) || out.facts.length,
+      byKind: out.byKind || {},
+      orphans: Array.isArray(out.orphans) ? out.orphans : [],
+    }
   } catch {
     return null
   }
@@ -726,6 +756,7 @@ const PAGE_CARDS = {
       ['ability', '总体能力', abilityCard],
       ['mistakes', '错题本', mistakesCard],
     ],
+    aside: [['student', '学生画像', studentCard]],
   },
   library: {
     main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
@@ -1292,6 +1323,71 @@ function mistakesCard() {
     <div class="chips">${chips}</div>
     ${shown.length ? `<ul class="list tight">${rows}</ul>` : '<p class="dim">这一档暂时没有。</p>'}
     <p class="dim">在做题页点「这题做错了」就能记一条。错因和订正没写清之前，这条会一直挂在「待验证」。</p>
+  </section>`
+}
+
+/**
+ * 学生画像：关于「这个人」的判断，一条一句，每条都挂着它当初是从哪几次看出来的。
+ *
+ * 跟错题本一样，这里**只读 + 删**——写由教练在对话里做（`study_student`），
+ * 因为写一条判断必须先指着几条真证据，面板上没有「证据列表」可点。
+ * 但「这条不对」这种事学生最清楚，所以删除留在这儿。
+ */
+function studentCard() {
+  const doc = student
+  if (!doc || !doc.facts.length) return ''
+  const by = doc.byKind || {}
+  const filter = ui.factKind
+  const shown = (filter ? doc.facts.filter((f) => f.kind === filter) : doc.facts).slice(0, ui.factMore ? 200 : 8)
+
+  const chips = ['']
+    .concat(FACT_KINDS)
+    .map((k) => {
+      const n = k ? by[k] || 0 : doc.total
+      const on = filter === k ? ' on' : ''
+      return `<button class="mini${on}" data-act="fact-filter" data-kind="${esc(k)}">${k || '全部'} ${n}</button>`
+    })
+    .join(' ')
+
+  const rows = shown
+    .map((f) => {
+      // 兑不上的证据不藏起来——恰恰是它得让学生看见，好去把话说清楚
+      const ev = (f.evidence || [])
+        .map((e) => {
+          const label = e.ok
+            ? `${esc(e.pointTitle || e.pointId)}${e.kind ? ' · ' + esc(e.kind) : ''}`
+            : `${esc(e.pointTitle || e.pointId || '（单元也没了）')} <span class="bad">证据没了</span>`
+          return `<li class="dim">${label}${e.note ? ` —— ${esc(e.note)}` : ''}</li>`
+        })
+        .join('')
+      return `<li class="fact">
+        <span class="tag">${esc(f.kind)}</span>
+        <div class="mat-main">
+          <b>${esc(f.text)}</b>
+          ${f.note ? `<div class="dim">${esc(f.note)}</div>` : ''}
+          <ul class="facts-ev">${ev}</ul>
+        </div>
+        <button class="mini" data-act="fact-del" data-id="${esc(f.id)}" title="这条判断不对，删掉">删</button>
+      </li>`
+    })
+    .join('')
+
+  const orphan = doc.orphans.length
+    ? `<p class="dim over">有 ${doc.orphans.length} 条判断引的证据找不到了（多半是地图重画换了单元号）。在对话里说一声，让教练核一下。</p>`
+    : ''
+
+  return `<section class="card student">
+    <div class="card-head">
+      <h2>学生画像</h2>
+      <span class="dim">${doc.total} 条判断${doc.orphans.length ? ` · ${doc.orphans.length} 条要修` : ''}</span>
+    </div>
+    <div class="chips">${chips}</div>
+    <ul class="list tight facts">${rows}</ul>
+    ${shown.length < (filter ? doc.facts.filter((f) => f.kind === filter) : doc.facts).length
+      ? `<button class="mini" data-act="fact-more">还有更多，展开</button>`
+      : ''}
+    ${orphan}
+    <p class="dim">这些是历次攒下来的结论，每条都得指着几次真表现。想加、想改，在对话里说；觉得不对，点右边的「删」。</p>
   </section>`
 }
 
@@ -2583,6 +2679,24 @@ document.addEventListener('click', async (event) => {
     } else if (act === 'mat-more') {
       ui.matMore = !ui.matMore
       render()
+    } else if (act === 'fact-filter') {
+      ui.factKind = el.dataset.kind || ''
+      render()
+    } else if (act === 'fact-more') {
+      ui.factMore = true
+      render()
+    } else if (act === 'fact-del') {
+      const id = el.dataset.id || ''
+      el.disabled = true
+      try {
+        await api('/study/api/student', { action: 'remove', id })
+        toast('这条判断删掉了')
+        student = await loadStudent()
+        render()
+      } catch (error) {
+        toast(error.message)
+        el.disabled = false
+      }
     } else if (act === 'mistake-filter') {
       ui.mistakeStatus = el.dataset.status || ''
       render()

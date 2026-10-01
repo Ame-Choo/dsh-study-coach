@@ -99,6 +99,7 @@ const PROBE_PATHS = [
   '/study/api/library',
   '/study/practice',
   '/study/api/mistakes',
+  '/study/api/student',
   '/study/api/review',
   '/study/api/materials',
   '/study/api/toolbox',
@@ -241,6 +242,35 @@ const MEMORY = {
   ],
 }
 
+/** 学生画像：一条兑得上的「弱项」，一条引的证据已经没了的「习惯」。 */
+const STUDENT = {
+  total: 2,
+  byKind: { 习惯: 1, 强项: 0, 弱项: 1, 偏好: 0, 背景: 0 },
+  orphans: [{ id: 'f-2', kind: '习惯', text: '早读效率高', bad: [{ pointId: 'M1.1', key: 'e-没了', why: '这条证据找不到了' }] }],
+  facts: [
+    {
+      id: 'f-1',
+      kind: '弱项',
+      text: '换元之后容易忘记回代',
+      note: '出现过两次',
+      at: '2026-09-28T02:00:00.000Z',
+      evidence: [
+        { pointId: 'M1.1', key: 'e-aaa', pointTitle: '集合的表示', ok: true, kind: 'quiz', at: '2026-09-27T02:00:00.000Z', note: '第一章第九组第 3 题做错了' },
+      ],
+    },
+    {
+      id: 'f-2',
+      kind: '习惯',
+      text: '早读效率高',
+      note: '',
+      at: '2026-09-29T02:00:00.000Z',
+      evidence: [
+        { pointId: 'M1.1', key: 'e-没了', pointTitle: '集合的表示', ok: false, kind: '', at: '', note: '' },
+      ],
+    },
+  ],
+}
+
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
 async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null } = {}) {
   const list = !chat ? [] : sessions === null ? SESSIONS : sessions
@@ -278,6 +308,11 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         : { ok: true, state: fixture }
     }
     if (path.includes('/api/review')) body = { ok: true, date: '2026-10-01', data: REVIEW.data, svg: REVIEW.svg }
+    // 学生画像：读回夹具那份（带已兑的证据），删一条就回空一份。
+    if (path.includes('/api/student')) {
+      body = { ok: true, ...STUDENT }
+      if (options && options.method === 'POST') body = { ok: true, ...STUDENT, action: 'remove', total: STUDENT.total - 1 }
+    }
     // 资料页那几条。顺序要紧：/api/material? 是 /api/materials 的子串，得放在后面判。
     if (path.includes('/api/materials/build')) body = { ok: true, started: true, pid: 4242, total: 20 }
     else if (path.includes('/api/materials/import')) body = { ok: true, dir: false, added: [{ title: '必修一' }] }
@@ -530,6 +565,35 @@ test('能力页：大盘、卡住的地方、每级档案按键，点开是那�
   assert.match(html(), /模块掌握档案/)
   await clickAct({ act: 'archive-close' })
   assert.doesNotMatch(html(), /模块掌握档案/)
+})
+
+test('学生画像：一句话带着当年的那次证据，证据没了要当着面说', async () => {
+  const { html, posts, boxes, clickAct } = await boot(fixture(), { path: '/study/ability' })
+
+  // 卡头上写着有几条、几要修；两张判断都画出来
+  assert.match(html(), /data-card="student"/)
+  assert.match(html(), /2 条判断 · 1 条要修/)
+  assert.match(html(), /换元之后容易忘记回代/)
+  assert.match(html(), /早读效率高/)
+
+  // 判断是结论，底下得挂着「哪一次」——兑得上就把那次的类型和原话摆出来
+  assert.match(html(), /集合的表示 · quiz/)
+  assert.match(html(), /第一章第九组第 3 题做错了/)
+
+  // 兑不上的不能藏起来（地图重画换了单元号，或者证据被删了，都是真会发生的）
+  assert.match(html(), /证据没了/)
+  assert.match(html(), /1 条判断引的证据找不到了/)
+
+  // 分档：默认全看，点「弱项」只剩那条
+  assert.match(html(), /data-act="fact-filter" data-kind="弱项"/)
+  await clickAct({ act: 'fact-filter', kind: '弱项' })
+  assert.match(html(), /换元之后容易忘记回代/)
+  assert.doesNotMatch(html(), /早读效率高/)
+
+  // 觉得不对就删：打的是 POST，回来重拉一次
+  await clickAct({ act: 'fact-del', id: 'f-1' })
+  assert.deepEqual(posts.at(-1), { path: '/study/api/student', body: { action: 'remove', id: 'f-1' } })
+  assert.match(boxes.get('toast').textContent, /这条判断删掉了/)
 })
 
 test('地图页：展开大类才看得到模块那级的档案；定稿的地图不再问「就这么定」', async () => {
