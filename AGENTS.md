@@ -121,6 +121,14 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   在 `applyView()` 里补 `translate(-t/k) scale(1/k)`，拖动缩放时它们才钉在视口上（`hud` 数组在文件里）。
 - **栏位宽度是定死的**（`STAGE_X` / `DUE_X` / `BTN_X`）：单元行里的按钮、行槽、行标一律 `x + 常量` 起排。
   写绝对坐标会让它们整片跑到模块列去（踩过一次，样张上才看出来）。
+- **连线的基线要算对父节点那一截**：子节点的绝对 y 是 `baseY + node.y - node.subH / 2 + node.top + kid.y`
+  （`node.y` 是绝对中心）。少这一截，线头就指到空白处——`test/graph.test.js` 有一条
+  「每一条连线都落在子节点的中心线上」专门盯它。
+- **像素↔viewBox 不许按 1:1 算**：滚轮缩放先把指针换算回画布
+  （`scale = Math.min(box.width / vw, box.height / vh)`），再加 `preserveAspectRatio="xMinYMin meet"`。
+  漏了这步，缩放就会「把东西带乱飘」——测试「滚轮缩放钉在指针底下」盯着（换算助手要拆 `atX` / `atY`，
+  一个函数管两轴必错）。
+- **板块热区要靠 `panned` 让路**：`.kg-band-hit` 整块可点，但拖过画布的那一下（位移 > 3px）不算点。
 - 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
 - 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
   —— 所以它好测，别往里加 requestAnimationFrame。

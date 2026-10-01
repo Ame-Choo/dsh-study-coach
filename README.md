@@ -1000,6 +1000,12 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **面板那侧多了「简报条」**（`mapCard()`）：`KNOWLEDGE MAP` 眉标 + 总体进度 + 四格统计（模块 / 单元 / 已接触 / 平均把握）+ 六档色带 + 六档图例（菱形小点，不是胶囊）。原来那句解释图谱怎么用的 `<p class="dim">` 留着。
 - **几何常量全在 `assets/graph.js` 顶上**（`GROUP_W` / `MOD_W` / `STAGE_X` / `DUE_X` / `BTN_X` / `HEAD_Y` …）。加装饰请**另起 class**：`test/graph.test.js` 按 `.kg-box`（必须正好等于大类数）、`.kg-dot`（按可见单元数）、`.kg-halo`（全图 ≤1）的数量断言，别拿它们当底板或图例。
 - **两个坑**（都踩了）：①单元行的按钮与行槽原来用**绝对坐标**（忘了 `x +`）→ 全跑到模块列去；栏位宽度是定死的，按钮与行槽一律 `x + 常量` 起排。②折叠时也要报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数（原来折叠着显示「空」）。
+- **第二版又往里做了一层**（用户说「设计还是太单调了」之后）：
+  · **连线连到空白处**：`drawNode` 里子节点的基线少了父节点那一截——`ky = baseY + node.top + kid.y`，而根节点的 `node.y` 在布局里是**绝对中心**，`node.y - node.subH/2 ≠ 0`。现在 `const kidBase = baseY + node.y - node.subH / 2 + node.top`，连线终点与递归都走 `kidBase + kid.y`，拐点再补一枚 5×5 方点 `.kg-joint`。`test/graph.test.js` 加了一条「每一条连线都落在子节点的中心线上」（从每条 `.kg-link` 的 `d` 里取第 4 个数，必须命中某个 `.kg-box` / `.kg-unit-bg` 的中心线）。
+  · **缩放会把东西带乱飘**：像素↔viewBox 原来按 1:1 算（`vw = host.clientWidth`），盒子尺寸与 CSS 渲染尺寸一旦不一致，锚点就偏。现在先把指针换算回 viewBox：`const scale = Math.min(box.width / vw, box.height / vh) || 1`、`px = (clientX - box.left) / scale`、`py = (clientY - box.top) / scale`，`<svg>` 也加了 `preserveAspectRatio="xMinYMin meet"`（比例变了也钉左上角）。测试「滚轮缩放钉在指针底下」盯这一条——**写它的时候我自己把纵轴也喂了 `tx`**，换算助手要拆成 `atX` / `atY`，一个函数管两轴是错的。
+  · **板块做成关卡面**：抬头条 `.kg-band-head`（两位索引字 + 竖规 + 横向进度槽 + 右端百分比）、右侧压淡的大索引字 `.kg-index`、两条电路通道竖线 `.kg-col`、右沿刻度 `.kg-scale`、左上右下角包 `.kg-frame`、左沿竖进度 `.kg-vgauge` / `.kg-vgauge-fill`、以及整块可点的透明热区 `.kg-band-hit`（**拖过画布的那一下不算点**，用 `panned` 判）。
+  · **单元行做成表**：隔行斑马纹 `.kg-unit-row.is-alt`、编号格右边一道竖规 `.kg-cell-rule`、行底线 `.kg-row-rule`；模块**收起**时在右边摆一条「格带」`.kg-cells`——一节一个 9px 方格子、颜色取那一节的档位（没接触过的压暗），收着也看得出里面几节、读到哪儿了。
+  · 又多了两个几何常量（`HEAD_BAR_H`、`CELL_RULE_X`）；加装饰照旧**另起 class**，别借 `.kg-box` / `.kg-dot` / `.kg-halo`。
 - **记账**：这一批只动 `assets/graph.js` / `assets/graph.css` / `assets/panel.js` / `assets/style.css`（`lib/` 没碰）→ **刷新页面即可**。视觉验收用离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` + `.graphcheck-server.mjs`（19392），不碰正在跑的 DSH。
 
 

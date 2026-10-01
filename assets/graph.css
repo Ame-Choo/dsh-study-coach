@@ -44,6 +44,52 @@
   stroke-width: 1;
 }
 
+/* 抬头条：一块板块的「章头」，比底板亮一档，正好是卡内区块那一层。 */
+.kg-band-head {
+  fill: var(--card-2, #1f2224);
+}
+
+.kg-band-rule {
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
+
+/* 抬头条里索引字后面那道竖规。 */
+.kg-ord-rule {
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+}
+
+/* 右侧压淡的大索引字：占住空着的右半边，不参与信息。 */
+.kg-index {
+  font-family: var(--font-display);
+  font-size: 44px;
+  fill: var(--line, rgba(255, 255, 255, .22));
+  opacity: .5;
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* 电路通道：连线竖段走在上面，像图纸的栅格。 */
+.kg-col {
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+  opacity: .55;
+}
+
+/* 折线的拐点。 */
+.kg-joint {
+  fill: var(--line-2, rgba(255, 255, 255, .38));
+}
+
+/* 整块板块都是热区：点哪儿都能展开这一章。 */
+.kg-band-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}
+
 .kg-band-hatch {
   opacity: .45;
 }
@@ -61,11 +107,11 @@
   fill: var(--line-2, rgba(255, 255, 255, .38));
 }
 
-/* 两位索引字：拉丁 + 等宽数字，像图纸上的编号。 */
+/* 两位索引字：拉丁 + 等宽数字，像图纸上的编号。抬头条上那一枚。 */
 .kg-ord {
   font-family: var(--font-display);
-  font-size: var(--fs-sm, 13px);
-  fill: var(--dim, #999999);
+  font-size: 15px;
+  fill: var(--text, #d2d2d2);
   letter-spacing: .08em;
   font-variant-numeric: tabular-nums;
 }
@@ -101,6 +147,27 @@
   fill: none;
   stroke: var(--line-2, rgba(255, 255, 255, .38));
   stroke-width: 1;
+}
+
+/* 板块的角包（左上 + 右下）与右沿刻度：纯几何的图纸感，不抢内容。 */
+.kg-frame {
+  fill: none;
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+}
+
+.kg-scale {
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
+
+/* 分区左沿那条竖进度槽：底槽压暗，填充是信号青——进度是「当前量」，用青不算铺。 */
+.kg-vgauge {
+  fill: var(--line, rgba(255, 255, 255, .22));
+}
+
+.kg-vgauge-fill {
+  fill: var(--accent, #18d1ff);
 }
 
 .kg-group[aria-expanded="true"] .kg-corner,
@@ -180,6 +247,28 @@
   stroke-width: 1;
 }
 
+/* 隔行换一档底色：单元一多就是一张表，斑马纹让眼睛不串行。 */
+.kg-unit-row.is-alt .kg-unit-bg {
+  fill: var(--card, #141618);
+}
+
+/* 编号格右边那道竖规：表格的栏线，也是关卡面编号栏的做法。 */
+.kg-cell-rule {
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
+
+/* 收起模块右边那条格带：一节一个方格，颜色是那一节的档位（填充由 JS 给）。
+   没接触过的给一档暗底，免得空槽看起来像「已经读过」。 */
+.kg-cell {
+  stroke: none;
+}
+
+.kg-cell.is-empty {
+  fill: var(--line, rgba(255, 255, 255, .22)) !important;
+  opacity: .55;
+}
+
 .kg-point {
   cursor: pointer;
 }
@@ -223,6 +312,23 @@
 
 .kg-point:hover .kg-name {
   fill: var(--ink, #ffffff);
+}
+
+/* 行底线：单元一多就是一张表，细规把行分开。 */
+.kg-row-rule {
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+  opacity: .35;
+}
+
+/* 展开 / 收起的小三角：收起朝右、展开朝下。展开是「状态」，所以跟着角包一起转青。 */
+.kg-chevron {
+  fill: var(--line-2, rgba(255, 255, 255, .38));
+}
+
+.kg-group[aria-expanded="true"] .kg-chevron,
+.kg-mod[aria-expanded="true"] .kg-chevron {
+  fill: var(--accent, #18d1ff);
 }
 
 .kg-stage {

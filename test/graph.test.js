@@ -276,6 +276,34 @@ function drillDown(root, groupTitle = '行列式', modTitle = '性质与展开')
   clickNode(root, 'kg-mod', modTitle)
 }
 
+/**
+ * 连线得落在子节点的中心线上。折线的五段数字是 `M x y H mx V ky H kx`：
+ * 第 4 个数（ky）就是终点的 y，它必须等于某个可见节点的中心线——不然线头指在空白处。
+ */
+test('每一条连线都落在子节点的中心线上，不会连到空白处', () => {
+  const host = makeHost()
+  resetState(host)
+  renderGraph(host, baseOpts())
+  drillDown(host)
+  assert.ok(byClass(host, 'kg-link').length >= 4, '展开后总该有几条线')
+
+  const near = (n) => Math.round(n * 10) / 10
+  const centers = new Set()
+  for (const box of byClass(host, 'kg-box')) {
+    centers.add(near(Number(box.getAttribute('y')) + Number(box.getAttribute('height')) / 2))
+  }
+  for (const row of byClass(host, 'kg-unit-bg')) {
+    centers.add(near(Number(row.getAttribute('y')) + Number(row.getAttribute('height')) / 2))
+  }
+
+  for (const link of byClass(host, 'kg-link')) {
+    const d = link.getAttribute('d')
+    const nums = (d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number)
+    assert.equal(nums.length, 5, `折线格式变了：${d}`)
+    assert.ok(centers.has(near(nums[3])), `线头 ${nums[3]} 不在任何节点的中心线上：${d}`)
+  }
+})
+
 /** state 是模块级单例：渲染一次底稿，再把展开和视图都清掉。 */
 function resetState(host) {
   renderGraph(host, baseOpts())
@@ -723,6 +751,38 @@ test('滚轮缩放夹在 0.4x–2.4x，并 preventDefault', () => {
   // 很小的 delta 也要挪一点点（不是纹丝不动）
   svg.dispatch('wheel', { deltaY: -100, clientX: 450, clientY: 300 })
   assert.ok(readScale(host) > 0.4)
+})
+
+test('滚轮缩放钉在指针底下：那一点的画布坐标不动，缩放不飘', () => {
+  const host = makeHost(900)
+  resetState(host)
+  renderGraph(host, baseOpts())
+  const svg = svgOf(host)
+  const view = byClass(host, 'kg-view')[0]
+  const read = () => {
+    const m = /translate\(([-\d.]+) ([-\d.]+)\) scale\(([\d.]+)\)/.exec(view.getAttribute('transform') || '')
+    return { tx: Number(m[1]), ty: Number(m[2]), k: Number(m[3]) }
+  }
+  /* 屏上（viewBox 单位）→ 画布坐标，缩放锚点要钉的就是这个换算。 */
+  const atX = (v, screen) => (screen - v.tx) / v.k
+  const atY = (v, screen) => (screen - v.ty) / v.k
+
+  const box = svg._rect
+  const [, , vbW, vbH] = svg.getAttribute('viewBox').split(' ').map(Number)
+  const scale = Math.min(box.width / vbW, box.height / vbH) || 1
+  const screenX = 300 / scale
+  const screenY = 220 / scale
+
+  for (const deltaY of [-100, -100, -100, 200, 200]) {
+    const before = read()
+    const ux = atX(before, screenX)
+    const uy = atY(before, screenY)
+    svg.dispatch('wheel', { deltaY, clientX: 300, clientY: 220 })
+    const after = read()
+    assert.notEqual(after.k, before.k, '这一下该真的缩放')
+    assert.ok(Math.abs(after.k * ux + after.tx - screenX) < 0.5, `横着飘了：${after.k * ux + after.tx} ≠ ${screenX}`)
+    assert.ok(Math.abs(after.k * uy + after.ty - screenY) < 0.5, `竖着飘了：${after.k * uy + after.ty} ≠ ${screenY}`)
+  }
 })
 
 test('空白处能拖动画布；按在单元上不拖', () => {

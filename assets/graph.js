@@ -42,11 +42,14 @@ const COL2 = COL1 + MOD_W + GAP_MU
 
 const VGAP = 12
 const MOD_GAP = 10
-const GROUP_GAP = 26
+/* 两块板块之间得留出「抬头条 + 一条空档」的位置，不然下一块的章条会压在上一块底边上。 */
+const GROUP_GAP = 64
 const BAND_X = 14
 const BAND_PAD = 14
-/* 第一块板块的中心线：上面留给索引板与页眉，别让内容钻到 HUD 底下。 */
-const HEAD_Y = 146
+/* 每一块板块顶上的章条：左边索引、中间进度槽、右边百分比。 */
+const HEAD_BAR_H = 26
+/* 第一块板块的中心线：上面留给索引板、索引板下面那行小字、以及自己的抬头条。 */
+const HEAD_Y = 166
 const BOTTOM_PAD = 44
 
 const GROUP_NAME_MAX = 8
@@ -56,6 +59,8 @@ const CODE_MAX = 6
 
 /* 单元行里的栏位（相对行左沿）：编号 / 名字 / 档位 / 复习日 / 按钮 */
 const CODE_X = 24
+/* 编号格与正文格之间那道竖规的位置（在 CODE_X 与 NAME_X 中间偏右）。 */
+const CELL_RULE_X = 52
 const NAME_X = 62
 const STAGE_X = 206
 const DUE_X = 274
@@ -311,6 +316,9 @@ export function renderGraph(host, options) {
   const svg = svgEl('svg', {
     class: 'kg-svg',
     viewBox: `0 0 ${vw} ${vh}`,
+    /* 万一把画布拉伸了（父级给的高度跟 viewBox 的比例不一样），内容也钉在左上角，
+       不要被居中——居中的话一改高度，整张图就会自己漂一下。 */
+    preserveAspectRatio: 'xMinYMin meet',
     width: '100%',
     height: String(vh),
     role: 'tree',
@@ -358,34 +366,121 @@ export function renderGraph(host, options) {
   let maxTop = HEAD_Y
   for (const [index, group] of tree.entries()) {
     const top = group.y - group.subH / 2
+    const boardTop = top - BAND_PAD - HEAD_BAR_H
+    const boardH = HEAD_BAR_H + BAND_PAD + group.subH + BAND_PAD
     maxTop = Math.max(maxTop, top + group.subH)
-    bands.appendChild(svgEl('rect', {
-      class: 'kg-band',
-      x: BAND_X,
-      y: top - BAND_PAD,
-      width: bandW,
-      height: group.subH + BAND_PAD * 2,
+
+    /* 一块板块 = 一张关卡面：抬头条 + 内容区，底沿就是内容区那一圈。 */
+    bands.appendChild(svgEl('rect', { class: 'kg-band', x: BAND_X, y: boardTop, width: bandW, height: boardH }))
+    bands.appendChild(svgEl('rect', { class: 'kg-band-head', x: BAND_X, y: boardTop, width: bandW, height: HEAD_BAR_H }))
+    /* 左上、右下各钉一副角包：方角硬朗的图纸感靠这两笔。 */
+    for (const [cx, cy, sx, sy] of [
+      [BAND_X, boardTop, 1, 1],
+      [BAND_X + bandW, boardTop + boardH, -1, -1],
+    ]) {
+      bands.appendChild(svgEl('path', {
+        class: 'kg-frame',
+        d: `M ${cx} ${cy + sy * 11} V ${cy} H ${cx + sx * 11}`,
+      }))
+    }
+    /* 右侧一列刻度：板块有多高，边上那列小刻度就替眼睛量着。 */
+    for (let ty = boardTop + HEAD_BAR_H + 12; ty < boardTop + boardH - 8; ty += 22) {
+      bands.appendChild(svgEl('line', { class: 'kg-scale', x1: BAND_X + bandW - 6, y1: ty, x2: BAND_X + bandW - 1, y2: ty }))
+    }
+    bands.appendChild(svgEl('line', {
+      class: 'kg-band-rule',
+      x1: BAND_X,
+      y1: boardTop + HEAD_BAR_H + .5,
+      x2: BAND_X + bandW,
+      y2: boardTop + HEAD_BAR_H + .5,
     }))
-    /* 这块分区里有该复习的点：左边贴一条斜纹，一眼就能扫到。 */
+
+    /* 抬头条左边：两位索引字 + 一道竖规，章节感就靠这两笔。 */
+    const ord = svgEl('text', { class: 'kg-ord', x: BAND_X + 13, y: boardTop + 18 })
+    ord.textContent = String(index + 1).padStart(2, '0')
+    bands.appendChild(ord)
+    bands.appendChild(svgEl('line', { class: 'kg-ord-rule', x1: BAND_X + 42.5, y1: boardTop + 7, x2: BAND_X + 42.5, y2: boardTop + 19 }))
+
+    /* 抬头条：中间一条进度槽、右边百分比 —— 这一章读到哪儿，扫一眼就有数。 */
+    const points = []
+    for (const mod of group.children) for (const unit of mod.children) points.push(unit.point)
+    const pctValue = ratioOf(points, given && given.groups ? given.groups[group.title] : undefined)
+    const gaugeX = BAND_X + 58
+    const gaugeW = Math.max(60, bandW - 58 - 76)
+    bands.appendChild(svgEl('rect', { class: 'kg-gauge', x: gaugeX, y: boardTop + HEAD_BAR_H - 7, width: gaugeW, height: 3 }))
+    if (pctValue) {
+      bands.appendChild(svgEl('rect', {
+        class: 'kg-gauge-fill',
+        x: gaugeX,
+        y: boardTop + HEAD_BAR_H - 7,
+        width: gaugeW * (pctValue / 100),
+        height: 3,
+      }))
+    }
+    const pctText = svgEl('text', {
+      class: 'kg-pct' + (pctValue ? '' : ' is-zero'),
+      x: BAND_X + bandW - 13,
+      y: boardTop + 18,
+      'text-anchor': 'end',
+    })
+    pctText.textContent = `${pctValue}%`
+    bands.appendChild(pctText)
+
+    /* 右侧一枚压淡的大索引字：画布右半边空着的时候不至于太空。 */
+    const mark = svgEl('text', { class: 'kg-index', x: BAND_X + bandW - 22, y: top + group.subH / 2 + 14, 'text-anchor': 'end' })
+    mark.textContent = String(index + 1).padStart(2, '0')
+    bands.appendChild(mark)
+
+    /* 两条「电路通道」：连线的竖段都走这两条线上，底面因此像一张图纸。 */
+    for (const cx of [COL1 - GAP_GM / 2, COL2 - GAP_MU / 2]) {
+      bands.appendChild(svgEl('line', {
+        class: 'kg-col',
+        x1: cx + .5,
+        y1: boardTop + HEAD_BAR_H,
+        x2: cx + .5,
+        y2: boardTop + boardH,
+      }))
+    }
+
+    /* 左沿一条竖进度：这一章读到哪儿，边上一眼量得出来（横向那条在抬头条里）。 */
+    const vgY = boardTop + HEAD_BAR_H + BAND_PAD
+    const vgH = Math.max(0, group.subH)
+    bands.appendChild(svgEl('rect', { class: 'kg-vgauge', x: BAND_X + 9, y: vgY, width: 3, height: vgH }))
+    if (pctValue) {
+      bands.appendChild(svgEl('rect', {
+        class: 'kg-vgauge-fill',
+        x: BAND_X + 9,
+        y: vgY,
+        width: 3,
+        height: vgH * (pctValue / 100),
+      }))
+    }
+
+    /* 这块分区里有该复习的点：抬头条左边贴一条斜纹，一眼就能扫到。 */
     const due = group.children.some((mod) => mod.children.some((unit) => dueOf(unit.point.id)))
     if (due) {
       bands.appendChild(svgEl('rect', {
         class: 'kg-band-hatch',
         x: BAND_X,
-        y: top - BAND_PAD,
+        y: boardTop,
         width: 5,
-        height: group.subH + BAND_PAD * 2,
+        height: HEAD_BAR_H,
         fill: 'url(#kg-hatch)',
       }))
     }
+
+    /* 整块板块都能点：不必非得戳中左边那块小牌子。拖过画布的不算点（看 panned）。 */
+    const hit = svgEl('rect', { class: 'kg-band-hit', x: BAND_X, y: boardTop, width: bandW, height: boardH })
+    hit.addEventListener('click', () => {
+      if (panned) return
+      toggleNode(group)
+    })
+    bands.appendChild(hit)
   }
-  /* 索引轨画在底板之上：一条竖线 + 每块一格刻度 + 两位索引字。 */
+  /* 索引轨画在底板之上：一条竖线 + 每块一格刻度。两位索引字已经搬到抬头条上了。 */
   bands.appendChild(svgEl('line', { class: 'kg-rail', x1: 19.5, y1: Math.max(14, HEAD_Y - 52), x2: 19.5, y2: maxTop + BAND_PAD - 10 }))
-  for (const [index, group] of tree.entries()) {
+  for (const group of tree) {
     bands.appendChild(svgEl('rect', { class: 'kg-tick', x: 18, y: group.y - 11, width: 3, height: 22 }))
-    const ord = svgEl('text', { class: 'kg-ord', x: 28, y: group.y + 5 })
-    ord.textContent = String(index + 1).padStart(2, '0')
-    bands.appendChild(ord)
   }
 
   /* ── 索引板（HUD） ────────────────────────────────────────────────────── */
@@ -417,33 +512,48 @@ export function renderGraph(host, options) {
 
   let unitCount = 0
 
+  /** 展开 / 收起一个节点。板块上的整块点击、牌子上、键盘上都走这一条。 */
+  function toggleNode(node) {
+    if (!node.children.length) return
+    if (isOpen(node)) state.open.delete(node.key)
+    else state.open.add(node.key)
+    renderGraph(host, opt)
+  }
+
   for (const group of tree) {
     drawNode(group, 0)
   }
 
-  function drawNode(node, baseY) {
+  function drawNode(node, baseY, index = 0) {
     const x = xOf(node)
     const y = baseY + node.y
     const kids = isOpen(node) ? node.children : []
+    /* 子节点的坐标是相对「子树内容的顶」算的：先把它算成绝对坐标，
+       连线终点和真正画出来的位置必须是同一个数——差一点点线头就指到空白处。 */
+    const kidBase = baseY + node.y - node.subH / 2 + node.top
 
     for (const kid of kids) {
       const kx = xOf(kid)
-      const ky = baseY + node.top + kid.y
-      /* 正交折线：先横出去、再竖着走、再横进目标。关卡面那种走线，比曲线更像图纸。 */
+      const ky = kidBase + kid.y
+      /* 正交折线：先横出去、再顺着通道竖着走、再横进目标。关卡面那种走线，比曲线更像图纸。 */
       const mx = x + widthOf(node) + (kx - x - widthOf(node)) / 2
       lines.appendChild(svgEl('path', {
         class: 'kg-link kg-link-' + kid.kind,
         d: `M ${x + widthOf(node)} ${y} H ${mx} V ${ky} H ${kx}`,
       }))
+      /* 拐点上钉一颗节点：折线拐弯的地方有个方点，整张图才像电路图。 */
+      if (Math.abs(ky - y) > 1) {
+        for (const jy of [y, ky]) {
+          lines.appendChild(svgEl('rect', { class: 'kg-joint', x: mx - 2.5, y: jy - 2.5, width: 5, height: 5 }))
+        }
+      }
       if (kid.kind === 'unit') unitCount += 1
     }
 
-    if (node.kind === 'unit') nodes.appendChild(unitNode(node.point, x, y))
+    if (node.kind === 'unit') nodes.appendChild(unitNode(node.point, x, y, index))
     else nodes.appendChild(branchNode(node, x, y))
 
-    /* 子节点的坐标是相对「我这棵子树的顶」算的，所以得把自己那半截高度挪掉——
-       不然同级的第二个子树会跟第一个叠在同一个 y 上。 */
-    for (const kid of kids) drawNode(kid, baseY + node.y - node.subH / 2 + node.top)
+    for (const [ki, kid] of kids.entries()) drawNode(kid, kidBase, ki)
   }
 
   /** 折叠着也要说得清「里面有几个」——所以栏位上写的是总子数，不是这次画出来的那个数。 */
@@ -467,7 +577,6 @@ export function renderGraph(host, options) {
     if (node.kind === 'group') {
       const points = []
       for (const mod of node.children) for (const unit of mod.children) points.push(unit.point)
-      const pctValue = ratioOf(points, given && given.groups ? given.groups[node.title] : undefined)
       const done = points.filter((p) => stageOf(p) !== fallbackStage).length
 
       const title = svgEl('text', { class: 'kg-title', x: x + 14, y: y - 4 })
@@ -478,26 +587,10 @@ export function renderGraph(host, options) {
       sub.textContent = total ? `${total} 个模块 · ${points.length} 单元` : '空'
       g.appendChild(sub)
 
-      const pctText = svgEl('text', { class: 'kg-pct' + (pctValue ? '' : ' is-zero'), x: x + w - 14, y: y - 4, 'text-anchor': 'end' })
-      pctText.textContent = `${pctValue}%`
-      g.appendChild(pctText)
-
-      const count = svgEl('text', { class: 'kg-sub', x: x + w - 14, y: y + 14, 'text-anchor': 'end' })
+      /* 百分比搬到板块的抬头条上了，牌子上只留「读到几个」——同一件事不写两遍。 */
+      const count = svgEl('text', { class: 'kg-sub', x: x + w - 22, y: y + 14, 'text-anchor': 'end' })
       count.textContent = `${done}/${points.length}`
       g.appendChild(count)
-
-      /* 沿底沿的进度槽：讲的是「读到哪儿」，不跟板块自己的边抢。 */
-      const inset = 14
-      g.appendChild(svgEl('rect', { class: 'kg-gauge', x: x + inset, y: y + h / 2 - 9, width: w - inset * 2, height: 3 }))
-      if (pctValue) {
-        g.appendChild(svgEl('rect', {
-          class: 'kg-gauge-fill',
-          x: x + inset,
-          y: y + h / 2 - 9,
-          width: (w - inset * 2) * (pctValue / 100),
-          height: 3,
-        }))
-      }
     } else {
       const points = node.children.map((unit) => unit.point)
       const pctValue = ratioOf(points, given && given.modules ? given.modules[node.id] : undefined)
@@ -520,7 +613,7 @@ export function renderGraph(host, options) {
       code.textContent = clip(node.id, CODE_MAX)
       g.appendChild(code)
 
-      const pctText = svgEl('text', { class: 'kg-pct' + (pctValue ? '' : ' is-zero'), x: x + w - 12, y: y - 8, 'text-anchor': 'end' })
+      const pctText = svgEl('text', { class: 'kg-pct' + (pctValue ? '' : ' is-zero'), x: x + w - 22, y: y - 8, 'text-anchor': 'end' })
       pctText.textContent = `${pctValue}%`
       g.appendChild(pctText)
 
@@ -531,29 +624,58 @@ export function renderGraph(host, options) {
       const sub = svgEl('text', { class: 'kg-sub', x: x + 16, y: y + 20 })
       sub.textContent = total ? `${total} 节 · 掌握 ${done}/${points.length}` : '空'
       g.appendChild(sub)
+
+      /* 收起的时候单元不画行，改在右边摆一条「格带」：一节一个小方格，颜色就是那一节的档位。
+         收着也一眼看得出里面几节、读到哪儿了——比只写一个 3/3 有信息，也把右边那块空填上。 */
+      if (!isOpen(node) && points.length) {
+        const CELL = 9
+        const CELL_GAP = 3
+        const perRow = Math.max(1, Math.floor(240 / (CELL + CELL_GAP)))
+        const rowH = CELL + CELL_GAP
+        const top = y - ((Math.ceil(points.length / perRow) - 1) * rowH) / 2 - CELL / 2
+        const strip = svgEl('g', { class: 'kg-cells' })
+        points.forEach((point, i) => {
+          const stage = stageOf(point)
+          strip.appendChild(svgEl('rect', {
+            class: 'kg-cell' + (stage === fallbackStage ? ' is-empty' : ''),
+            x: COL2 + 14 + (i % perRow) * (CELL + CELL_GAP),
+            y: top + Math.floor(i / perRow) * rowH,
+            width: CELL,
+            height: CELL,
+            fill: colorOf(stage),
+            'data-stage': stage,
+          }))
+        })
+        g.appendChild(strip)
+      }
     }
 
-    const toggle = () => {
-      if (!node.children.length) return
-      if (isOpen(node)) state.open.delete(node.key)
-      else state.open.add(node.key)
-      renderGraph(host, opt)
+    /* 能展开的话，右沿中间挂一枚小三角：收起时朝右、展开时朝下。 */
+    if (total) {
+      const cx = x + w - 13
+      g.appendChild(svgEl('path', {
+        class: 'kg-chevron' + (isOpen(node) ? ' is-open' : ''),
+        d: isOpen(node)
+          ? `M ${cx - 5} ${y - 3} L ${cx + 5} ${y - 3} L ${cx} ${y + 4} Z`
+          : `M ${cx - 3} ${y - 5} L ${cx + 4} ${y} L ${cx - 3} ${y + 5} Z`,
+      }))
     }
+
     g.addEventListener('click', (event) => {
       event.stopPropagation()
-      toggle()
+      toggleNode(node)
     })
     g.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return
       event.preventDefault()
       event.stopPropagation()
-      toggle()
+      toggleNode(node)
     })
 
     return g
   }
 
-  function unitNode(point, x, y) {
+  function unitNode(point, x, y, index = 0) {
     const stage = stageOf(point)
     const fill = colorOf(stage)
     const due = dueOf(point.id)
@@ -620,7 +742,7 @@ export function renderGraph(host, options) {
       pick()
     })
 
-    const row = svgEl('g', { class: 'kg-unit-row' })
+    const row = svgEl('g', { class: 'kg-unit-row' + (index % 2 ? ' is-alt' : '') })
 
     /* 栏位定死，所以按钮从 x+BTN_X 起排，不必先量名字。 */
     let right = x + (onOpen ? BTN_X : STAGE_X + 74)
@@ -646,6 +768,22 @@ export function renderGraph(host, options) {
       width: right - x + 24,
       height: UNIT_H,
     }))
+    /* 编号格和正文格之间立一道竖规：单元一多就是一张表，像关卡面的编号栏。 */
+    row.appendChild(svgEl('line', {
+      class: 'kg-cell-rule',
+      x1: x + CELL_RULE_X,
+      y1: y - UNIT_H / 2 + 4,
+      x2: x + CELL_RULE_X,
+      y2: y + UNIT_H / 2 - 4,
+    }))
+    /* 行底线：单元一多就是一张表，一条细规把行分开，眼睛才不至于串行。 */
+    row.appendChild(svgEl('line', {
+      class: 'kg-row-rule',
+      x1: x - 12,
+      y1: y + UNIT_H / 2 + .5,
+      x2: right + 12,
+      y2: y + UNIT_H / 2 + .5,
+    }))
     /* 选中的那条左边立一道青柱：当前项一眼可见。 */
     if (isOpenPoint) {
       row.appendChild(svgEl('rect', { class: 'kg-row-mark', x: x - 12, y: y - UNIT_H / 2, width: 3, height: UNIT_H }))
@@ -662,7 +800,8 @@ export function renderGraph(host, options) {
   if (unitCount === 0) {
     const hint = svgEl('text', { class: 'kg-hint', x: vw / 2, y: vh - 16, 'text-anchor': 'middle' })
     hint.textContent = '展开大类与模块，即可查看各单元网课'
-    view.appendChild(hint)
+    /* 挂在 svg 上而不是视图层：拖走画布之后这句提示还得看得见。 */
+    svg.appendChild(hint)
   }
 
   /* ── 工具箱：不受拖动缩放影响，钉在右上角 ─────────────────────────────── */
@@ -710,9 +849,12 @@ export function renderGraph(host, options) {
 
   let dragging = null
   let captured = false
+  /* 从板块上按下拖过画布，松手时浏览器还会补一发 click——那一发不算「点板块展开」。 */
+  let panned = false
 
   svg.addEventListener('pointerdown', (event) => {
     if (event.target.closest && event.target.closest('.kg-group, .kg-mod, .kg-point, .kg-btn, .kg-tool')) return
+    panned = false
     dragging = { x: event.clientX, y: event.clientY, tx: state.view.tx, ty: state.view.ty }
     captured = false
     if (svg.setPointerCapture) {
@@ -728,8 +870,11 @@ export function renderGraph(host, options) {
 
   svg.addEventListener('pointermove', (event) => {
     if (!dragging) return
-    state.view.tx = dragging.tx + (event.clientX - dragging.x)
-    state.view.ty = dragging.ty + (event.clientY - dragging.y)
+    const dx = event.clientX - dragging.x
+    const dy = event.clientY - dragging.y
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panned = true
+    state.view.tx = dragging.tx + dx
+    state.view.ty = dragging.ty + dy
     applyView()
   })
 
@@ -750,9 +895,13 @@ export function renderGraph(host, options) {
     event.preventDefault()
     const next = Math.min(MAX_K, Math.max(MIN_K, state.view.k * Math.exp(-event.deltaY * 0.0015)))
     if (next === state.view.k) return
+    /* 指针在屏幕上的位置要换算成 viewBox 里的坐标再当锚点：画布万一被 CSS 拉伸过
+       （父级高度跟 viewBox 比例不一致，或者渲染时量到的宽度跟现在的不一样），
+       直接用像素当锚点，缩放就会往一边飘。xMinYMin meet 的换算就是「除以那个比例」。 */
     const box = svg.getBoundingClientRect()
-    const px = event.clientX - box.left
-    const py = event.clientY - box.top
+    const scale = Math.min(box.width / vw, box.height / vh) || 1
+    const px = (event.clientX - box.left) / scale
+    const py = (event.clientY - box.top) / scale
     const ratio = next / state.view.k
     state.view.tx = px - (px - state.view.tx) * ratio
     state.view.ty = py - (py - state.view.ty) * ratio
