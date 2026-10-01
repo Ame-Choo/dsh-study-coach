@@ -128,6 +128,8 @@ npm publish
 
 `publishConfig` 里已经写死 `access: public` + `registry.npmjs.org`，不用再加参数。
 
+README 是**打进包里**的：改完 README 之后 npm 页面上还是发出去的那一份，下一次 `npm publish` 才更新（0.1.0 的页面上就还是加 npm 徽章之前的那版）。
+
 ### 2FA：`npm publish` 的第一道关（2026-10-02 实测）
 
 账号开了 2FA 的话（本机这个号就是），`npm login` 写进 `.npmrc` 的那个会话 token **发不了包**：
