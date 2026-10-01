@@ -243,7 +243,7 @@ html[data-theme="dark"] .pill.hot { color: var(--hl-text); }
 .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
 .btn.ghost:hover { border-color: transparent; background: var(--card-2); color: var(--text); transform: none; }
-.btn .sub { font-size: 11px; color: inherit; opacity: .75; }
+.btn .sub { font-size: var(--fs-micro); color: inherit; opacity: .75; }
 
 /* ── 主页面 · 四个数字块 ──────────────────────────────────────────────── */
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-5); }
@@ -297,9 +297,6 @@ html[data-theme="dark"] .pill.hot { color: var(--hl-text); }
   box-shadow: var(--shadow);
 }
 .card.error { border-color: var(--bad); color: var(--bad); }
-.card.stale { border-color: var(--warn); }
-.card.stale b { color: var(--warn); }
-.card.stale .hint { margin-top: 6px; color: var(--dim); font-size: var(--fs-sm); }
 
 /* ── 体检卡 ───────────────────────────────────────────────────────────────
    三档用「左边一条竖线」区分，不靠底色块堆；每档的标题旁挂计数与一句说明。 */
@@ -379,7 +376,7 @@ input:focus, select:focus, textarea:focus {
 .form label { display: grid; gap: 4px; font-size: var(--fs-label); font-weight: 500; color: var(--dim); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-.goal { display: grid; gap: 7px; }
+.goal { display: grid; gap: 8px; }
 .goal-line { display: flex; gap: 10px; flex-wrap: wrap; }
 .goal-line .k { color: var(--dim); width: 84px; flex: none; font-size: 13px; }
 .goal-line .v { flex: 1 1 140px; }
@@ -405,12 +402,15 @@ input:focus, select:focus, textarea:focus {
 .stage-btn.on { border-color: var(--c); color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
 
 .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--card-2); margin: 2px 0 8px; }
-.seg { height: 100%; }
+/* 进度条的一段。**别写成 `.seg` 裸选择器**——「两种模式」那个开关按钮也叫
+   `.seg`，裸写会让进度条段吃到按钮的内边距、字号，并且被下面那条
+   `.seg + .seg` 在每两段之间画一根 1px 竖线（`panel.js` 的能力条、大类条、
+   七天条都是紧挨着的多段）。两边都带上父级，互不干扰。 */
+.bar .seg { height: 100%; }
 
 /* ── 列表 ─────────────────────────────────────────────────────────────── */
-.list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 7px; }
+.list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .list li { display: flex; align-items: center; gap: 9px; background: var(--card-2); border-radius: var(--radius-sm); padding: 8px 12px; }
-.list li .x { margin-left: auto; padding: 2px 8px; font-size: 12px; }
 /*
  * flex / grid 子项的 min-width 默认是 auto —— 内容不肯缩，整页就被撑出横向滚动条。
  * 侧栏只有三四百像素宽，这一条必须钉死：格子里的东西一律允许缩、允许在任意位置断行。
@@ -434,7 +434,7 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .check input { width: auto; accent-color: var(--accent); }
 .tasks li.done span { text-decoration: line-through; color: var(--dim); }
 
-.tag { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; flex: none; }
+.tag { font-size: var(--fs-micro); color: var(--dim); border: 1px solid var(--line); border-radius: 8px; padding: 1px 6px; flex: none; }
 .badge { font-size: 12px; border-radius: 6px; padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); }
 .badge.confirmed { color: var(--ok); border-color: var(--ok); }
 .path { font-size: 12px; color: var(--dim); word-break: break-all; }
@@ -461,7 +461,7 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 /* ── 教练的指引 ───────────────────────────────────────────────────────── */
 .guide { border-left: 3px solid var(--line); }
 .guide.on { border-left-color: var(--accent); background: var(--hl); }
-.guide-text { font-size: 15.5px; line-height: 1.6; font-weight: 500; }
+.guide-text { font-size: 15px; line-height: 1.6; font-weight: 500; }
 .guide.on .guide-text { color: var(--hl-text); }
 .guide .dim { margin-top: 5px; }
 
@@ -477,8 +477,8 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
   cursor: pointer;
 }
 .group-head:hover { border-bottom-color: var(--line-2); }
-.group-head .dim { font-size: 11px; font-weight: 400; flex: none; }
-.gc-caret { flex: none; width: 11px; color: var(--dim); font-size: 11px; }
+.group-head .dim { font-size: var(--fs-micro); font-weight: 400; flex: none; }
+.gc-caret { flex: none; width: 11px; color: var(--dim); font-size: var(--fs-micro); }
 .gc-name { flex: none; }
 .gc-bar {
   flex: 1; height: 6px; min-width: 40px; border-radius: 3px;
@@ -512,18 +512,14 @@ button.mini.danger:hover, a.mini.danger:hover { background: var(--danger-bg); }
 .mini-actions { display: flex; gap: 6px; flex: none; align-items: center; }
 
 /* ── 总体能力 ─────────────────────────────────────────────────────────── */
-.card.ability .ability-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-.card.ability .pct { font-size: 30px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.1; }
-/* 这张卡的 .stats 用的是老的「<b class="v"> 数字 + <span class="k"> 标签」写法，排成一行几组 */
+/* 这张卡的 .stats 用的是「<b class="v"> 数字 + <span class="k"> 标签」写法，排成一行几组 */
 .card.ability .stats { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: baseline; }
-.card.ability .stats .k { font-size: 12px; }
+.card.ability .stats .k { font-size: var(--fs-label); }
 .card.ability .stats .v { font-size: 17px; margin-right: 5px; }
 .judgement {
   border-left: 3px solid var(--accent); background: var(--hl);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 9px 13px; margin: 6px 0 10px; line-height: 1.6;
 }
-.judgement .lv { font-size: 12px; color: var(--accent); }
-.judgement .at { font-size: 12px; color: var(--dim); }
 
 /* 七天柱状图：panel.js 出的是 <i style="height:总分钟占比%"><b style="height:做完占比%"></b></i>，
    外层是当天总量的浅色轨道，内层是已完成的部分。两处别各写各的。 */
@@ -534,9 +530,9 @@ button.mini.danger:hover, a.mini.danger:hover { background: var(--danger-bg); }
   border-radius: 4px 4px 0 0; position: relative; overflow: hidden;
 }
 .pace-day > i > b { display: block; background: var(--accent); width: 100%; position: absolute; bottom: 0; }
-.pace-day > span, .pace-day .cap { font-size: 10px; color: var(--dim); }
+.pace-day > span { font-size: var(--fs-micro); color: var(--dim); }
 
-h3.sub { font-size: 12.5px; font-weight: 660; margin: 14px 0 4px; color: var(--dim); letter-spacing: .3px; }
+h3.sub { font-size: var(--fs-label); font-weight: 600; margin: 14px 0 4px; color: var(--dim); letter-spacing: .3px; }
 h3.sub span.dim { margin-left: 6px; font-weight: 500; }
 h3.sub:first-child { margin-top: 2px; }
 
@@ -562,10 +558,10 @@ h3.sub:first-child { margin-top: 2px; }
 
 /* ── 两种模式 ─────────────────────────────────────────────────────────── */
 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-pill); overflow: hidden; flex: none; }
-.seg { border: 0; border-radius: 0; background: transparent; padding: 3px 11px; font-size: 12px; color: var(--dim); }
-.seg:hover { background: var(--card-2); }
-.seg.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-.seg + .seg { border-left: 1px solid var(--line); }
+.segmented .seg { border: 0; border-radius: 0; background: transparent; padding: 3px 11px; font-size: 12px; color: var(--dim); }
+.segmented .seg:hover { background: var(--card-2); }
+.segmented .seg.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.segmented .seg + .seg { border-left: 1px solid var(--line); }
 
 .seg-icon { padding: 3px 9px; font-size: 13px; line-height: 1.35; flex: none; }
 
@@ -596,9 +592,9 @@ html[data-mode="sidebar"] .top { margin: 0 0 var(--sp-3); padding: var(--sp-2) 0
 html[data-mode="sidebar"] .brand { font-size: 15px; }
 /* 侧栏顶栏别撑爆：导航只让滚，模式开关缩到最小 */
 html[data-mode="sidebar"] .nav { flex: 1 1 100%; order: 3; margin-top: 2px; }
-html[data-mode="sidebar"] .nav-item { font-size: 12.5px; padding: 4px 8px 5px; }
-html[data-mode="sidebar"] .top-right { gap: 7px; flex: 1 1 auto; }
-html[data-mode="sidebar"] .seg { padding: 3px 8px; font-size: 11.5px; }
+html[data-mode="sidebar"] .nav-item { font-size: var(--fs-label); padding: 4px 8px 5px; }
+html[data-mode="sidebar"] .top-right { gap: 8px; flex: 1 1 auto; }
+html[data-mode="sidebar"] .segmented .seg { padding: 3px 8px; font-size: var(--fs-micro); }
 html[data-mode="sidebar"] .seg-icon { padding: 3px 7px; }
 html[data-mode="sidebar"] .card { margin-bottom: 8px; padding: 12px 13px; border-radius: var(--radius-sm); }
 html[data-mode="sidebar"] .card-head { margin-bottom: 9px; }
@@ -614,7 +610,6 @@ html[data-mode="sidebar"] .goal-line .k { width: 66px; font-size: 12px; }
 html[data-mode="sidebar"] .goal-line { gap: 8px; }
 html[data-mode="sidebar"] .entry { padding: 12px 13px; border-radius: var(--radius); }
 html[data-mode="sidebar"] .form .two { flex-direction: column; gap: 6px; }
-html[data-mode="sidebar"] .card.ability .pct { font-size: 24px; }
 html[data-mode="sidebar"] .judgement { font-size: 13px; }
 
 /* 科目筛选：多门课并学时，一眼只看一门 */
@@ -696,11 +691,11 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
   border-bottom-left-radius: 4px;
 }
 
-.chat-time, .chat-used { font-size: 11px; color: var(--dim); }
+.chat-time, .chat-used { font-size: var(--fs-micro); color: var(--dim); }
 
 .chat-step {
   align-self: center;
-  font-size: 11px;
+  font-size: var(--fs-micro);
   color: var(--dim);
   background: var(--card-2);
   border: 1px solid var(--line);
@@ -895,7 +890,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .file-drop input { display: none; }
 .import-log {
   margin-top: 8px;
-  font-size: 12.5px;
+  font-size: var(--fs-label);
   color: var(--dim);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -919,7 +914,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   background: var(--card);
   box-shadow: var(--shadow);
 }
-.sub-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--dim); margin-right: 4px; }
+.sub-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: var(--dim); margin-right: 4px; }
 .sub-item {
   font: inherit;
   font-size: 13px;
@@ -932,7 +927,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 }
 .sub-item:hover { border-color: var(--accent); }
 .sub-item.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
-.sub-hint { margin-left: auto; font-size: 12.5px; color: var(--dim); }
+.sub-hint { margin-left: auto; font-size: var(--fs-label); color: var(--dim); }
 
 /* 番茄钟那一面 */
 .focus-face {
@@ -944,12 +939,12 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   text-align: center;
 }
 .focus-face[data-phase="break"] { background: color-mix(in srgb, var(--ok) 12%, var(--card-2)); }
-.focus-phase { font-size: 12.5px; font-weight: 700; letter-spacing: .14em; color: var(--dim); }
+.focus-phase { font-size: var(--fs-label); font-weight: 600; letter-spacing: .14em; color: var(--dim); }
 .focus-clock {
   display: block;
   margin: 6px 0 2px;
   font-size: 54px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
   line-height: 1.1;
@@ -1010,7 +1005,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   background: var(--card-2);
   text-align: center;
 }
-.mem-label { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: var(--dim); }
+.mem-label { font-size: 12px; font-weight: 600; letter-spacing: .1em; color: var(--dim); }
 .mem-front { font-size: 26px; line-height: 1.35; word-break: break-word; }
 html[data-mode="sidebar"] .mem-front { font-size: 21px; }
 .mem-back {

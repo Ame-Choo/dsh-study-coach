@@ -855,8 +855,6 @@ const PAGES = [
 ]
 
 let page = resolvePage()
-
-/** 从地址认页；认不出来（或者测试里没有 location）就落主页。 */
 /**
  * 换页。
  *
@@ -885,6 +883,7 @@ function go(id, path) {
   }
 }
 
+/** 从地址认页；认不出来（或者测试里没有 location）就落主页。 */
 function resolvePage() {
   let path = ''
   try {

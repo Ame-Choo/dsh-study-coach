@@ -22,7 +22,7 @@
 ```bash
 node --test                 # 全量测试（不要写 node --test test/，这个 Node 上会把目录当测试文件跑挂）
 node scripts/check-live.mjs # 探一遍正在跑的 DSH，看哪些路由还是旧代码
-node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19393（改前端时省一次重启）
+node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前端时省一次重启）
 ```
 
 `assets/*` 是每次请求现读磁盘的，改完刷新就见效；`lib/*` 是 DSH 启动时加载的，**必须重启 DSH**。

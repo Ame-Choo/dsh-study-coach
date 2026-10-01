@@ -11,7 +11,9 @@ cd dsh-study-coach
 npm pack --dry-run
 ```
 
-看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `LICENSE` / `package.json`。
+看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `PUBLISHING.md` / `AGENTS.md` / `design.md` / `LICENSE` / `package.json`。
+
+`README.md` 里链到 `design.md`，所以 `design.md` 必须在包里，不然装完那个链接是死的；`AGENTS.md` 同理（它写的是「改界面前先读 design.md」这条规矩）。
 
 不该出现：`node_modules/`（本机是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的 junction，**千万别提交**）、`test/`、`scratch/`、`scripts/`。
 
@@ -106,7 +108,7 @@ git push --follow-tags
 ## 4. 以后每次发版
 
 ```bash
-node --test              # 全绿再发（当前 128 pass / 0 fail）
+node --test              # 全绿再发（数字看命令最后打印的 tests / pass / fail，别抄文档里的）
 npm version patch
 git push --follow-tags
 npm publish

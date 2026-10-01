@@ -16,6 +16,8 @@
     "cordis.patch.yml",
     "README.md",
     "PUBLISHING.md",
+    "AGENTS.md",
+    "design.md",
     "LICENSE"
   ],
   "dsh": {

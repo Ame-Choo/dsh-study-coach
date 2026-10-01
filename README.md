@@ -2,7 +2,7 @@
 
 DSH 的学习教练插件。把一门课拆成知识地图，逐单元记掌握度、排每日任务，并给学生一个看得见进度的网页面板。同源挂在 DSH 自己的 web 服务器上，面板地址 `/study`。
 
-- 对话里的 agent 用 15 个 `study_*` 工具读写全部数据；
+- 对话里的 agent 用 21 个 `study_*` 工具读写全部数据；
 - 学生只在面板上看：自评档位、勾任务，以及在面板里直接跟教练对话（整页一个聊天窗口，顶上能选是 DSH 里哪个会话；右下角还有一颗悬浮窗）。
 
 **这个仓库里只有代码，一条学习内容都没有**——学生的目标、地图、掌握度全在数据目录里（见下面「插件是框架，数据在别处」）。
@@ -94,11 +94,14 @@ pnpm add link:/绝对路径/dsh-study-coach
 <数据根>/
 ├── registry.json          有哪几个学习目标、现在用哪个
 ├── profiles/<目标 id>/    一个学习目标一份，里面就是下面那几张表
-│   ├── profile.json       学习目标、材料清单、基本工具
+│   ├── profile.json       学习目标、材料清单、基本工具、总体能力判词
 │   ├── map.json           知识地图（大类 / 模块 / 最小单元，单元上挂着网课和练习的路径）
-│   ├── mastery.json       每个知识点的状态、证据、复习时间
+│   ├── mastery.json       每个知识点的状态、证据、错题、复习时间
 │   ├── tasks.json         按日期分的每日任务
 │   ├── analysis.json      每份材料通读之后的结论：教学定位、每章讲什么、例题习题范围、难度
+│   ├── toolbox.json       番茄钟的当前状态 + 清单
+│   ├── memory.json        艾宾浩斯记忆卡与它们的排期
+│   ├── student.json       学生画像：一条条挂着证据的判断
 │   ├── guide.json         面板顶上那句指引
 │   └── inbox.json         学生在面板上留的话
 ├── trash/                 删掉的目标挪这儿，不是真删
@@ -158,21 +161,23 @@ pnpm add link:/绝对路径/dsh-study-coach
 
 ## HTTP 接口
 
-读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
+读（18 条）：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
 `/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
-`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`、`/study/api/student`。
+`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`、`/study/api/student`、
+`/study/api/chat`、`/study/api/chat/sessions`。
 
-写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
+写（26 条）：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、
+`/study/api/materials/import`、`/study/api/materials/build`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
-`/study/api/mastery`、`/study/api/ability`、`/study/api/library`、`/study/api/task`、
-`/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
-`/study/api/practice/ask`、`/study/api/reset`、`/study/api/materials/import`、
-`/study/api/materials/build`、`/study/api/material/upload`、`/study/api/focus`、`/study/api/todo`、
-`/study/api/memory`、`/study/api/student`。
+`/study/api/mastery`、`/study/api/ability`、`/study/api/library`、`/study/api/library/restore`、
+`/study/api/task`、`/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
+`/study/api/practice/ask`、`/study/api/focus`、`/study/api/todo`、`/study/api/memory`、
+`/study/api/student`、`/study/api/chat/send`、`/study/api/reset`、`/study/api/material/upload`。
 
-还有两条不走 router 的：`/study/page?path=…` 把拆出来的页图发出去（只放行数据根 `pages/` 底下的文件），
-`/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」）。
+`/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」），
+收完之后一样进 router；真正在 router 之前就拦下的只有 `/study/page?path=…`（把拆出来的页图
+发出去，只放行数据根 `pages/` 底下的文件）和 `/study/file?path=…`。
 
 实现见 `lib/routes.js`，它不碰 cordis，所以能脱开 DSH 单测。`/study/api/inbox` 与
 `/study/api/practice/ask` 是**异步**的（要把话投进会话），`lib/handler.js` 那边是
@@ -194,7 +199,7 @@ node --test
 
 两道额外的护栏：
 
-- `test/schema.test.js` 请宿主的 `defineTool` + `validateJsonSchemaValue` 把 9 个工具真跑一遍（写进临时档案），schema 跟返回值对不上就会当场失败。这台机器解析不到宿主包时这条会跳过 —— 跑完看一眼 `skipped` 是不是 0。
+- `test/schema.test.js` 请宿主的 `defineTool` + `validateJsonSchemaValue` 把 21 个工具真跑一遍（写进临时档案），schema 跟返回值对不上就会当场失败。这台机器解析不到宿主包时这条会跳过 —— 跑完看一眼 `skipped` 是不是 0。
 - `test/preset.test.js` 查预设定义的结构、平台开关、人设文案，以及 `skills/study-coach/SKILL.md` 的 frontmatter 合不合规（`name` 必须 kebab-case）。
 
 本机开发时的 `node_modules/@deepseek-ai` 是个 junction（Windows）／软链，指到
@@ -219,6 +224,11 @@ node --test
 两条地址是同一个 handler，接口路径完全一样，面板代码不用改。独立端口只监听 127.0.0.1，DSH 关掉它就跟着关。
 
 ## 补：对话负责写，面板负责看
+
+> **从这里往下都是改动流水**，一条一条记着当时为什么这么改。里面的
+> 「工具从 7 个变 9 个」「测试 93 → 101 个」都是**那一次的快照**，不是今天的数字——
+> 今天的真值一律以代码为准：工具数看 `lib/tools.js` 末尾 `buildTools` 返回的那个数组，
+> 测试数看 `node --test` 最后打印的 `tests`。
 
 这是按「方向纠正」改的一版，规矩变了：
 
@@ -292,7 +302,7 @@ node --test
 
 | 档 | 意思 | 例子 |
 | --- | --- | --- |
-| **挡路的** | 不修的话页面上有一整块是坏的；但他自己修不了，只能重启 DSH | 服务端还是旧代码，11 处点下去会 404 |
+| **挡路的** | 不修的话页面上有一整块是坏的；但他自己修不了，只能重启 DSH | 服务端还是旧代码 |
 | **该修的** | 不挡路，但拖着迟早出事 | 知识地图还是草稿；学习目标还缺 3 项；2 份材料登记了但没通读；画像里 1 条判断引的证据找不到了；今天排了 90 分钟、比每天能学的多 30 分钟；错题本 3 道挂着「待验证」 |
 | **顺手能做的** | 现在不做也没什么 | 一份材料都还没登记；5 个单元还没挂练习材料；一条掌握度证据都还没记；今天有 2 张记忆卡到点了 |
 
@@ -444,7 +454,7 @@ node --test
 
 - 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。
 - 导航走 **`pushState` 前端切页**，不往服务端整页跳——因为服务端路由是 DSH 启动时加载的，改完 `lib/` 没重启时子页面会回 JSON 404，整页跳过去人看到的是一屏报错。前端切页让旧服务端也能用，地址栏仍是真地址。
-- 默认配色改成**浅色**（暖骨白 + 鼠尾草绿），`html[data-theme="dark"]` 是暖暗版；`?theme=` / 顶栏那个按钮切换。
+- 默认配色是**「纸墨」**（暖纸底 + 炭墨字 + 一个深松绿当动作色），`html[data-theme="dark"]` 是同一族的暖暗版；`?theme=` / 顶栏那个按钮切换。规范见 `design.md`。
 
 对话那条线（`lib/chat.js`）：
 
@@ -678,7 +688,7 @@ next.step = card.step; next.dueAt = card.dueAt; /* … */
 
 ## 补：AI 出题 —— 一份卷子就是一份材料
 
-需求是「资料界面加个 AI 入口，让他出的练习自动归到一类，跟 xx 教辅平级」。做法**不是新开一张练习表**，而是给材料加第七种类别 `ai`：
+需求是「资料界面加个 AI 入口，让他出的练习自动归到一类，跟 xx 教辅平级」。做法**不是新开一张练习表**，而是给材料加一个类别 `ai`（现在一共有六种）：
 
 ```
 材料 = 教辅 | 网课 | 讲义 | 真题 | AI 出题 | 其他

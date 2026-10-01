@@ -25,9 +25,10 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
   color: var(--c); border: 1px solid var(--c);
 }
 
-/* 卡头跟面板一致：15px/600 + 一条 accent 竖条（panel.js 那边是 .card-head h2） */
+/* 卡头跟面板一致：var(--fs-title) 17px/600 + 一条 3×14px accent 竖条
+   （panel.js 那边是 .card-head h2，两边同一套） */
 .card h2 {
-  font-size: 15px; font-weight: 600; color: var(--ink); line-height: var(--lh-title);
+  font-size: var(--fs-title); font-weight: 600; color: var(--ink); line-height: var(--lh-title);
   margin: 0 0 var(--sp-3); display: flex; align-items: center; gap: var(--sp-2);
 }
 .card h2::before {
@@ -35,9 +36,9 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
   background: var(--accent); flex: none;
 }
 
-/* 链接也做成按钮样：白底细边、8px 圆角，跟 .btn 一致 */
+/* 链接也做成按钮样：白底细边、8px 圆角、40px 高，跟面板的 .btn 一致 */
 .btn {
-  display: inline-flex; align-items: center; font-size: var(--fs-sm); font-weight: 500;
+  display: inline-flex; align-items: center; min-height: 40px; font-size: var(--fs-sm); font-weight: 500;
   text-decoration: none; cursor: pointer;
   color: var(--text); background: var(--card); border: 1px solid var(--line-2);
   border-radius: var(--radius-sm); padding: 7px 13px;
@@ -109,7 +110,6 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
 .hit .pg { margin-top: var(--sp-2); gap: 6px; }
 .hit .pg-btn { padding: 3px 9px; }
 .pg-btn.off { color: var(--dim); border-style: dashed; }
-.pg-btn.off b { color: inherit; }
 
 .note-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
 .note-row input { flex: 1; }
