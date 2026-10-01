@@ -52,6 +52,16 @@ function stubDom() {
       },
     },
     location: { href: 'http://127.0.0.1:19388/study', search: '', pathname: '/study', assign() {} },
+    scrollTo() {},
+  }
+  // 真浏览器里 pushState 会顺手把 location.pathname 改掉，假的那个也得跟着改，
+  // 不然「已经在那一页了就别再 push」这条判断会永远按老地址算。
+  window.history = {
+    pushes: [],
+    pushState(_state, _title, url) {
+      this.pushes.push(url)
+      window.location.pathname = String(url).split('?')[0]
+    },
   }
   return { document, window, boxes, listeners }
 }
@@ -144,7 +154,23 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     }
     await listeners.get('submit')({ target: { dataset }, preventDefault() {} })
   }
-  return { html, calls, posts, clickAct, submitForm, listeners, documentElement: document.documentElement }
+  /** 点一个带 data-nav 的导航链接（它不该整页跳，该前端自己切页）。 */
+  const clickNav = async (id) => {
+    let jumped = false
+    const el = {
+      dataset: { nav: id },
+      closest: (sel) => (sel === '[data-nav]' ? el : null),
+    }
+    await listeners.get('click')({
+      target: el,
+      button: 0,
+      preventDefault() {
+        jumped = true
+      },
+    })
+    return { jumped }
+  }
+  return { html, calls, posts, clickAct, clickNav, submitForm, listeners, window, documentElement: document.documentElement }
 }
 
 function fixture() {
@@ -253,6 +279,28 @@ test('主页面：只回答「现在什么情况、下一步点哪儿」，活�
   assert.doesNotMatch(html(), /data-act="task-toggle"/)
   assert.doesNotMatch(html(), /data-act="archive-open"/)
   assert.doesNotMatch(html(), /data-act="lib-select"/)
+})
+
+test('换页走前端，不整页跳——服务端没重启时子页面也点得开', async () => {
+  // 真实场景：DSH 里跑的还是启动时加载的旧路由，/study/today 会回一个 JSON 404。
+  // 导航要是老老实实整页跳过去，人看到的就是一屏报错，所以这里必须拦下来自己切。
+  const { html, clickNav, window } = await boot(fixture())
+
+  assert.match(html(), /data-nav="today"/, '导航链接得标出自己切哪一页')
+  const { jumped } = await clickNav('today')
+  assert.equal(jumped, true, '点了就得 preventDefault，不能让它整页跳')
+
+  // 页换过去了：今天页的东西出来了，主页那套收起来
+  assert.match(html(), /data-card="today"/)
+  assert.match(html(), /data-act="task-toggle"/)
+  assert.doesNotMatch(html(), /class="hero"/)
+  assert.match(html(), /class="nav-item on" href="\/study\/today"/)
+  assert.equal(window.history.pushes.at(-1), '/study/today', '地址栏要跟着变，好让人能复制能刷新')
+
+  // 再点回主页
+  await clickNav('home')
+  assert.match(html(), /class="hero"/)
+  assert.equal(window.history.pushes.at(-1), '/study')
 })
 
 test('今天页：任务能跳转、能改能删；看课的任务先看再练，顺序不能反', async () => {

@@ -379,6 +379,33 @@ const PAGES = [
 let page = resolvePage()
 
 /** 从地址认页；认不出来（或者测试里没有 location）就落主页。 */
+/**
+ * 换页。
+ *
+ * 走 pushState 在浏览器里切，不往服务端要一次整页——因为服务端那一半是 DSH 启动时
+ * 加载好的：改完 lib/ 没重启，`/study/today` 这种真地址就会回一个 JSON 404，
+ * 点一下导航整页跳过去，人看到的就是一屏报错。前端自己切页，旧服务端也照样能用，
+ * 地址栏还是真地址（新服务端下刷新、直连都对）。
+ */
+function go(id, path) {
+  if (id !== page) {
+    page = id
+    render()
+    try {
+      window.scrollTo(0, 0)
+    } catch {
+      /* 没有 window 就算了 */
+    }
+  }
+  try {
+    if (path && window.location.pathname !== path && window.history && window.history.pushState) {
+      window.history.pushState(null, '', path)
+    }
+  } catch {
+    /* 地址改不了不影响切页 */
+  }
+}
+
 function resolvePage() {
   let path = ''
   try {
@@ -485,8 +512,8 @@ function homePage() {
     <h1>${esc(hello)}</h1>
     <p class="lede">${esc(lead)}</p>
     <div class="hero-actions">
-      <a class="btn primary" href="/study/today">今天要做的</a>
-      <a class="btn" href="/study/map">${built ? '看知识地图' : '开始画地图'}</a>
+      <a class="btn primary" href="/study/today" data-nav="today">今天要做的</a>
+      <a class="btn" href="/study/map" data-nav="map">${built ? '看知识地图' : '开始画地图'}</a>
     </div>
   </section>
 
@@ -500,7 +527,7 @@ function homePage() {
   <section class="entries">
     ${entries
       .map(
-        (e) => `<a class="entry" href="/study/${e.id}">
+        (e) => `<a class="entry" href="/study/${e.id}" data-nav="${e.id}">
       <span class="entry-head"><span class="entry-title">${esc(e.title)}</span>${e.count ? `<span class="entry-count">${esc(e.count)}</span>` : ''}</span>
       <span class="entry-hint">${esc(e.hint)}</span>
     </a>`,
@@ -521,13 +548,13 @@ function topBar() {
     (p) =>
       `<a class="nav-item${p.id === page ? ' on' : ''}" href="${p.path}" title="${esc(p.hint)}"${
         p.id === page ? ' aria-current="page"' : ''
-      }>${esc(p.label)}</a>`,
+      } data-nav="${p.id}">${esc(p.label)}</a>`,
   ).join('')
   const day = todayTasks()
   const done = day.filter((t) => t.done).length
   const progress = day.length ? `<span class="pill ${done === day.length ? '' : 'hot'}">今天 ${done}/${day.length}</span>` : ''
   return `<header class="top">
-    <a class="brand" href="/study">学习教练</a>
+    <a class="brand" href="/study" data-nav="home">学习教练</a>
     <nav class="nav" aria-label="页面">${nav}</nav>
     <div class="top-right">
       ${progress}
@@ -1300,6 +1327,21 @@ function inboxCard() {
 /* ── 交互 ─────────────────────────────────────────────────────────────── */
 
 document.addEventListener('click', async (event) => {
+  // 换页先看：导航条 / 入口卡 / 主页那两颗按钮都带 data-nav，自己切不整页跳
+  const navEl = event.target.closest('[data-nav]')
+  if (
+    navEl &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    (event.button === undefined || event.button === 0)
+  ) {
+    if (typeof event.preventDefault === 'function') event.preventDefault()
+    const target = PAGES.find((p) => p.id === navEl.dataset.nav)
+    go(target ? target.id : 'home', target ? target.path : '/study')
+    return
+  }
   const el = event.target.closest('[data-act]')
   if (!el) return
   const act = el.dataset.act
@@ -1538,6 +1580,14 @@ let resizeTimer = null
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => mountGraph(), 160)
+})
+
+/* 浏览器的前进后退：地址变了就照地址认一次页。 */
+window.addEventListener('popstate', () => {
+  const next = resolvePage()
+  if (next === page) return
+  page = next
+  render()
 })
 
 load()
