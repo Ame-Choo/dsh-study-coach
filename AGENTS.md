@@ -29,7 +29,7 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 
 ## `lib/client.js` 不是普通模块
 
-它是**设置 → 内置插件 → 学习教练**那一页，宿主在浏览器里执行的一段脚本（壳子
+它是**设置 → 学习教练**那一页（「设置 → 内置插件 → 学习教练」是同一个页面的另一个入口），宿主在浏览器里执行的一段脚本（壳子
 `window.__ModuleLoader__.load({id, factory})`，跟 `dsh-talk` 一个形状）。改它之前记住：
 
 1. `require` 只能取平台种子表里的模块（react / react/jsx-runtime / cordis / 静态 UI 库），

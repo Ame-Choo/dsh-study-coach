@@ -8,7 +8,8 @@
  * 要钉住的三件事：
  *   1. 只 require 平台种子表里的模块（多要一个包就等于多一条 dsh.client.inject，会静默失败）；
  *   2. 导出的 name 必须等于包名，注入的服务名跟 apply 里真用的一致；
- *   3. apply 之后 settings.plugins.tab 上确实多了一条 id 叫 study-coach 的页签。
+ *   3. apply 之后设置里确实多了两处：settings.section 自己一栏（找得到的那条），
+ *      settings.plugins.tab 一个页签（习惯从「内置插件」找的人也有路）。
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -57,7 +58,7 @@ test('客户端 bundle：只跟平台要 react，导出名与包名一致', () =
   assert.deepEqual(has('react'), true)
 })
 
-test('客户端 bundle：settings.plugins.tab 上多一条 study-coach 页签，撤得掉', async () => {
+test('客户端 bundle：设置里挂两处（自己一栏 + 内置插件页签），撤得掉', async () => {
   const { api } = load()
   const registered = []
   const effects = []
@@ -79,18 +80,37 @@ test('客户端 bundle：settings.plugins.tab 上多一条 study-coach 页签，
   }
   await api.apply(ctx)
 
-  assert.equal(registered.length, 1)
-  const { slot, row } = registered[0]
-  assert.equal(slot, 'settings.plugins.tab')
-  assert.equal(row.row.name, 'settings.plugins.tab', 'register 的 name 必须跟座位同名')
-  assert.equal(row.row.id, 'study-coach')
-  assert.equal(typeof row.row.order, 'number')
-  assert.equal(row.row.label(), '学习教练')
-  assert.equal(typeof row.component, 'function')
+  // 自己一栏排在前：那才是「找得到」的那条路
+  assert.deepEqual(
+    registered.map((item) => item.slot),
+    ['settings.section', 'settings.plugins.tab'],
+  )
+  for (const { slot, row } of registered) {
+    assert.equal(row.row.name, slot, 'register 的 name 必须跟座位同名')
+    assert.equal(row.row.id, 'study-coach')
+    assert.equal(typeof row.row.order, 'number')
+    assert.ok(row.row.order > 0, 'order 得是个真数，不然会挤到最前面')
+    assert.equal(row.row.label, '学习教练')
+    assert.equal(typeof row.component, 'function')
+  }
 
   // 样式是 effect 注入的，得有个能撤的标签
   assert.ok(effects.includes('dsh-study-coach: stylesheet'))
-  assert.ok(effects.some((label) => label.includes('settings tab')))
+})
+
+test('客户端 bundle：ctx.get 拿不到就退回 ctx.slots，两处照样挂上', async () => {
+  const { api } = load()
+  const registered = []
+  const slots = {
+    inject(slot, factory) {
+      registered.push(slot)
+      factory()
+      return () => {}
+    },
+    register: (row, component) => ({ row, component }),
+  }
+  await api.apply({ effect: () => {}, get: () => undefined, slots })
+  assert.deepEqual(registered, ['settings.section', 'settings.plugins.tab'])
 })
 
 test('客户端 bundle：没拿到 slots 也不炸，只是什么都不挂', async () => {
