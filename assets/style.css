@@ -568,7 +568,12 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
    把正文顶出屏幕。小窗只是把这套标记的字号和留白收一档。 */
 .chat-pick { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
 .chat-pick label { font-size: 13px; }
-.chat-pick select { flex: 1; }
+.chat-pick select { flex: 1; min-width: 0; }
+/* 只有一个会话时不给下拉，直接写「当前会话是哪个」——省一颗点不动的控件 */
+.pick-now { font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 悬浮窗里那一行收一档 */
+.float .chat-pick { margin: 8px 12px 0; gap: 6px; }
+.float .chat-pick label, .float .chat-pick select, .float .pick-now { font-size: 12px; }
 
 .chat-log {
   display: flex;

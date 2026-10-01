@@ -111,6 +111,18 @@ const CHAT_MESSAGES = [
   { id: 'c2', seq: 16, role: 'bot', text: '分两种情形看：A 是不是空集会改变结论。', time: 1759300060000, tools: ['read'] },
 ]
 
+/**
+ * 会话清单，形状照 lib/chat.js 的 summaryView：{sessionId, updatedAt, running, blank, title, cwd}。
+ * 三条分别是：刚刚动过的、五天前的、刚开出来还没说话的。时间戳都相对「现在」算，
+ * 否则面板给出来的「最后活动时间」会随着系统时钟漂成不同的写法。
+ */
+const NOW = Date.now()
+const SESSIONS = [
+  { sessionId: 's1', title: '学习教练', updatedAt: NOW - 60_000, running: true, blank: false, cwd: '' },
+  { sessionId: 's2', title: '', updatedAt: NOW - 5 * 86400000, running: false, blank: false, cwd: 'F:\\dshworkingspace(studyplugin' },
+  { sessionId: 's3', title: '', updatedAt: NOW - 3 * 3600_000, running: false, blank: true, cwd: '' },
+]
+
 /** 今日复盘图那份假数据。真 SVG 由 lib/review.js 拼，这里只要够卡片认出来就行。 */
 const REVIEW = {
   data: { branches: [{ side: 'left' }, { side: 'right' }], error_count: 1 },
@@ -187,7 +199,8 @@ const TOOLBOX = {
 }
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null } = {}) {
+  const list = !chat ? [] : sessions === null ? SESSIONS : sessions
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
   window.location.search = search
@@ -236,11 +249,13 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
     if (path.includes('/api/chat/sessions')) {
       body = chat
-        ? { ok: true, available: true, sessionId: 's1', sessions: [{ sessionId: 's1', title: '学习教练' }] }
+        ? { ok: true, available: true, sessionId: 's1', sessions: list }
         : { ok: true, available: false, sessions: [] }
     } else if (path.includes('/api/chat')) {
+      // 真服务端只在带 sessions=1 时才把清单捎回来，假的也照这个来——
+      // 不然「浮窗该不该自己拉清单」这件事测不出来。
       body = chat
-        ? { ok: true, available: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: [] }
+        ? { ok: true, available: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: path.includes('sessions=1') ? list : [] }
         : { ok: true, available: false, messages: [], sessions: [] }
     }
     return { ok: true, status: 200, json: async () => body }
@@ -253,6 +268,11 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
   const clickAct = async (dataset, { insideModal = false } = {}) => {
     const el = { dataset, closest: (sel) => (sel === '.modal' ? (insideModal ? el : null) : sel === '[data-act]' ? el : null) }
     await listeners.get('click')({ target: el })
+  }
+/** 造一个假事件源，交给面板那份 document 级 change 委托。 */
+  const changeAct = async (dataset, value) => {
+    const el = { dataset, value, id: dataset.id || '', files: [] }
+    await listeners.get('change')({ target: el })
   }
   const submitForm = async (dataset, fields) => {
     globalThis.FormData = class {
@@ -289,7 +309,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     })
     return { jumped }
   }
-  return { html, calls, posts, clickAct, clickNav, submitForm, listeners, window, documentElement: document.documentElement }
+  return { html, calls, posts, clickAct, clickNav, changeAct, submitForm, listeners, window, documentElement: document.documentElement }
 }
 
 function fixture() {  return {
@@ -738,6 +758,43 @@ test('对话页就是一个完整聊天窗口；别的页挂一颗悬浮窗', as
   await home.clickAct({ act: 'float-close' })
   assert.match(home.html(), /class="fab" data-act="float-open"/)
   assert.doesNotMatch(home.html(), /class="float"/)
+})
+
+test('会话选择：只有一个会话也写出来，多个才给下拉，浮窗里也有', async () => {
+  // ① 多个会话：给下拉，选项里带最后活动时间；当前那个被选中
+  const page = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true })
+  assert.match(page.html(), /class="chat-pick"/)
+  assert.match(page.html(), /<select data-act="chat-session">/)
+  assert.match(page.html(), /value="s1" selected/)
+  assert.match(page.html(), /学习教练[^<]*·[^<]*进行中/, '标题 + 时间 + 进行中')
+  assert.match(page.html(), /（新会话）/, '空会话要有名字，不能是一片空白')
+  assert.match(page.html(), /dshworkingspace\(studyplugin/, '没标题就退回目录末段')
+  assert.doesNotMatch(page.html(), /当前会话/, '有得选就不叫「当前会话」')
+
+  // 切一个：带上 sessionId 重新拉，并且还要再要一次清单
+  await page.changeAct({ act: 'chat-session' }, 's2')
+  const asked = page.calls.filter((c) => c.startsWith('/study/api/chat?')).at(-1)
+  assert.match(asked, /sessionId=s2/)
+  assert.match(asked, /sessions=1/)
+
+  // ② 只有一个会话：不给点不动的下拉，直接把「你在哪一个」写出来
+  const one = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true, sessions: [SESSIONS[0]] })
+  assert.match(one.html(), /当前会话/)
+  assert.match(one.html(), /class="pick-now"[^>]*>[^<]*学习教练/)
+  assert.doesNotMatch(one.html(), /data-act="chat-session"/, '没得选就别放一颗控件')
+
+  // ③ 悬浮窗里也要能切：load() 只问了快照，点开浮窗得自己去拉清单
+  const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
+  assert.doesNotMatch(home.html(), /data-act="chat-session"/, '浮窗没开的时候不用拉清单')
+  await home.clickAct({ act: 'float-open' })
+  assert.match(home.html(), /<select data-act="chat-session">/, '浮窗里得有会话选择')
+  await home.changeAct({ act: 'chat-session' }, 's1')
+  assert.match(home.calls.filter((c) => c.startsWith('/study/api/chat?')).at(-1), /sessionId=s1/)
+
+  // ④ 通道没接通：一个选择器都不该冒出来
+  const off = await boot(fixture(), { path: '/study' })
+  assert.doesNotMatch(off.html(), /data-act="chat-session"/)
+  assert.doesNotMatch(off.html(), /当前会话/)
 })
 
 test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() 靠它拼 class', async () => {

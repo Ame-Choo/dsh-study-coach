@@ -426,9 +426,10 @@ async function load() {
     shelf = page === 'materials' ? await loadShelf() : null
     // 工具栏目只有「工具」这一页要。
     toolbox = page === 'toolbox' ? await loadToolbox() : null
-    // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
-    // 只有「对话」页才顺带多要一份会话清单。
-    await loadChat({ withSessions: page === 'coach' })
+    // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通。
+    // 会话清单要的是「对话页开着」或者「悬浮窗开着」——悬浮窗里也有选择器，
+    // 只在对话页拉的话，浮窗切过去就是一个空下拉。
+    await loadChat({ withSessions: page === 'coach' || ui.float })
     applyMode()
     app.className = ''
     render()
@@ -579,11 +580,14 @@ async function loadChat({ sessionId = ui.chatSession, withSessions = false } = {
   const query = '?max=60' + (sessionId ? '&sessionId=' + encodeURIComponent(sessionId) : '') + (withSessions ? '&sessions=1' : '')
   try {
     const out = await api('/study/api/chat' + query)
+    // 没带 sessions=1 的时候服务端也会给一个空的 sessions，直接收下就把上一次
+    // 拉到的清单冲掉了（悬浮窗一关一开就没得选）。空数组一律当「这次没问」处理。
+    const listed = Array.isArray(out.sessions) && out.sessions.length ? out.sessions : (chat && chat.sessions) || []
     chat = {
       available: out.available !== false,
       sessionId: out.sessionId || '',
       messages: Array.isArray(out.messages) ? out.messages : [],
-      sessions: Array.isArray(out.sessions) ? out.sessions : (chat && chat.sessions) || [],
+      sessions: listed,
       error: out.error || '',
     }
   } catch (error) {
@@ -2110,17 +2114,45 @@ function chatStatus(snapshot) {
   return `<span class="dim">${parts.join(' · ')}</span>`
 }
 
-/** 会话选择。只有多个会话时才出，免得白占一行。 */
+/**
+ * 「什么时候」：今天给钟点，昨天给「昨天」，今年给月-日，再往前才带年份。
+ * 会话列表是按更新时间倒序的，光看标题分不清哪个是刚才那个。
+ */
+function whenText(at) {
+  const n = Number(at)
+  if (!n) return ''
+  const d = new Date(n)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  if (sameDay(d, now)) return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  if (sameDay(d, new Date(now.getTime() - 86400000))) return '昨天'
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}-${d.getDate()}`
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+/**
+ * 会话选择。
+ *
+ * **只有一个会话时也把它写出来**——不然学生根本看不出自己在跟哪一个说话，
+ * 这是他上一次提的毛病。多个会话才给下拉，选项里带上「最后活动时间」，
+ * 因为 DSH 的会话标题常常是空的或者两条一样。
+ */
 function chatPicker(snapshot) {
   const list = (snapshot && snapshot.sessions) || []
-  if (list.length < 2) return ''
-  const current = (snapshot && snapshot.sessionId) || ''
-  const options = list
-    .map((s) => {
-      const label = s.title || (s.blank ? '（新会话）' : s.cwd ? s.cwd.split(/[\\/]/).pop() : s.sessionId.slice(0, 8))
-      const mark = s.running ? ' · 进行中' : ''
-      return `<option value="${esc(s.sessionId)}"${s.sessionId === current ? ' selected' : ''}>${esc(label + mark)}</option>`
-    })
+  if (!list.length) return ''
+  const rows = list.map((s) => {
+    const name = s.title || (s.blank ? '（新会话）' : s.cwd ? String(s.cwd).split(/[\\/]/).pop() : String(s.sessionId).slice(0, 8))
+    const label = [name, whenText(s.updatedAt), s.running ? '进行中' : ''].filter(Boolean).join(' · ')
+    return { id: String(s.sessionId), label }
+  })
+  // 服务端没告诉我们在哪一个（比如清单是后拉回来的）时，就当第一个——列表是倒序的，第一个就是最近那个。
+  const current = String((snapshot && snapshot.sessionId) || '') || rows[0].id
+  if (rows.length === 1) {
+    return `<div class="chat-pick"><span class="dim">当前会话</span><b class="pick-now">${esc(rows[0].label)}</b></div>`
+  }
+  const options = rows
+    .map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.label)}</option>`)
     .join('')
   return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select></div>`
 }
@@ -2230,6 +2262,7 @@ function floatChat() {
     </section>`
   }
   return `<section class="float" role="dialog" aria-label="与教练对话">${head}
+    ${chatPicker(snapshot)}
     <div class="float-log" id="float-log" data-chat-log>${chatLog(snapshot)}</div>
     <form data-form="chat" class="chat-form float-form">
       <textarea name="text" rows="1" placeholder="跟教练说一句…"></textarea>
@@ -2520,7 +2553,9 @@ document.addEventListener('click', async (event) => {
       toast('已刷新')
     } else if (act === 'float-open') {
       ui.float = true
-      if (!chat) await loadChat({ withSessions: true })
+      // 浮窗里也要能选会话：清单还没拉过就趁这次拉一份——load() 那次只问了快照，
+      // 那时候 ui.float 还是 false，所以 sessions 是空的。
+      if (!chat || !(chat.sessions || []).length) await loadChat({ withSessions: true })
       render()
     } else if (act === 'float-close') {
       ui.float = false
