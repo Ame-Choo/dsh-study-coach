@@ -21,10 +21,23 @@ jobs:
           node-version: ${{ matrix.node }}
 
       # peerDependencies 里是 @deepseek-ai/* 的宿主包，测试要 import 它们。
-      # 拉不到就直接跳过（测试自己会 skip），不让 CI 因为这个红。
       - name: Install host peer dependencies
         continue-on-error: true
         run: npm install --no-audit --no-fund
 
+      # 拉不到就别硬跑：那些用例是 `await import('../index.js')`，宿主包不在会当场炸，
+      # 红色出在「跑测试」上，看不出到底是「没装上」还是「真失败」。先问一句再决定跑不跑。
+      - name: Check host peer dependencies
+        id: peer
+        run: |
+          if node --input-type=module -e "await import('@deepseek-ai/dsh-tools'); await import('@deepseek-ai/cordis')" 2>/dev/null; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::宿主包 @deepseek-ai/* 没装上，测试跳过（这不是用例失败）"
+          fi
+
+      # 失败用例会写成注解：Actions 的原始日志要登录才看得到，注解匿名就能查。
       - name: Run tests
-        run: node --test
+        if: steps.peer.outputs.ok == 'true'
+        run: node scripts/ci-test.mjs
