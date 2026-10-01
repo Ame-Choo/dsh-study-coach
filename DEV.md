@@ -323,7 +323,7 @@ node scripts/check-live.mjs 19387 19388
 - `package.json` 的 `files` 必须含 `index.js, lib, assets, skills, cordis.patch.yml, README.md, CHANGELOG.md, docs, PUBLISHING.md, AGENTS.md, design.md, DEV.md, NOTES.md, LICENSE`
   （`design.md` / `AGENTS.md` / `DEV.md` / `NOTES.md` 在列是因为 README 链到它们，`docs/` 是 README 顶上的截图）。**本机的 `node_modules` 是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的 junction，别提交。**
 - CI（`.github/workflows/ci.yml`）只有 ubuntu + `node: ['22','24']`：先探宿主 `@deepseek-ai/*` 装没装上（没装上就跳过测试并 warning），然后 `node scripts/ci-test.mjs` 跑测试——失败用例写成 GitHub 注解（原始日志不登录看不到）。
-- 流程见 [`PUBLISHING.md`](PUBLISHING.md)：`npm pack --dry-run` 核清单 → `git init/add/commit` + `npm run setup-repo`（从 `git remote get-url origin` 抠 owner/repo 填进 `package.json`）→ push → 打 GitHub topic（`dsh-plugin` 必打，**但光打标签进不了列表**）→ 给 `awesome-dsh-plugin` 提条目 PR（`data/plugins/Ame-Choo__dsh-study-coach.yml`，仓库满 1 天才收）→ `npm publish`。
+- 流程见 [`PUBLISHING.md`](PUBLISHING.md)：`npm pack --dry-run` 核清单 → `git init/add/commit` + `npm run setup-repo`（从 `git remote get-url origin` 抠 owner/repo 填进 `package.json`）→ push → 打 GitHub topic（`dsh-plugin` 必打，**但光打标签进不了列表**）→ 给 `awesome-dsh-plugin` 提条目 PR（`data/plugins/Ame-Choo__dsh-study-coach.yml`，仓库满 1 天才收；早提也行，年龄那关每 6 小时自己重跑一次）→ `npm publish`。
 - 日常循环：`node --test` 全绿 → `npm version patch` → `git push --follow-tags` → `npm publish`。
 - 改到 `lib/` / `index.js` / `package.json` 的那一版，**发布说明里要提醒用户重启 DSH**，否则他们会看到「页面是新的、按钮全 404」。
 

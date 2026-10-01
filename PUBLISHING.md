@@ -61,6 +61,10 @@ gh api -X PUT repos/<你>/dsh-study-coach/topics \
   -f 'names[]=dsh-plugin' -f 'names[]=deepseek-harness'
 ```
 
+不带 `gh` 也行（本机就没装）：`git credential fill` 能取到本机 git 缓存的 GitHub token，拿它当
+`Authorization: Bearer` 打 `PUT https://api.github.com/repos/<你>/dsh-study-coach/topics`，body 是
+`{"names":["dsh-plugin","deepseek-harness"]}`。本仓库的 topic 就是这么打上的。
+
 ### 2b. 提 PR
 
 fork `awesome-dsh-plugin`，新建**一个**文件 `data/plugins/Ame-Choo__dsh-study-coach.yml`（文件名是
@@ -80,12 +84,16 @@ description:
 别写营销词**，夸大是主要打回原因。分类挑最接近的即可（本包是「给 agent 加一套学习管理工具 + 自带面板」，
 所以 `tools`；挑歪了维护者直接改，不会打回）。
 
-其余规矩：一个 PR 最多 3 条；**仓库满 1 天才收**（CI 自动查，跟插件质量无关，只挡「PR 前几分钟才建号」的）；
-要有真实可用代码、在维护中。
+其余规矩：一个 PR 最多 3 条；**仓库满 1 天才收**（`scripts/check-submission.mjs` 里 `MIN_AGE_DAYS = 1`，按仓库
+`created_at` 算满 24 小时；跟插件质量无关，只挡「PR 前几分钟才建号」的）。**早提没关系**：年龄那关没过时，
+门禁自己在评论里写「nothing to do」，`regate.yml` 每 6 小时重跑一次，到点自己变绿，不用重开 PR、也不用空推一次。
+（以前还有一条「提交数下限」，现在取消了——只卡年龄。）另外要有真实可用代码、在维护中。
 
-CI 依次查：条目数 → 从你仓库的 `package.json` 读 `dsh.bundle`（**只声明 `dsh.client` 会在这里失败**，本包有
-`dsh.bundle.patch`，过）→ 仓库年龄 → `awesome-lint` 与站点构建。挂了把修复推到同一个分支即可，不用重开 PR。
-合并后等下一次构建，去 `https://awesome-dsh-plugin.com/plugins.json` 里 `Ctrl+F` 搜 `study-coach` 确认。
+CI 是两个 workflow：`PR check`（站点构建 + `awesome-lint` + 条目数 ≤3）先跑完，再由它触发的 `Submission gate`
+接着查——门禁要带 token 查 GitHub API，所以拆成 `workflow_run` 单独一个：从你仓库的 `package.json` 读
+`dsh.bundle`（**只声明 `dsh.client` 会在这里失败**，本包有 `dsh.bundle.patch`，过）→ 仓库年龄。挂了把修复
+推到同一个分支即可，不用重开 PR。合并后等下一次构建，去 `https://awesome-dsh-plugin.com/plugins.json`
+里 `Ctrl+F` 搜 `study-coach` 确认。
 
 ### 2c. 截图（可选，推荐）
 
@@ -190,17 +198,19 @@ npm publish
    `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；测试夹具里那两个假的也换了
    （`test/panel.test.js` 测「cwd 里带括号」、`test/md.test.js` 测 Windows 路径不被 markdown 吃掉）。
 
-**还差你一步（我做不了：没有 GitHub token、没有 npm 凭据，也没装 `gh`）**：
+**还差你一步（GitHub 那边用本机 git 凭据里已有的授权办了，npm 我进不去）**：
 
-1. **topic 只能手动打**：仓库页 About 齿轮里填 `dsh-plugin`（必打）+ `deepseek-harness`（见 2a）。
-   API 也能打（`PUT /repos/{owner}/{repo}/topics`），但要带 token。
-2. **仓库描述**（About 里那句）：现在是空的，随手写一句——那是仓库自己的简介，跟 2b 那条目描述是两回事。
-3. **发 npm**：本机 `npm whoami` 回 `ENEEDAUTH`（`C:\Users\zongy\.npmrc` 根本不存在），得你先 `npm login`，
-   然后 `npm publish`（`npm pack --dry-run` 已经确认包里干净）。发完 `npm view dsh-study-coach version`
-   应该能看到 `0.1.0`；市场的下载量排序会自动接上，条目里不用加任何字段（手写 `npm:` 键会被校验拒掉）。
-4. **提条目 PR**（见 2b）：条目内容已经写好，放在工作区根上的 `Ame-Choo__dsh-study-coach.yml`，复制进 fork 即可。
-   ⚠️ **仓库是 2026-10-01T17:52Z 建的，满 1 天要等到 2026-10-03 01:52（+08:00）之后**——早于这个时间提，
-   CI 的仓库年龄那一关直接挡下来。
+1. ~~topic~~ → 已打：`dsh-plugin`（必打）+ `deepseek-harness` + `dsh`。要自己改就在仓库页 About 齿轮里改，
+   或 `PUT /repos/{owner}/{repo}/topics`（带 token）。
+2. ~~仓库描述~~ → 已写好（About 里那句：「DSH 的学习教练插件：把一门课拆成知识地图……」）。
+3. **发 npm（只剩这一件要你本人来）**：本机没有任何 npm 凭据（`npm whoami` 回 `ENEEDAUTH`，
+   `C:\Users\zongy\.npmrc` 不存在），得你先 `npm login`，然后 `npm publish`（`npm pack --dry-run` 已经确认
+   包里干净）。发完 `npm view dsh-study-coach version` 应该能看到 `0.1.0`；市场的下载量排序会自动接上，
+   条目里不用加任何字段（手写 `npm:` 键会被校验拒掉）。没发 npm 也能收录——条目指向仓库，照样装得上。
+4. ~~提条目 PR~~ → **已提：[awesome-dsh-plugin#6341](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6341)**
+   （分支 `Ame-Choo:add-study-coach`，就一个文件 `data/plugins/Ame-Choo__dsh-study-coach.yml`）。
+   仓库是 2026-10-01T17:52Z 建的，**年龄那一关要到 2026-10-03 01:52（+08:00）才够**——早提是故意的，
+   `regate` 会自己重跑，不用管；要改条目就往那个分支上推，PR 自动跟着更新。
 
 ---
 
@@ -214,9 +224,11 @@ npm publish
 - [ ] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` **不再是 `OWNER` 占位**（`npm run setup-repo` 跑过一次）
 - [ ] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
 - [ ] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致
-- [ ] GitHub 仓库打了 `dsh-plugin` 话题（+ 建议 `deepseek-harness`）
-- [ ] 仓库根有 `screenshots.json`，里面每张图在 `docs/` 里真实存在、路径没跳出插件目录
-- [ ] awesome 列表的条目 PR 提了（`data/plugins/Ame-Choo__dsh-study-coach.yml`，**仓库满 1 天之后**才提）
+- [x] GitHub 仓库打了 `dsh-plugin` 话题（+ `deepseek-harness`、`dsh`）
+- [x] 仓库根有 `screenshots.json`，里面每张图在 `docs/` 里真实存在、路径没跳出插件目录
+- [x] awesome 列表的条目 PR 提了（[#6341](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6341)；
+      年龄那一关 ETA 2026-10-03 01:52+08:00，会自己转绿）
+- [ ] npm 发布了（`npm view dsh-study-coach version`，这步只有你本人能做）
 - [ ] 推到 GitHub 之后 Actions 那条 CI 是绿的（它是「别人克隆下来能不能跑」的唯一证据）
 - [ ] `git status` 干净，没把 junction 的 `node_modules` 提交进去
 
