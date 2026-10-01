@@ -1046,13 +1046,16 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 **③-第二版：整页推倒重做，按材料自己的目录摊三层。** 用户看过之后说「资料图谱推倒重做吧，按照资料的目录或者文件夹分类来做三层：大类、模块、最小单元，以及对应链接来」——于是骨架搬到服务端：
 
-- 新增 `lib/material-tree.js`（入口 `materialTree({ material, shelf, spans, list })`）+ `GET /study/api/material/tree?materialId=`，回 `{ ok, material, basis, truncated, groups, loose }`。`basis` 三选一：`toc`（书有目录两级，单元是落在模块页范围内的页级索引）、`spans`（目录没读过，就一段一段的页级索引自己当单元）、`folder`（path 是文件夹的，按子目录当模块、文件名当单元）。三个上限常量 `MAX_MODULES = 400` / `MAX_UNITS = 1200` / `MAX_PAGES_PER_UNIT = 12`。
-- 面板：`loadAtlas()` 只在这一页拉一次树；**一次只挑一份材料**（`ui.atlasPick`），那排筹码就是切换器；折起来的大类/模块记在 `ui.atlasShut`（键 `g:大类序号` / `m:大类序号:模块序号`），纯客户端不打服务端。三级 DOM 是 `.atlas-group` → `.atlas-mod` → `li.atlas-unit`，每层的头都能点着折起来，行尾挂 `.atlas-range`（页码）与 `.atlas-links`。
+- 新增 `lib/material-tree.js`（入口 `materialTree({ material, shelf, spans, list, tree })`）+ `GET /study/api/material/tree?materialId=`，回 `{ ok, material, basis, truncated, groups, loose }`。`basis` 四选一：**`agent`（教练用 `study_analysis` 的 `tree` 写下来的，优先）**、`toc`（书按目录摊）、`spans`（目录没读过，一段一段的页级索引自己当单元）、`folder`（path 是文件夹的，按子目录当模块、文件名当单元）。三个上限常量 `MAX_MODULES = 400` / `MAX_UNITS = 1200` / `MAX_PAGES_PER_UNIT = 12`。
+- **书那棵树只信目录**——第一版拿「和模块页范围有交叠的 spans」当单元，而分析里的 spans 常是**整专题一条**，于是同一句话被抄进该专题每个模块、单元 id 跟模块名对不上（真数据里 `1.2 常用逻辑用语` 那行写着 `M1.1`），用户一句「完全是乱的啊」推倒重来。现在的规矩：大类 = level 1、模块 = level 2、最小单元 = level 3；**目录没有第三级就不许再造一层**，`module.leaf === true`，模块自己就是最小单元。页级 spans 只在「目录压根没读过」时当兜底。
+- 面板：`loadAtlas()` 只在这一页拉一次树；**一次只挑一份材料**（`ui.atlasPick`），那排筹码就是切换器；折起来的大类/模块记在 `ui.atlasShut`（键 `g:大类序号` / `m:大类序号:模块序号`），纯客户端不打服务端。三级 DOM 是 `.atlas-group` → `.atlas-mod` → `li.atlas-unit`。**leaf 模块**的头不带 caret、不给 `data-act`（点了没东西可折）、计数写「最小单元」、链接直接挂模块那一行；单元行的 `.atlas-id` 写名字（人话），挂了 pointId 的旁边单挂一枚 `.atlas-kind.atlas-point` 筹码（`M1.1` 这种）——名字和 id 是两件事，缺一个都看不出「这段归到哪儿」。
+- **给 agent 的那个接口**（用户问「是不是也要给 agent 一个接口然后让 agent 根据 prompt 做比较好」）：`study_analysis action=save` 多一个 `tree` 参数，形状就是大类 → 模块 → 最小单元（单元那层可省）。`lib/analysis.js` 的 `treeOf()` 只认形状（没大类名的、不是对象的直接丢），`upsertAnalysis` 里是**整份覆盖**：传了就换、不传就不动、`tree: []` 清掉退回自动摊。服务端 `materialTree()` 有它就优先。面板 `srcHint`：`basis === 'agent'` 写「这三层是教练读过之后写下来的」，否则写「按它自己的目录自动摊的——教练读过一遍再写下来会更准」+ 一颗「让教练核一遍」（`data-act="atlas-annotate"`）。`skills/study-coach/SKILL.md` 新增一节「顺手写「资料图谱」」教它什么时候值得写、`tree` 怎么写。
 - **每一层都给链接**：`atlasLinks()` 走 `assets/urls.js` 的 `openPath()`，`linkLabel()` 按扩展名说话（`.pdf` → 打开 PDF、视频扩展名 → 打开视频、`.md/.txt` → 打开正文、`kind === 'folder'` → 打开文件夹、其余 → 打开），页图最多 4 颗 `P10` 这种直链 `/study/page?path=`。**判扩展名只许切 `#`，别切 `?`**——写成 `split(/[?#]/)` 会把 query 一起切掉，`/study/file?path=…pdf` 里的 `.pdf` 就看不见了（踩过）。
 - `tree.loose`（封面、目录、答案这些没归到任何模块的页）单开一块「没归到目录里的」，标题退回内容类型；一条 pointId 都没有的那几份收进 `.atlas-blank`（「这份材料还没挂到最小单元上」）+「交给教练去标」。
 - 版本守卫：`probeCapabilities()` 里 `alive('/study/api/material/tree')`（缺参新代码回 400、旧代码 404）→ `capabilities.tree`；没有它就说「去重启 DSH」，别说「还没标」。
-- 测试：`test/material-tree.test.js` 8 条（`folderTree` / `bookTree` / `basis` 分流都拿假 `list` 与假 toc 喂）、`test/panel.test.js` 33 条，全量 **324 条**。
-- 真数据上看过的：精讲册 = 11 个大类 58 条内容（`专题一 集合、常用逻辑用语与不等式 4 个模块 · 4 条内容 P9-16` → `1.1 集合 … M1.1 1 条 P10-11` → 单元行 `M1.1 专题一 集合/逻辑/不等式  讲解  P10-11  打开 PDF  [P10][P11]`）；网课那份 = `basis: folder`、42 个大类、单元是 mp4 文件名配「打开视频」。**已知数据侧瑕疵**（不是渲染错）：材料分析里模块骨架粗时，个别模块那一行的单元 id 会显示成邻居的（精讲册 `1.2 常用逻辑用语` 下面写着 `M1.1`）。
+- **顺手修掉一个真 bug**：面板的 `today()` 原来按**本地日期**算，而服务端（`lib/routes.js` / `lib/map.js`）用的是 `toISOString().slice(0, 10)` 的 **UTC 日期**——东八区一过 16:00，面板就显示「明天」、任务列表看着是空的，而活儿就在那儿。现在两边一套口径（`assets/panel.js:233`）。
+- 测试：`test/material-tree.test.js` 11 条（`folderTree` / `bookTree` / leaf / `agentTree` / `basis` 分流都拿假 `list`、假 toc、假 tree 喂）、`test/tools.test.js` 里多一条 `study_analysis` 写 `tree` 的行为测试（写歪的节点丢掉、不传保留、空数组清掉）、`test/panel.test.js` 33 条，全量 **328 条**。
+- 真数据上重看（精讲册）：11 个大类、57 条内容、已挂到单元 43 条；`专题一 … 4 个模块 · 4 条内容 P9-16` → `1.1 集合 [M1.1] 最小单元 P10-11 打开 PDF [P10][P11]`、`1.2 常用逻辑用语 [M1.4] P12-13`——**两级就两级，不再有重复的单元行**。网课那份 = `basis: folder`、单元是 mp4 文件名配「打开视频」。第一版那条「已知数据侧瑕疵」就这么消掉了。
 
 
 

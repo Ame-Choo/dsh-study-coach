@@ -220,11 +220,22 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 （用户原话：「资料图谱推倒重做吧，按照资料的目录或者文件夹分类来做三层：大类、模块、最小单元，
 以及对应链接来」）。骨架在服务端算，面板不自己拼（上一版是客户端拿知识图谱拼的，已作废）。
 
-- 服务端：`lib/material-tree.js`（入口 `materialTree({ material, shelf, spans, list })`）+
+- 服务端：`lib/material-tree.js`（入口 `materialTree({ material, shelf, spans, list, tree })`）+
   `GET /study/api/material/tree?materialId=` → `{ ok, material, basis, truncated, groups, loose }`。
-  `basis` 三选一：`toc`（书有目录两级，单元是落在模块页范围内的页级索引）、`spans`（目录没读过，
-  就一段一段的页级索引自己当单元）、`folder`（path 是文件夹的，按子目录当模块、文件名当单元）。
-  **这是 `lib/` 改动 → 要重启 DSH**，旧服务端上这一页会走「去重启」那张卡。
+  `basis` 四选一：**`agent`（教练用 `study_analysis` 的 `tree` 写下来的，最优先）**、`toc`（书按目录摊）、
+  `spans`（目录没读过，就一段一段的页级索引自己当单元）、`folder`（path 是文件夹的，按子目录当模块、
+  文件名当单元）。**这是 `lib/` 改动 → 要重启 DSH**，旧服务端上这一页会走「去重启」那张卡。
+- **书那棵树只信目录，不许拿 spans 硬凑一层**（踩过，用户一句「完全是乱的啊，逻辑有问题吧」推倒重来）：
+  分析里的 spans 常是**整专题一条**，旧写法把「和模块页范围有交叠的 span」当单元，于是同一句话被抄进
+  该专题每个模块、单元 id 跟模块名对不上（真数据里 `1.2 常用逻辑用语` 那行写着 `M1.1`）。现在：
+  大类 = level 1、模块 = level 2、最小单元 = level 3；**目录没有第三级就不许再造一层**，`module.leaf === true`，
+  模块自己就是最小单元、链接直接挂模块头。`spans` 只在「目录压根没读过」时当兜底。
+- **给 agent 的接口就是 `study_analysis` 的 `tree`**（用户问「是不是也要给 agent 一个接口然后让 agent
+  根据 prompt 做比较好」，答：是）：形状大类 → 模块 → 最小单元（单元层可省）。`lib/analysis.js` 的
+  `treeOf()` 只认形状，`upsertAnalysis` 里是**整份覆盖**（传了就换、不传不动、`tree: []` 清掉），
+  `materialTree()` 有它就优先。面板 `srcHint`：`basis === 'agent'` 写「这三层是教练读过之后写下来的」，
+  否则写「按它自己的目录自动摊的——教练读过一遍再写下来会更准」+ 一颗「让教练核一遍」（`data-act="atlas-annotate"`）。
+  agent 那半的用法写在 `skills/study-coach/SKILL.md` 的「顺手写「资料图谱」」那一节。
 - 面板：`loadAtlas()`（`atlasTree` 只在这一页拉一次）、`atlasCard()`、`atlasUnitRow()`、`atlasLinks()`、
   `linkLabel()`、`firstClause()`。**一次只挑一份材料**（`ui.atlasPick`），那排筹码就是切换器；
   折起来的大类/模块记在 `ui.atlasShut`（键 `g:大类序号` / `m:大类序号:模块序号`），纯客户端不打服务端。
@@ -239,8 +250,12 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
   → `capabilities.tree`。没有它就别说「还没标」，直接告诉学生**去重启 DSH**——这一页是 `lib/` 那一半。
 - 三级 DOM：`.atlas-group`（`data-act="atlas-shut"` 的 `.atlas-group-head` + 转动的 `.atlas-caret` +
   `.atlas-gname` + `.atlas-range`）→ `.atlas-mod`（同款头 + `.atlas-mtitle` + `.atlas-mid`）→
-  `ul.atlas-units > li.atlas-unit`（`.atlas-label` 里 `.atlas-id` 是单元 id/文件名、`.atlas-name` 是
-  `firstClause(note)` 两行 clamp；`.atlas-meta` 里 `.atlas-kind` 类型 + `.atlas-range` 页码 + `.atlas-links`）。
+  `ul.atlas-units > li.atlas-unit`（`.atlas-label` 里 `.atlas-id` 写**名字**、`.atlas-name` 是
+  `firstClause(note)` 两行 clamp；`.atlas-meta` 里 `.atlas-kind` 类型 + **`.atlas-kind.atlas-point` 筹码**
+  （`u.pointId && u.pointId !== u.title` 时才出——名字和 id 是两件事）+ `.atlas-range` 页码 + `.atlas-links`）。
+  **`module.leaf` 的模块头不带 caret、不给 `data-act`**（点了没东西可折）、计数写「最小单元」、
+  `atlasLinks(m)` 直接挂模块头。来源那行是 `.atlas-src`（`srcHint`：`basis === 'agent'` 与自动摊两套文案）。
+  `atlasUnits()` 要把 leaf 模块也算成一条内容，否则「N 条内容」少一截。
   **材料一律写全名，不许退回 A/B/C**（用户原话：「教辅的名字要显示它的名字而不是一串字母」）。
 - `linkLabel(u)` **按扩展名说话**：`.pdf` → 打开 PDF、`.mp4|m4v|mov|mkv|flv|avi|wmv` → 打开视频、
   `.md|markdown|txt` → 打开正文、`u.kind === 'folder'` → 打开文件夹、其余 → 打开。

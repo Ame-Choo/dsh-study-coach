@@ -230,10 +230,14 @@ function isOpenCard(id) {
 const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
+/**
+ * 今天。**跟服务端一套口径**（`lib/routes.js` 的 `todayIso()` 也是 `toISOString().slice(0, 10)`）。
+ *
+ * 别改成本地日期：东八区一过 16:00，本地日期就跳到第二天，而任务、番茄钟、证据全是按 UTC
+ * 日期存的——面板会显示「今天还没排任务」，实际上今天的活儿就在那儿（踩过）。
+ */
 function today() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  return new Date().toISOString().slice(0, 10)
 }
 
 /** 周几。复盘图顶上写「2026-10-01 · 周四」，今日任务那页照同一口径，所以两边共用一个助手。 */
@@ -2242,6 +2246,8 @@ async function forwardToCoach({ materialId = '', title = '', path = '', reason =
       : 'web 端自动读取失败。'
   const ask = annotate
     ? '请你把这份资料按知识地图的最小单元标一遍：M1.1 这种 id，一处内容可以同时归好几个（同一讲既讲 M1.1 也讲 M1.2 就都写上）。教辅按页范围对、网课按讲次对，读完写进材料分析里——面板的「学习」页就能按大类、模块看它覆盖了哪些单元。'
+      + '顺带用 study_analysis 的 tree 把这份材料自己的三层（大类 → 模块 → 最小单元）写一遍：教辅照它的专题与节来，网课照文件夹与文件来；每条内容对上哪个单元就把 pointId 填上、对不上就留空。'
+      + '写了它，面板上那张资料图谱就照你写的画（不写的话，现在显示的是按目录自动摊的，经常把整专题的备注复制到每个模块上）。'
     : '请你直接用工具去读这份资料（PDF 可以拆页、一页一页看；网课目录按文件名把讲次解出来）。读完把内容按知识地图的最小单元归位——M1.1 这种 id，一处内容可以同时归好几个。归完写进材料分析里，面板上就能按单元翻页、做题页也就找得到页码了。'
   const text = [annotate ? `【资料没标到知识图谱，交给你】${where}` : `【资料读不动，交给你】${where}`, path ? `路径：${path}` : '', why, ask]
     .filter(Boolean)
@@ -2465,12 +2471,16 @@ function atlasShut() {
   return ui.atlasShut
 }
 
-/** 一棵树摊平：所有最小单元（模块里的 + 直接挂在大类下的 + 没归到目录里的）。 */
+/** 一棵树摊平：所有最小单元（模块里的 + 直接挂在大类下的 + 没归到目录里的）。
+ *  材料只到两层时模块自己就是最小单元（`m.leaf`），也得算进来——不然「N 条内容」会少一截。 */
 function atlasUnits(tree) {
   const out = []
   for (const g of (tree && tree.groups) || []) {
     for (const u of g.units || []) out.push(u)
-    for (const m of g.modules || []) for (const u of m.units || []) out.push(u)
+    for (const m of g.modules || []) {
+      if (m && m.leaf) out.push(m)
+      for (const u of (m && m.units) || []) out.push(u)
+    }
   }
   for (const u of (tree && tree.loose) || []) out.push(u)
   return out
@@ -2515,17 +2525,24 @@ function atlasLinks(u) {
   return out.length ? `<span class="atlas-links">${out.join('')}</span>` : ''
 }
 
-/** 一行最小单元：左边是它叫什么（单元 id + 一句说明），右边是类型 / 页码 / 链接。 */
+/**
+ * 一行最小单元：左边是它叫什么（单元名 + 一句说明），右边是挂到哪个单元 / 类型 / 页码 / 链接。
+ *
+ * 名字用它自己的标题（材料目录里写的人话）；挂了 pointId 的再单挂一枚 id 筹码——
+ * 名字和 id 是两件事，缺一个都看不出「这段内容归到哪儿」。
+ */
 function atlasUnitRow(u) {
   const kind = u.kind && u.kind !== 'folder' ? u.kind : ''
   const range = u.from ? `P${u.from}${Number(u.to) > Number(u.from) ? `—${u.to}` : ''}` : ''
   const note = firstClause(u.note)
+  const point = u.pointId && u.pointId !== u.title ? u.pointId : ''
   return `<li class="atlas-unit${u.pointId ? '' : ' miss'}">
     <span class="atlas-label">
-      <b class="atlas-id">${esc(u.title || kind || '内容')}</b>
+      <b class="atlas-id">${esc(u.title || point || kind || '内容')}</b>
       ${note ? `<i class="atlas-name" title="${esc(u.note)}">${esc(note)}</i>` : ''}
     </span>
     <span class="atlas-meta">
+      ${point ? `<span class="atlas-kind atlas-point">${esc(point)}</span>` : ''}
       ${kind ? `<span class="atlas-kind">${esc(kind)}</span>` : ''}
       ${range ? `<span class="atlas-range">${esc(range)}</span>` : ''}
       ${atlasLinks(u)}
@@ -2569,22 +2586,42 @@ function atlasCard() {
   const mapped = units.filter((u) => u.pointId).length
   const pct = units.length ? Math.round((mapped / units.length) * 100) : 0
   const mat = (tree && tree.material) || {}
-  const basisText = tree && tree.basis === 'folder' ? '按文件夹分' : tree && tree.basis === 'toc' ? '按它自己的目录分' : '按页级索引分'
+  const basisText = tree && tree.basis === 'folder'
+    ? '按文件夹分'
+    : tree && tree.basis === 'agent'
+      ? '教练看过后写下来的'
+      : tree && tree.basis === 'toc'
+        ? '按它自己的目录分'
+        : '按页级索引分'
+  // 自动摊的那两版（目录 / 文件夹）只是兜底：教练写过的那版才准，所以留一条路让他核。
+  const srcHint = tree && tree.basis === 'agent'
+    ? '<span class="dim">这三层是教练读过之后写下来的</span>'
+    : `<span class="dim">这三层是按它自己的目录自动摊的——教练读过一遍再写下来会更准。</span>
+       ${forwardAct(pick, mat.path, { act: 'atlas-annotate', label: '让教练核一遍' })}`
 
   const unitList = (list) => `<ul class="list atlas-units">${list.map(atlasUnitRow).join('')}</ul>`
 
-  /** 一块模块：模块头 + 它的最小单元。 */
+  /**
+   * 一块模块：模块头 + 它的最小单元。
+   * 材料只到两层（教辅的「1.1 集合」这种）时 `m.leaf` 为真——模块自己就是最小单元，
+   * 那就把链接直接挂在模块头上，别再补一行一模一样的。
+   */
   const moduleBlock = (m, gi, mi) => {
     const key = `m:${gi}:${mi}`
-    const closed = shut.has(key)
+    const leaf = !!m.leaf
+    const closed = leaf || shut.has(key)
     const page = m.page ? `P${m.page}${Number(m.to) > Number(m.page) ? `—${m.to}` : ''}` : ''
-    return `<div class="atlas-mod">
-      <div class="atlas-mod-head" data-act="atlas-shut" data-key="${esc(key)}" title="点一下${closed ? '摊开' : '折起'}">
-        <span class="atlas-caret">${closed ? '▸' : '▾'}</span>
+    const open = leaf
+      ? ''
+      : ` data-act="atlas-shut" data-key="${esc(key)}" title="点一下${closed ? '摊开' : '折起'}"`
+    return `<div class="atlas-mod${leaf ? ' leaf' : ''}">
+      <div class="atlas-mod-head"${open}>
+        ${leaf ? '' : `<span class="atlas-caret">${closed ? '▸' : '▾'}</span>`}
         <span class="atlas-mtitle">${esc(m.title || '')}</span>
         ${m.pointId ? `<span class="atlas-mid">${esc(m.pointId)}</span>` : ''}
-        <span class="dim">${(m.units || []).length} 条</span>
+        <span class="dim">${leaf ? '最小单元' : `${(m.units || []).length} 条`}</span>
         ${page ? `<span class="atlas-range">${esc(page)}</span>` : ''}
+        ${leaf ? atlasLinks(m) : ''}
       </div>
       ${closed ? '' : unitList(m.units || [])}
     </div>`
@@ -2651,6 +2688,7 @@ function atlasCard() {
       <span class="atlas-mlabel">${(tree.groups || []).length} 个大类 · ${units.length} 条内容 · 已挂到单元 ${mapped} 条${tree.truncated ? ' · 太多了，先截了一段' : ''}</span>
       <span class="dim">点大类 / 模块那一行能折起来</span>
     </div>
+    <div class="chips atlas-src">${srcHint}</div>
     ${body}
     ${loose}
     ${blank}

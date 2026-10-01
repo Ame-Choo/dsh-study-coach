@@ -285,6 +285,41 @@ const TREES = {
     ],
     loose: [],
   },
+  // 教练用 study_analysis 的 tree 自己写下来的那一份：basis 是 agent，面板要说清来源
+  'mat-ai': {
+    ok: true,
+    material: { materialId: 'mat-ai', title: '随堂小测 · M1.4（2026-10-01）', kind: 'ai', path: 'F:\\课件\\小测.md', file: true, total: 6, rendered: 0, scanned: false, coverage: '部分通读', indexed: 6, chapters: 1, tocCount: 0 },
+    basis: 'agent',
+    truncated: false,
+    groups: [
+      {
+        title: '二次专题',
+        count: 1,
+        units: [],
+        modules: [
+          {
+            title: 'M2.3 二次专题',
+            pointId: 'M2.3',
+            page: 1,
+            to: 6,
+            units: [
+              {
+                title: '含参二次不等式',
+                pointId: 'M2.3',
+                kind: '习题',
+                from: 1,
+                to: 6,
+                note: '',
+                url: '/study/read?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E5%B0%8F%E6%B5%8B.md#q1',
+                pages: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    loose: [],
+  },
 }
 
 /** 工具栏目：一个跑着的番茄钟 + 两条清单（一条没做完、一条做完了）。 */
@@ -1798,4 +1833,18 @@ test('学习页：挑一份材料，按它自己的目录摊成三层，每一�
   await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
   assert.match(page.html(), /<b class="atlas-id">M1\.1<\/b>/)
   assert.doesNotMatch(page.html(), /这份材料还没挂到最小单元上/)
+
+  // ⑩ 骨架是自动摊的就说清是自动摊的，并给个「让教练核一遍」
+  assert.match(page.html(), /<div class="chips atlas-src">/)
+  assert.match(page.html(), /这三层是按它自己的目录自动摊的/)
+  assert.match(page.html(), /data-act="atlas-annotate"[^>]*>让教练核一遍<\/button>/)
+
+  // ⑪ 教练自己写过的（basis: agent）：写明来源，不再劝他核一遍
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-ai' })
+  assert.match(page.html(), /这三层是教练读过之后写下来的/)
+  assert.doesNotMatch(page.html(), /让教练核一遍/)
+  // 名字用人话，挂到哪个单元另挂一枚筹码
+  assert.match(page.html(), /<b class="atlas-id">含参二次不等式<\/b>/)
+  assert.match(page.html(), /<span class="atlas-kind atlas-point">M2\.3<\/span>/)
+  assert.match(page.html(), /<span class="atlas-kind">习题<\/span>/)
 })

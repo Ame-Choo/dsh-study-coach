@@ -521,6 +521,13 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .atlas-gname { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
 .atlas-mod { margin: 0 0 var(--sp-3) var(--sp-2); padding-left: var(--sp-3); border-left: 1px solid var(--line-2); }
 .atlas-mod-head { display: flex; align-items: baseline; gap: var(--sp-1); padding: 2px 0; font-size: var(--fs-label); }
+/* 只到两层的材料：模块自己就是最小单元，那行不许有指针手型（点了也没东西可折） */
+.atlas-mod.leaf > .atlas-mod-head { cursor: default; }
+.atlas-mod.leaf > .atlas-mod-head:hover { background: transparent; }
+.atlas-mod.leaf > .atlas-mod-head .atlas-links { margin-left: auto; }
+/* 来源那行：自动摊 / 教练写的，右边挂着「让教练核一遍」 */
+.atlas-src { align-items: center; margin-top: calc(-1 * var(--sp-1)); }
+.atlas-src .mini { line-height: 16px; }
 .atlas-mtitle { flex: 1 1 auto; min-width: 0; color: var(--text); }
 .atlas-mid { flex: none; font-family: var(--font-display); font-size: var(--fs-label); letter-spacing: .04em; color: var(--dim); }
 /* 页码 / 页数一律等宽，扫一列的时候对得齐 */
@@ -543,6 +550,8 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .atlas-unit.miss .atlas-id { color: var(--faint); }
 .atlas-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; justify-content: flex-end; max-width: 62%; }
 .atlas-kind { flex: none; padding: 0 5px; line-height: 16px; font-size: var(--fs-micro); color: var(--faint); border: 1px solid var(--line); }
+/* 挂了知识地图单元的 id 筹码：名字是人话，id 是它归到哪儿，两样都得看得见 */
+.atlas-point { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .atlas-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .atlas-links .mini { line-height: 16px; }
 .atlas-pg-none { font-size: var(--fs-micro); }

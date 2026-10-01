@@ -542,3 +542,69 @@ test('study_analysis：通读结论能写能读、章节分批喂、材料删了
     f.done()
   }
 })
+
+test('study_analysis：资料图谱的三层能写、能整份换、空数组清掉，不传就不动', async () => {
+  const f = fresh()
+  try {
+    const mat = await f.call('study_material', { action: 'add', kind: 'book', title: '必修一', path: 'F:\\books\\bx1.pdf' })
+    const id = mat.materials[0].id
+
+    // 还没写过：报 0，面板就知道该退回按目录自动摊
+    const empty = await f.call('study_analysis', { action: 'get', materialId: id })
+    assert.equal(empty.treeCount, 0)
+
+    const wrote = await f.call('study_analysis', {
+      action: 'save',
+      materialId: id,
+      tree: [
+        {
+          title: '第一章 集合',
+          page: 9,
+          modules: [
+            {
+              title: '1.1 集合',
+              pointId: 'M1.1',
+              page: 10,
+              to: 13,
+              units: [{ title: '集合的概念', pointId: 'M1.1', page: 10, to: 11, note: '元素与集合的关系' }],
+            },
+          ],
+        },
+      ],
+    })
+    assert.equal(wrote.treeCount, 1)
+    assert.equal(wrote.tree[0].title, '第一章 集合')
+    assert.equal(wrote.tree[0].modules[0].units[0].pointId, 'M1.1')
+    assert.equal(wrote.tree[0].modules[0].units[0].note, '元素与集合的关系')
+
+    // 读回来还在（面板拉的就是这一份）
+    const got = await f.call('study_analysis', { action: 'get', materialId: id })
+    assert.equal(got.treeCount, 1)
+    assert.equal(got.tree[0].modules[0].title, '1.1 集合')
+
+    // 这一批只写 chapters：树得原样留着，别被顺手清掉
+    const again = await f.call('study_analysis', {
+      action: 'save',
+      materialId: id,
+      chapters: [{ no: '1', title: '集合' }],
+    })
+    assert.equal(again.chapterCount, 1)
+    assert.equal(again.treeCount, 1, '不传 tree 就保留上一份')
+
+    // 写歪的节点直接丢掉（没有大类名的、不是对象的）
+    const messy = await f.call('study_analysis', {
+      action: 'save',
+      materialId: id,
+      tree: [{ modules: [{ title: '没名字的大类' }] }, { title: '第二章 不等式', units: [{ title: '2.1' }] }],
+    })
+    assert.equal(messy.treeCount, 1)
+    assert.equal(messy.tree[0].title, '第二章 不等式')
+
+    // 空数组 = 清掉，退回自动摊
+    const cleared = await f.call('study_analysis', { action: 'save', materialId: id, tree: [] })
+    assert.equal(cleared.treeCount, 0)
+    assert.deepEqual(f.store.read('analysis').byMaterial[id].tree, [])
+  } finally {
+    f.done()
+  }
+})

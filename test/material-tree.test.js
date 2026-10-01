@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { bookTree, fileKind, folderTree, materialTree, splitFolderName, stripIndex, MAX_UNITS } from '../lib/material-tree.js'
+import { agentTree, bookTree, fileKind, folderTree, materialTree, splitFolderName, stripIndex, MAX_UNITS } from '../lib/material-tree.js'
 
 /** 造一棵假的目录清单：`list('/root')` → 里面有什么。 */
 function fakeList(shape) {
@@ -147,18 +147,21 @@ test('书：目录两级 + 页级索引落到模块里，页码、链接、页�
     assert.equal(first.modules[0].to, 13)
     assert.equal(first.modules[0].pointId, 'M1.1')
 
-    const unit = first.modules[0].units[0]
-    assert.equal(unit.pointId, 'M1.1')
-    assert.equal(unit.kind, '讲解')
-    assert.equal(unit.from, 10)
-    assert.equal(unit.to, 13)
-    assert.equal(unit.title, 'M1.1', '有 pointId 就用它当标题，页面上一眼对得上')
-    assert.match(unit.url, /%E5%BF%85%E4%BF%AE%E4%B8%80\.pdf#page=10$/)
+    // 目录只到两级：模块自己就是最小单元（leaf），不再拿整专题的 spans 硬凑一层。
+    // 旧写法把「和模块页范围有交叠的 span」当单元，于是同一句话被抄进该专题每个模块，
+    // 单元 id 还跟模块名对不上（真数据里 1.2 常用逻辑用语 那行显示的是 M1.1）。
+    const leaf = first.modules[0]
+    assert.equal(leaf.leaf, true)
+    assert.deepEqual(leaf.units, [], '目录没有第三级就不许再造一层')
+    assert.equal(leaf.pointId, 'M1.1')
+    assert.equal(leaf.page, 10)
+    assert.equal(leaf.to, 13)
+    assert.equal(leaf.title, '1.1 集合')
+    assert.match(leaf.url, /%E5%BF%85%E4%BF%AE%E4%B8%80\.pdf#page=10$/)
     // 第 10 页的图拆出来了，其余没拆：只有它带 url
-    assert.deepEqual(unit.pages[0], { page: 10, url: '/study/page?path=' + encodeURIComponent(join(pageDir, 'p0010.png')) })
-    assert.equal(unit.pages[1].url, '')
-    // 页面上的说明取的是 span 的 note
-    assert.equal(unit.note, '集合的概念与表示；元素与集合的关系')
+    assert.deepEqual(leaf.pages[0], { page: 10, url: '/study/page?path=' + encodeURIComponent(join(pageDir, 'p0010.png')) })
+    assert.equal(leaf.pages[1].url, '')
+    assert.equal(leaf.note, '', '说明不再从整专题那条 span 上抄')
 
     // 谁都没归到的页（封面、目录…）单开一块
     assert.equal(tree.loose.length, 1)
@@ -178,9 +181,10 @@ test('书：目录里只有一级条目时，整体当一个板块，别空着',
   })
   assert.equal(tree.basis, 'toc')
   assert.equal(tree.groups.length, 1)
-  // 一级条目自己顶成模块，里面的页级索引当它的单元
+  // 一级条目自己顶成模块；目录没有第三级，它就是 leaf
   assert.equal(tree.groups[0].modules[0].title, '第一章 数列')
-  assert.equal(tree.groups[0].modules[0].units[0].pointId, 'M1.1')
+  assert.equal(tree.groups[0].modules[0].leaf, true)
+  assert.deepEqual(tree.groups[0].modules[0].units, [])
 })
 
 test('书：目录压根没读过就退成「一份材料 + 一段一段的页级索引」', () => {
@@ -229,4 +233,88 @@ test('entry：路径是文件夹走文件夹那一套，是文件走书那一套
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('书：目录写到第三级时，最小单元就是那一条，模块不再算 leaf', () => {
+  const tree = bookTree({
+    material: { title: '方法册', path: 'F:\\课件\\方法册.pdf' },
+    shelf: {
+      pageDir: '',
+      total: 60,
+      toc: [
+        { level: 1, title: '专题一 集合', page: 10, pointId: '' },
+        { level: 2, title: '1.1 集合', page: 10, pointId: 'M1.1' },
+        { level: 3, title: '1.1.1 集合的概念', page: 10, pointId: 'M1.1' },
+        { level: 3, title: '1.1.2 元素与集合', page: 13, pointId: 'M1.1' },
+        { level: 2, title: '1.2 逻辑', page: 20, pointId: 'M1.4' },
+      ],
+    },
+    // 页级索引还是「整专题一条」的老样子：它是兜底，不许再往上顶成单元
+    spans: [{ from: 10, to: 19, pointId: 'M1.1', kind: '讲解', note: '整专题一句话' }],
+    total: 60,
+  })
+
+  assert.equal(tree.basis, 'toc')
+  const first = tree.groups[0].modules[0]
+  assert.equal(first.leaf, false)
+  assert.deepEqual(first.units.map((u) => u.title), ['1.1.1 集合的概念', '1.1.2 元素与集合'])
+  assert.equal(first.units[0].from, 10)
+  assert.equal(first.units[0].to, 12, '到下一个三级条目前一页')
+  assert.equal(first.units[1].from, 13)
+  assert.equal(first.units[1].to, 19)
+  assert.equal(first.units[0].kind, '讲解', '三级条目没写类型时按讲解算')
+  assert.equal(first.units[0].note, '', '三级条目的说明只认它自己，不从整专题那条 span 上抄')
+  // 第二个模块目录里没有三级条目：它自己就是最小单元
+  assert.equal(tree.groups[0].modules[1].leaf, true)
+  assert.deepEqual(tree.groups[0].modules[1].units, [])
+})
+
+test('教练写下来的三层优先：页码缺了按兄弟顺序推，模块没写单元就是 leaf', () => {
+  const tree = agentTree({
+    material: { title: '一轮课程', path: 'F:\\课件\\一轮课程' },
+    shelf: { total: 0 },
+    tree: [
+      {
+        title: '模块一 基础知识',
+        modules: [
+          { title: '集合', pointId: 'M1.1', units: [{ title: '集合的概念', pointId: 'M1.1', page: 3, note: '一句话' }] },
+          { title: '逻辑' },
+        ],
+      },
+    ],
+  })
+
+  assert.equal(tree.basis, 'agent')
+  const g = tree.groups[0]
+  assert.equal(g.title, '模块一 基础知识')
+  assert.equal(g.count, 2, 'leaf 模块也算一条内容')
+
+  const [m1, m2] = g.modules
+  assert.equal(m1.leaf, false)
+  assert.equal(m1.units[0].title, '集合的概念', '名字用它自己的标题（人话），不拿 id 顶')
+  assert.equal(m1.units[0].pointId, 'M1.1', '挂到哪个单元另存一个字段，面板会单挂一枚筹码')
+  assert.equal(m1.units[0].from, 3)
+  assert.equal(m1.units[0].to, 3)
+  assert.equal(m1.units[0].note, '一句话')
+  assert.equal(m2.title, '逻辑')
+  assert.equal(m2.leaf, true)
+  assert.deepEqual(m2.units, [])
+})
+
+test('入口：教练写过就用他写的，没写过才按目录摊', () => {
+  const shelf = { toc: [{ level: 1, title: '第一章 集合', page: 1 }], total: 2 }
+  const wrote = materialTree({
+    material: { title: '必修一', path: 'F:\\课件\\必修一.pdf' },
+    shelf,
+    tree: [{ title: '第一章 集合', modules: [{ title: '1.1 集合', pointId: 'M1.1' }] }],
+  })
+  assert.equal(wrote.basis, 'agent')
+  assert.equal(wrote.groups[0].modules[0].title, '1.1 集合')
+
+  const auto = materialTree({
+    material: { title: '必修一', path: 'F:\\课件\\必修一.pdf' },
+    shelf,
+    tree: [],
+  })
+  assert.equal(auto.basis, 'toc')
 })

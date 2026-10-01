@@ -66,8 +66,8 @@ lib/
   paths.js     目录算法只此一处（数据根 / pages / uploads）
   library.js   多档案库：名册、切换、软删、回收站
   map.js       地图 + 掌握度 + 错题 + 每级档案 + 总体能力 + 任务视图（纯函数）
-  analysis.js  材料分析 + 页级索引（spans / pagesForPoint）
-  material-tree.js  资料图谱的三层骨架：按材料的目录/文件夹摊成 大类 → 模块 → 最小单元（basis: toc / spans / folder）
+  analysis.js  材料分析 + 页级索引（spans / pagesForPoint）+ 教练写的资料图谱 `tree`（`treeOf()` / `upsertAnalysis` 整份覆盖）
+  material-tree.js  资料图谱的三层骨架：优先用教练写的 tree，否则按材料的目录/文件夹摊（basis: agent / toc / spans / folder）
   memory.js    记忆卡与艾宾浩斯排期
   student.js   学生画像（结论层，每条必须挂证据）
   toolbox.js   番茄钟 + 清单
@@ -128,7 +128,7 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 <root>/profiles/<id>/map.json       大类 → 模块 → 最小单元
 <root>/profiles/<id>/mastery.json   每个知识点的档位、证据、错题、复习时间
 <root>/profiles/<id>/tasks.json     按日期分的任务
-<root>/profiles/<id>/analysis.json  每份材料通读后的结论 + 页级索引
+<root>/profiles/<id>/analysis.json  每份材料通读后的结论 + 页级索引（`tree` 是教练写的那份三层图谱）
 <root>/profiles/<id>/toolbox.json   番茄钟 + 清单
 <root>/profiles/<id>/memory.json    记忆卡与排期
 <root>/profiles/<id>/student.json   学生画像
