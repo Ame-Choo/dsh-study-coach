@@ -221,9 +221,22 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 - **图谱卡里那份大类折叠列表只此一份**：`groupedBlocks(modules)` 现在只由 `abilityCard()` 调用
   （`mapCard()` 末尾不再铺一遍）。图谱卡下面是掌握度卡，两处别各画一套大类。
 - **这张卡还挂在「档案」页**（用户说「掌握度在档案页面也要加一个」）：`PAGE_CARDS.library` 的 main =
-  `[['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`,
+  `[['who','学生档案',studentFileCard], ['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`，
   跟地图页**同一张** `abilityCard()`、同一个展开 id `ability`（别复制一份改改，那会开始漂）。
   `test/panel.test.js` 的档案页那条钉着 `data-card="ability"` + `pie-slice` + 「整体掌握度」。
+- **四层掌握度每一级都给一条**（用户原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度」）：
+  `bandIndexOf(stage)`（`MASTERY_BANDS.findIndex`，认不出按「没接触过」）→ `bandCounts(points)`（`{counts, total}`）
+  → `bandStrip(points)`（大类头、模块头那一条 72×6 的四段色带，`title` 写
+  「熟练掌握 n · 大概掌握 n · 薄弱 n · 完全不会 n（共 N 个单元）」；`total` 为 0 就回空串，别画一条空的）
+  → `bandCells(stage)`（单元那一行四格小灯，`[...MASTERY_BANDS].reverse()` 后前 `4 - idx` 格亮
+  `<i class="on">`，**最左那格永远亮**，`style="--c:档色"`）。色带/灯只许用 `--stage-1…6`。
+  挂点：`groupedBlocks()` 大类头、`moduleBlock()` 模块头、`pointRow()` 在 `.stage-tag` 之前。
+  `bandStrip` 里**别用 `r2()`**——那是 `masteryPie()` 的局部函数（踩过，`r2 is not defined` 整张卡都渲染不出来）。
+- **综合学生档案卡 `studentFileCard()`**（用户原话：「在档案界面增加一个学生档案（综合性的）」）：
+  档案页最上面那一张，把散在各处的结论揉成一份——`.judgement`（`state.ability.judgement`）、`.stats`、
+  `.who-bands`（四层色带 + 四档计数）、七天节奏、前 4 条 `state.student.facts`、基本工具 `state.profile.tools`、
+  `mistakes.byStatus`，末尾写明「这套档案是教练每次看完作业、听完课更新出来的」。
+  它是**只读汇总**，改数据仍走对话里的 `study_ability` / `study_student`——别再给这张卡加写接口。
 - 饼图是**整体**四档分布：`MASTERY_BANDS`（熟练掌握 = 熟练稳定 + 能讲明白 → `--stage-6`；
   大概掌握 = 能独立做 → `--stage-4`；薄弱 = 能跟做 + 见过 → `--stage-2`；完全不会 = 没接触过 → `--stage-1`），
   `masteryBands(byStage, total)` 把认不出的差额并进最后一档，`masteryPie()` 用
@@ -276,6 +289,8 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
   **`module.leaf` 的模块头不带 caret、不给 `data-act`**（点了没东西可折）、计数写「最小单元」、
   `atlasLinks(m)` 直接挂模块头。来源那行是 `.atlas-src`（`srcHint`：`basis === 'agent'` 与自动摊两套文案）。
   `atlasUnits()` 要把 leaf 模块也算成一条内容，否则「N 条内容」少一截。
+  **`.atlas-meta` 的 `max-width` 只能写 `100%`**：写 `62%` 时它在 `auto` 轨道里按自身 max-content 打折，
+  一行里塞四件（类型 / 「看完了」/ 页码 / 链接）就折成两行，一屏 494 条内容全变高的（踩过，样张上看出来的）。
   **材料一律写全名，不许退回 A/B/C**（用户原话：「教辅的名字要显示它的名字而不是一串字母」）。
 - `linkLabel(u)` **按扩展名说话**：`.pdf` → 打开 PDF、`.mp4|m4v|mov|mkv|flv|avi|wmv` → 打开视频、
   `.md|markdown|txt` → 打开正文、`u.kind === 'folder'` → 打开文件夹、其余 → 打开。
@@ -284,6 +299,17 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 - `tree.loose`（封面、目录、答案这些没归到任何模块的页）单开一块「没归到目录里的」，
   **标题退回内容类型**（`moduleTitle` 传 `''`，别写「其余」）；一条 pointId 都没有的那几份收进 `.atlas-blank`
   （「这份材料还没挂到最小单元上」）+ 一颗「交给教练去标」。
+- **网课那几行有「看完了」**（用户原话：「学习界面的资料图谱，网课类资料应该增加一个"看完了"按钮」）：
+  账本是 `watched.json`（`lib/watched.js`：`watchKey(materialId, key)` = `` `${id}|${key}` ``、
+  `addWatch` / `watchedIn` / `watchCount`），`GET /study/api/material/tree` 顺带回这份材料的
+  `watched`（键 → 记录），`POST /study/api/watched` 记一笔并**把话递给教练**（正文写明「记一条上课证据
+  （study_record，kind=lesson），并更新掌握度档案和总体评价」）。
+  · **它不是掌握度**：看完只说明见过，档位只由 `study_record` 的 `stage` 推——面板点这一下绝不许直接改档。
+  · 面板 `watchKeyOf()`（优先 `u.url`，没有才用标题——键要跟账本对得上）、`watchMarkOf()`、`watchable()`
+    （`u.kind === 'video'`，或材料 `kind === 'video'` 且 url 去 `#` 后是视频扩展名）、`watchCell()`
+    （没看过给 `.watch-btn` 的 `data-act="atlas-watch"`，看过换成 `.is-watched` 筹码「已看完 · MM-DD」）。
+    **书不给这颗按钮**——那是页码进度，不是「看完」。POST 回来要把响应的整本账换回 `atlasTree.watched`
+    再 `render()`（别只往本地塞一条，服务端那份才是准的）。
 - **转给教练只有一个出口**：`forwardToCoach({materialId, title, path, reason, annotate})`。
   `annotate: false` 是「读不动」的措辞，`true` 是「没标到单元上」的措辞——两套话都写在那一个函数里，
   别在其它地方再拼一遍。**同一份 + 同一个理由只投一次**（`acted` 表），否则刷新会刷出一串重复消息。

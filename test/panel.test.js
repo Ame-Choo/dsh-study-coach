@@ -241,6 +241,8 @@ const TREES = {
     loose: [
       { title: '封面与目录', pointId: '', kind: '目录', from: 1, to: 3, note: '', url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E5%BF%85%E4%BF%AE%E4%B8%80.pdf#page=1', pages: [] },
     ],
+    // 书没有「看完」这回事（那是页码进度），账本是空的
+    watched: {},
   },
   'mat-video': {
     ok: true,
@@ -286,8 +288,15 @@ const TREES = {
       },
     ],
     loose: [],
+    // 网课才有「看完了」：02 那一讲已经点过，04 还没点
+    watched: {
+      '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C02.mp4': {
+        at: '2026-10-01T10:00:00.000Z',
+        title: '02.【必看】观看指南.mp4',
+        pointId: '',
+      },
+    },
   },
-  // 教练用 study_analysis 的 tree 自己写下来的那一份：basis 是 agent，面板要说清来源
   'mat-ai': {
     ok: true,
     material: { materialId: 'mat-ai', title: '随堂小测 · M1.4（2026-10-01）', kind: 'ai', path: 'F:\\课件\\小测.md', file: true, total: 6, rendered: 0, scanned: false, coverage: '部分通读', indexed: 6, chapters: 1, tocCount: 0 },
@@ -466,6 +475,8 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
   document.visibilityState = hidden ? 'hidden' : 'visible'
   const calls = []
   const posts = []
+  // 「看完」那本账：跨这一页里的几次点击记着（真服务端就是这么回事），初值取夹具那份
+  const watched = {}
   globalThis.document = document
   globalThis.window = window
   // 假的 EventSource：面板接通对话时会开一条广播通道（真浏览器里是 SSE）。
@@ -554,6 +565,18 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
       body = MEDIA[id] || { ok: true, pointId: id, title: '', video: null }
     }
     else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
+    // 资料图谱「看完了」：记一笔，回这份材料**最新的整本账**（面板拿它整份换掉）
+    else if (path.includes('/api/watched')) {
+      const payload = options && options.body ? JSON.parse(options.body) : {}
+      const mid = String(payload.materialId || '')
+      const book = watched[mid] || (watched[mid] = { ...((TREES[mid] && TREES[mid].watched) || {}) })
+      book[String(payload.key || '')] = {
+        at: '2026-10-02T09:00:00.000Z',
+        title: payload.title || '',
+        pointId: payload.pointId || '',
+      }
+      body = { ok: true, watched: { ...book }, pushed: true }
+    }
     // 工具栏目：番茄钟跟清单各两条写接口，回的同构，够面板接着往下走就行。
     if (path.includes('/api/toolbox')) body = { ok: true, ...TOOLBOX }
     else if (path.includes('/api/focus')) body = { ok: true, action: 'start', ...TOOLBOX }
@@ -812,6 +835,19 @@ test('地图页下面的掌握度：整体饼图 · 四档分布 · 大类点开
   // 饼图下面是大类名字，行尾还是那枚「档案」
   assert.match(html(), /<h3 class="sub">各大类<\/h3>/)
 
+  // 四层掌握度：大类那一行一条色带；单元那一行的四格灯要展开到大类 + 模块才看得到
+  assert.match(html(), /<span class="band-strip" title="熟练掌握 \d+ · 大概掌握 \d+ · 薄弱 \d+ · 完全不会 \d+（共 \d+ 个单元）">/)
+  assert.doesNotMatch(html(), /class="band-cells"/, '模块没展开，底下单元的四格灯还看不到')
+  await clickAct({ act: 'group-open', group: '第一大块' })
+  assert.match(html(), /<div class="module [^"]*">\s*<div class="module-head"[^>]*>[\s\S]*?band-strip/, '模块那一行也有四层色带')
+  await clickAct({ act: 'module-open', module: 'M1' })
+  assert.match(html(), /class="band-cells"/)
+  assert.match(html(), /<span class="band-cells" style="--c:var\(--stage-\d\)" title="[^"]+ · (熟练掌握|大概掌握|薄弱|完全不会)">/)
+  // 四格灯：最左边那格（最弱那一档）永远亮着，档位越高亮的格越多
+  assert.match(html(), /<span class="band-cells" style="--c:var\(--stage-\d\)" title="[^"]+" ?><i class="on"><\/i>/)
+  await clickAct({ act: 'module-open', module: 'M1' })
+  await clickAct({ act: 'group-open', group: '第一大块' })
+
   // 每级都有「档案」小按键：大类、单元总览里就有，模块级得展开大类才露出来
   assert.match(html(), /data-act="archive-open" data-level="group"/)
   assert.match(html(), /data-act="archive-open" data-level="point"/)
@@ -895,6 +931,20 @@ test('档案页：目标库、学习目标、材料、基本工具各就各位�
   assert.match(html(), /整体掌握度/)
   assert.match(html(), /<div class="col aside">.*data-card="goal"/s)
   assert.match(html(), /<div class="col aside">.*data-card="tools"/s)
+
+  // 最上面那张是综合的学生档案：一句话总评 + 分数 + 四层色带 + 画像 + 工具 + 错题
+  assert.match(html(), /data-card="who"/)
+  assert.match(html(), /<h2>学生档案<\/h2>/)
+  assert.match(html(), /总体评价/)
+  assert.match(html(), /底子还行，先把没碰过的补上。/)
+  assert.match(html(), /class="who-bands"/)
+  assert.match(html(), /class="band-strip"/)
+  assert.match(html(), /他是个什么样的人/)
+  assert.match(html(), /换元之后容易忘记回代/)
+  assert.match(html(), /基本工具/)
+  assert.match(html(), /错题/)
+  // 这两份档案是谁在什么时候更新的，卡上得写明白
+  assert.match(html(), /每次看完作业|收完作业|听完课/)
 })
 
 test('表单能提交：改任务、改目标、改档案名、新建档案都走得通', async () => {
@@ -1132,7 +1182,8 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   const coach = await boot(fixture(), { innerWidth: 400, path: '/study/coach' })
   assert.match(coach.html(), /class="card open" data-card="chat"/)
   const libNarrow = await boot(fixture(), { innerWidth: 400, path: '/study/library' })
-  assert.match(libNarrow.html(), /class="card open" data-card="library"/)
+  // 档案页第一张是综合的「学生档案」（who），摊开的就是它
+  assert.match(libNarrow.html(), /class="card who open" data-card="who"/)
 
   // 工具页那张卡多带了一个类（`<section class="card focus">`），以前 fold() 会把
   // 后面的属性也当成类名砍进去，拼出 `data-card="focus open" data-card="tool"`：
@@ -1902,4 +1953,28 @@ test('学习页：挑一份材料，按它自己的目录摊成三层，每一�
   assert.match(page.html(), /<b class="atlas-id">含参二次不等式<\/b>/)
   assert.match(page.html(), /<span class="atlas-kind atlas-point">M2\.3<\/span>/)
   assert.match(page.html(), /<span class="atlas-kind">习题<\/span>/)
+
+  // ⑫ 「看完了」：网课那几行才有——点过的换成筹码，没点过的给按钮，书一行都没有
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-video' })
+  const vkey = '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C02.mp4'
+  assert.match(page.html(), /<span class="mini is-watched" title="看完了：2026-10-01">已看完 · 10-01<\/span>/)
+  assert.equal((page.html().match(/data-act="atlas-watch"/g) || []).length, 1, '只有 04 那一讲还没点')
+  assert.match(
+    page.html(),
+    /data-act="atlas-watch" data-key="\/study\/file\?path=[^"]*04\.mp4" data-title="04\.基础知识&amp;基本例题\.mp4"/,
+  )
+
+  // ⑬ 点它：记一笔（POST 那本账），回来把这一行换成筹码
+  await page.clickAct({ act: 'atlas-watch', key: vkey.replace('02', '04'), title: '04.基础知识&基本例题.mp4' })
+  assert.equal(page.posts.at(-1).path, '/study/api/watched')
+  assert.equal(page.posts.at(-1).body.materialId, 'mat-video')
+  assert.equal(page.posts.at(-1).body.key, vkey.replace('02', '04'))
+  assert.match(page.posts.at(-1).body.title, /04\.基础知识/)
+  assert.match(page.boxes.get('toast').textContent, /递给教练/)
+  assert.doesNotMatch(page.html(), /data-act="atlas-watch"/, '记完这笔，这一份就没有可点的了')
+
+  // ⑭ 书（教辅）不给这颗按钮：那是页码进度，不是「看完」
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
+  assert.doesNotMatch(page.html(), /data-act="atlas-watch"/)
+  assert.doesNotMatch(page.html(), /is-watched/)
 })

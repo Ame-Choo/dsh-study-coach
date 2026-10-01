@@ -1147,8 +1147,64 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   `/study/api/point/media`）、`test/graph.test.js` 两条按新行为改口、`test/panel.test.js` 加了 `MEDIA` 夹具与两条断言。
 - 这一批动了 `lib/material-tree.js` 与 `lib/routes.js`（**→ 要重启 DSH**），`assets/*` 刷新即可。
 
+## 补：四层掌握度、综合学生档案、网课「看完了」
 
+用户一次提了四件事（原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度，在档案界面增加一个学生档案（综合性的），
+然后学生每次有完成作业，听完课都要更新两个学生档案，一个是掌握度模块的档案（并且同步更新掌握度），一个是总体评价，
+然后学习界面的资料图谱，网课类资料应该增加一个"看完了"按钮」）。
 
+### 一、四层掌握度：大类、模块、最小单元各一条
 
+`MASTERY_BANDS` 那四档（熟练掌握 = 熟练稳定 + 能讲明白 / 大概掌握 = 能独立做 / 薄弱 = 能跟做 + 见过 /
+完全不会 = 没接触过）原来只在整体饼图上用，现在每一级都给一条：
+
+- `bandIndexOf(stage)` → `MASTERY_BANDS.findIndex`，认不出的档位按「完全不会」算；
+- `bandCounts(points)` → `{ counts, total }`，`points` 是这一级底下所有最小单元；
+- `bandStrip(points)` → 72×6 的四段色带，`title` 写「熟练掌握 n · 大概掌握 n · 薄弱 n · 完全不会 n（共 N 个单元）」，
+  `total` 为 0 就回空串（别画一条空的）；挂在 `groupedBlocks()` 的大类头与 `moduleBlock()` 的模块头；
+- `bandCells(stage)` → 单元那一行的四格小灯，最左那格永远亮，`style="--c:档色"`；挂在 `pointRow()` 的 `.stage-tag` 之前。
+
+色带 / 灯只用 `--stage-1…6` 那几个 token。**踩过一次**：`bandStrip` 里顺手用了 `r2()`，而那是 `masteryPie()` 的局部函数，
+整张卡直接 `r2 is not defined` 渲染不出来。
+
+### 二、综合学生档案卡（档案页最上面那一张）
+
+`studentFileCard()` 把原来散在各处的结论揉成一份：总体评价（`state.ability.judgement` + 粗档位）、
+一组数字（整体掌握度 % / 碰过几个单元 / 平均把握 / 薄弱几个 / 该复习几条 / 离目标几天）、四层色带与四档计数、
+最近七天的节奏柱、前 4 条学生画像（`state.student.facts`，带类别标签）、基本工具表、错题三档计数，
+末尾写明「这套档案是教练每次看完作业、听完课更新出来的」。
+
+它是**只读汇总**——改数据仍走对话里的 `study_ability` / `study_student`，没给它加写接口。
+`PAGE_CARDS.library` 的 main 因此变成 `[['who','学生档案',studentFileCard], ['library','学习档案',libraryCard],
+['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`（掌握度那张跟地图页是**同一张** `abilityCard()`）。
+
+### 三、两份档案一起更新（写进 `SKILL.md`）
+
+第 7 节「收作业」里新增「收完作业 / 听完课：两份档案一起更新」：**掌握度档案**用 `study_record` 记证据
+（作业 `quiz` / `photo`、上课 `lesson`，note 写清哪天哪份材料什么表现），一次只推一档，`nextReview` 跟档位
+（见过 1 / 能跟做 2 / 能独立做 4 / 熟练稳定 7 天），错了就挂 `mistake`（`origin` 必填，`cause` + `fix` 齐了才能标「已订正」）；
+**总体评价**用 `study_ability action=set` 写判词、`from` 填综合了哪几条画像，`study_student` 只在有挂得上证据的新结论时才动。
+顺序是「先流水后结论」，时机是当场（他交作业 / 说听完课 / 面板递来「我看完了《…》「…」（M1.1）」）。
+**档位只有 `study_record` 的 `stage` 一个入口**——面板点「看完了」绝不许直接改档。
+
+### 四、网课那几行的「看完了」
+
+- 账本 `watched.json`（`lib/watched.js`：`watchKey(materialId, key)` = `` `${id}|${key}` ``、`addWatch` / `watchedIn` / `watchCount`），
+  `GET /study/api/material/tree` 顺带回这份材料的 `watched`（键 → 记录）。
+- `POST /study/api/watched` 记一笔（`{ materialId, key, title, pointId, materialTitle }`），再**把话递给教练**：
+  「我看完了《…》「…」（M1.1）。请你按规矩记一条上课证据（`study_record`，`kind=lesson`），该推档就推；
+  并顺手更新那两份档案：掌握度档案（档位与证据）和总体评价（`study_ability` + 必要时 `study_student`）。」
+  没有投递通道时照样记下（回 `pushed: false` + `pushError`），话还在面板上。
+- 面板：`watchable()` 认网课（`u.kind === 'video'`，或材料 `kind === 'video'` 且 url 是视频扩展名），
+  没看过给一颗「看完了」按钮，看过换成「已看完 · MM-DD」筹码。**书不给这颗按钮**——那是页码进度，不是「看完」。
+  POST 回来把响应的**整本账**换回 `atlasTree.watched` 再 `render()`（别只往本地塞一条）。
+
+### 五、测试与生效
+
+- 新增 `test/watched.test.js`（3 条：`watchKey` / `addWatch` 一条一记、路由缺参、真 tmp 网课文件夹走一遍 tree + POST），
+  `test/panel.test.js` 补 `watched` 夹具与三步点击断言（筹码、按钮、POST body、书没有按钮）、掌握度页补四层色带与四格灯断言、
+  档案页补学生档案卡断言；全量 `node --test` = **336 pass / 0 fail / 0 skipped**。
+- 这一批动了 `lib/`（`schema.js` 多一份 `watched.json`、`store.js` 的 snapshot、`routes.js` 多一条 POST 路由）
+  → **要重启 DSH**；`assets/*` 刷新即可。
 
 

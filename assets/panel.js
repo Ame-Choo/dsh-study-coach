@@ -914,9 +914,14 @@ const PAGE_CARDS = {
     aside: [['guide', '教练的指引', guideCard]],
   },
   library: {
-    // 档案这一页也挂一份掌握度（用户要的）：翻档案的时候顺眼就能看到整体饼图与各大类。
-    // 它跟地图页那张是同一个 abilityCard()，两处的展开状态也共用同一个 id。
-    main: [['library', '学习档案', libraryCard], ['ability', '掌握度', abilityCard], ['materials', '材料', materialsCard]],
+    // 档案这一页：先是综合的「学生档案」（这个人现在什么水平），再是学习档案、掌握度、材料。
+    // 掌握度跟地图页那张是同一个 abilityCard()，两处的展开状态也共用同一个 id。
+    main: [
+      ['who', '学生档案', studentFileCard],
+      ['library', '学习档案', libraryCard],
+      ['ability', '掌握度', abilityCard],
+      ['materials', '材料', materialsCard],
+    ],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
   },
   // 资料这一页：主栏是书架，边栏是导入入口。
@@ -1502,6 +1507,57 @@ function masteryBands(byStage, total) {
 }
 
 /**
+ * 一个单元的档位属于四层里的哪一层（0 最稳，3 最弱）。表里认不出来的一律算「完全不会」。
+ * 四层只看这一处定义，别在页面里另写一套阈值。
+ */
+function bandIndexOf(stage) {
+  const i = MASTERY_BANDS.findIndex((b) => b.stages.includes(String(stage)))
+  return i < 0 ? MASTERY_BANDS.length - 1 : i
+}
+
+/** 一组单元摊成四层：每层几个、一共几个。传进来的点没有记录就算「没接触过」。 */
+function bandCounts(points) {
+  const counts = MASTERY_BANDS.map(() => 0)
+  let total = 0
+  for (const p of points || []) {
+    const rec = (state.mastery && state.mastery.points && state.mastery.points[p.id]) || null
+    const stage = rec && STAGES.includes(rec.stage) ? rec.stage : '没接触过'
+    counts[bandIndexOf(stage)] += 1
+    total += 1
+  }
+  return { counts, total }
+}
+
+/**
+ * 四层那一条小色带（大类、模块这一级用）：一段一档，宽度按底下单元数分。
+ * 悬停给「熟练掌握 3 · 大概掌握 2 · …」——四个数字比一条带子更能说明问题。
+ */
+function bandStrip(points) {
+  const { counts, total } = bandCounts(points)
+  if (!total) return ''
+  const segs = MASTERY_BANDS.map((b, i) =>
+    counts[i] ? `<i style="width:${Math.round((counts[i] / total) * 10000) / 100}%;background:${b.color}"></i>` : '',
+  ).join('')
+  const said = MASTERY_BANDS.map((b, i) => `${b.label} ${counts[i]}`).join(' · ')
+  return `<span class="band-strip" title="${esc(said)}（共 ${total} 个单元）">${segs}</span>`
+}
+
+/**
+ * 单个单元的四层（最小单元这一级用）：四格，亮到它自己那一档为止，越亮越稳。
+ * 颜色用它自己那一档，所以四格扫过去一眼能看出深浅，不用逐个读字。
+ */
+function bandCells(stage) {
+  const idx = bandIndexOf(stage)
+  const lit = MASTERY_BANDS.length - idx
+  const color = MASTERY_BANDS[idx].color
+  const cells = [...MASTERY_BANDS]
+    .reverse()
+    .map((b, i) => `<i class="${i < lit ? 'on' : ''}"></i>`)
+    .join('')
+  return `<span class="band-cells" style="--c:${color}" title="${esc(stage)} · ${esc(MASTERY_BANDS[idx].label)}">${cells}</span>`
+}
+
+/**
  * 饼图。`pathLength="100"` 让每一段的 dash 长度直接就是百分比，不用自己算弧线；
  * 段尾多给 0.4 是为了盖住抗锯齿留的那条缝（相邻两块相差大时那条缝会显成一根黑线）。
  */
@@ -1738,6 +1794,110 @@ function studentCard() {
   </section>`
 }
 
+/**
+ * 学生档案（综合）：一页看完「这个人现在什么水平」。
+ *
+ * 它不产生新数据，只是把两份要一起更新的档案摆到一张卡里——
+ * **总体评价**（总评 + 画像 + 基本工具）和**掌握度**（四层分布 + 碰过多少 + 该复习），
+ * 再加最近七天的节奏和错题概况。每次他做完作业、听完一节课，这两份都应该动一动。
+ */
+function studentFileCard() {
+  const a = state.ability || {}
+  const modules = state.map && Array.isArray(state.map.modules) ? state.map.modules : []
+  const points = modules.flatMap((m) => (Array.isArray(m.points) ? m.points : []))
+  const { counts, total } = bandCounts(points)
+  const judge = (a.judgement && a.judgement.text) || ''
+  const facts = (student && student.facts) || []
+  const tools = (state.profile && state.profile.tools) || []
+  const book = mistakes || { items: [], byStatus: {}, total: 0 }
+  const by = book.byStatus || {}
+  const days = (a.pace && a.pace.days) || []
+  const maxMin = Math.max(1, ...days.map((d) => d.minutesTotal || 0))
+
+  const stat = [
+    `<span>整体掌握度 <b>${Math.round(Number(a.overall) || 0)}%</b></span>`,
+    `<span>碰过 <b>${a.touched || 0}</b>/${a.total || 0}</span>`,
+    `<span>平均把握 <b>${Math.round((a.avgConfidence || 0) * 100)}%</b></span>`,
+    `<span>薄弱 <b>${a.weakTotal || 0}</b></span>`,
+    `<span>该复习 <b>${a.dueTotal || 0}</b></span>`,
+    typeof (a.goal && a.goal.daysLeft) === 'number' ? `<span>离目标 <b>${a.goal.daysLeft}</b> 天</span>` : '',
+  ]
+    .filter(Boolean)
+    .join('')
+
+  // 四层掌握度：一条带子看分布，四个数字看具体几个单元
+  const bandRow = `<div class="who-bands">
+      ${bandStrip(points) || '<span class="dim">地图里还没有单元。</span>'}
+      <ul class="pie-legend tight">${MASTERY_BANDS.map(
+        (b, i) => `<li>
+        <span class="lg"><i class="lg-dot" style="background:${b.color}"></i>${b.label}</span>
+        <span class="pie-pct">${counts[i]}</span>
+      </li>`,
+      ).join('')}</ul>
+    </div>`
+
+  const pace = days.length
+    ? `<div class="pace">${days
+        .map(
+          (d) => `<div class="pace-day" title="${d.date}：${d.done}/${d.total} 条，${d.minutesDone}/${d.minutesTotal} 分钟">
+        <i style="height:${Math.round(((d.minutesTotal || 0) / maxMin) * 100)}%"><b style="height:${d.minutesTotal ? Math.round(((d.minutesDone || 0) / d.minutesTotal) * 100) : 0}%"></b></i>
+        <span>${esc(String(d.date).slice(5))}</span>
+      </div>`,
+        )
+        .join('')}</div>
+      <p class="dim">完成 ${a.pace.done}/${a.pace.total} 条 · ${a.pace.minutesDone}/${a.pace.minutesTotal} 分钟（${a.pace.completion}%）</p>`
+    : ''
+
+  const factRows = facts
+    .slice(0, 4)
+    .map(
+      (f) => `<li><span class="tag">${esc(f.kind)}</span>
+        <div class="mat-main"><b>${esc(f.text)}</b>${f.note ? `<div class="dim">${esc(f.note)}</div>` : ''}</div></li>`,
+    )
+    .join('')
+
+  const toolRows = tools
+    .map(
+      (t) => `<li><span class="dot" style="background:${STAGE_COLOR[t.stage] || 'var(--stage-1)'}"></span>
+        <b>${esc(t.name)}</b>
+        <span class="stage-tag" style="color:${STAGE_COLOR[t.stage] || 'var(--stage-1)'}">${esc(t.stage)}</span></li>`,
+    )
+    .join('')
+
+  return `<section class="card who">
+    <div class="card-head">
+      <h2>学生档案</h2>
+      <span class="dim">${esc(a.today || '')}${total ? ` · ${total} 个单元` : ''}</span>
+    </div>
+    ${
+      judge
+        ? `<div class="judgement"><span class="tag">总体评价</span><div>${esc(judge)}</div>
+            ${a.judgement.level ? `<div class="dim">${esc(a.judgement.level)}</div>` : ''}</div>`
+        : '<p class="dim">还没有总体评价。在对话里问一句「我现在什么水平」，教练会依据掌握度、错题和节奏写一条。</p>'
+    }
+    <div class="stats">${stat}</div>
+    ${bandRow}
+    ${pace}
+    <h3 class="sub">他是个什么样的人</h3>
+    ${
+      factRows
+        ? `<ul class="list tight">${factRows}</ul>
+           <p class="dim">一共 ${student.total} 条判断${student.orphans.length ? ` · ${student.orphans.length} 条要修` : ''}，全部在「学生画像」那张卡里。</p>`
+        : '<p class="dim">还没有画像。等攒够几次真表现，教练会记下第一条。</p>'
+    }
+    <h3 class="sub">基本工具</h3>
+    ${toolRows ? `<ul class="list tight">${toolRows}</ul>` : '<p class="dim">还没记过。算得慢、不会查资料、画不出图这些，说一声就记一条。</p>'}
+    <h3 class="sub">错题</h3>
+    <div class="stats">
+      <span>待验证 <b>${by['待验证'] || 0}</b></span>
+      <span>已订正 <b>${by['已订正'] || 0}</b></span>
+      <span>已复做对 <b>${by['已复做对'] || 0}</b></span>
+      <span>共 <b>${book.total || 0}</b> 条</span>
+    </div>
+    <p class="dim">这套档案是教练每次看完作业、听完课更新出来的。想让它更准，就把做过的题、听过的课告诉他。</p>
+  </section>`
+}
+
 /** 我建过的学习目标：能看、能切、能改名、能删掉。 */
 function libraryCard() {
   const list = state.profiles
@@ -1929,11 +2089,14 @@ function groupedBlocks(modules) {
       const open = ui.openGroups.has(name)
       const pct = Math.round(Number((progress.groups && progress.groups[name]) || 0))
       const g = abilityGroups.find((x) => x.name === name) || {}
+      // 四层掌握度：这一大类底下所有单元摊开的分布（进度条是「碰过多少」，这条是「都到了哪一档」）
+      const band = bandStrip(mods.flatMap((m) => (Array.isArray(m.points) ? m.points : [])))
       return `<div class="group-head ${open ? 'open' : ''}" data-act="group-open" data-group="${esc(name)}">
           <span class="gc-caret">${open ? '▾' : '▸'}</span>
           <span class="gc-name">${esc(name)}</span>
           <span class="gc-bar"><i style="width:${pct}%"></i></span>
           <span class="gc-pct">${pct}%</span>
+          ${band}
           <span class="dim">${mods.length} 个模块${g.weak ? ` · 薄弱 ${g.weak}` : ''}${g.due ? ` · 该复习 ${g.due}` : ''}</span>
           ${archiveBtn('group', name)}
         </div>
@@ -1947,12 +2110,14 @@ function moduleBlock(mod) {
   const id = String(mod.id)
   const open = ui.openModules.has(id)
   const pct = Math.round(Number((state.progress && state.progress.modules && state.progress.modules[id]) || 0))
+  const band = bandStrip(points)
   return `<div class="module ${open ? 'open' : ''}">
     <div class="module-head" data-act="module-open" data-module="${esc(id)}">
       <span class="gc-caret">${open ? '▾' : '▸'}</span>
       <b>${esc(mod.title)}</b>
       <span class="gc-bar"><i style="width:${pct}%"></i></span>
       <span class="gc-pct">${pct}%</span>
+      ${band}
       <span class="dim">${esc(id)}</span>
       ${archiveBtn('module', id)}
     </div>
@@ -1972,6 +2137,7 @@ function pointRow(p) {
       <span class="dot" style="background:${STAGE_COLOR[stage]}" title="${stage}"></span>
       <b>${esc(p.title)}</b>
       ${evidence ? `<span class="dim">${evidence} 条证据</span>` : ''}
+      ${bandCells(stage)}
       <span class="stage-tag" style="color:${STAGE_COLOR[stage]}">${stage}</span>
       ${archiveBtn('point', p.id)}
     </div>
@@ -2589,6 +2755,49 @@ function atlasLinks(u) {
 }
 
 /**
+ * 这一讲在「看完了」那本账里认哪个键。服务端原样存这个键，所以它得**稳**：
+ * 优先用那条链接（就是这一讲的文件），没有链接才退回标题。
+ */
+function watchKeyOf(u) {
+  const url = String(u.url || '');
+  if (url) return url;
+  return String(u.title || u.pointId || '');
+}
+
+/** 这一讲在不在「看完了」那本账里。 */
+function watchMarkOf(u) {
+  const marks = (atlasTree && atlasTree.watched) || {};
+  return marks[watchKeyOf(u)] || null;
+}
+
+/**
+ * 只有网课才给「看完了」——书和讲义是页码进度，没有「看完」这回事。
+ * 网课材料里 kind 本来就是 video（按扩展名认的），两条都兜一层，别漏。
+ */
+function watchable(u) {
+  if (u.kind === 'video') return true;
+  const mat = (atlasTree && atlasTree.material) || {};
+  if (mat.kind !== 'video') return false;
+  return /\.(mp4|m4v|mov|mkv|flv|avi|wmv|webm|ts)$/i.test(String(u.url || '').split('#')[0]);
+}
+
+/**
+ * 「看完了」那颗按钮 / 已看完那枚筹码。
+ *
+ * 点一下 = 记一笔（`watched.json`）+ 把这句话递进对话，让教练按规矩记上课证据、
+ * 更新掌握度档案与总体评价。**它自己不动掌握度**（看完一讲只说明见过了）。
+ */
+function watchCell(u) {
+  if (!watchable(u)) return '';
+  const mark = watchMarkOf(u);
+  if (mark) {
+    const day = String(mark.at || '').slice(0, 10);
+    return `<span class="mini is-watched" title="看完了：${esc(day)}">已看完 · ${esc(day.slice(5))}</span>`;
+  }
+  return `<button type="button" class="mini watch-btn" data-act="atlas-watch" data-key="${esc(watchKeyOf(u))}" data-title="${esc(u.title || '')}" data-point="${esc(u.pointId || '')}" title="看完这一讲就点一下：记一笔，并让教练更新掌握度和总评">看完了</button>`;
+}
+
+/**
  * 一行最小单元：左边是它叫什么（单元名 + 一句说明），右边是挂到哪个单元 / 类型 / 页码 / 链接。
  *
  * 名字用它自己的标题（材料目录里写的人话）；挂了 pointId 的再单挂一枚 id 筹码——
@@ -2608,6 +2817,7 @@ function atlasUnitRow(u) {
       ${point ? `<span class="atlas-kind atlas-point">${esc(point)}</span>` : ''}
       ${kind ? `<span class="atlas-kind">${esc(kind)}</span>` : ''}
       ${range ? `<span class="atlas-range">${esc(range)}</span>` : ''}
+      ${watchCell(u)}
       ${atlasLinks(u)}
     </span>
   </li>`
@@ -3760,6 +3970,29 @@ document.addEventListener('click', async (event) => {
       const shut = atlasShut()
       if (shut.has(key)) shut.delete(key)
       else shut.add(key)
+      render()
+    } else if (act === 'atlas-watch') {
+      // 看完一讲：记一笔（服务端那本账），并把这句话递进对话，让教练更新两份档案。
+      // 一节课听完不等于学会了——档位要教练看完作业再推，所以这儿只记账、不动掌握度。
+      const key = el.dataset.key || ''
+      const mat = ((atlasTree && atlasTree.material) || {})
+      const id = String(ui.atlasPick || mat.materialId || '')
+      if (!key || !id || el.disabled) return
+      el.disabled = true
+      try {
+        const res = await api('/study/api/watched', {
+          materialId: id,
+          key,
+          title: el.dataset.title || '',
+          pointId: el.dataset.point || '',
+          materialTitle: mat.title || '',
+        })
+        if (atlasTree) atlasTree.watched = res.watched || {}
+        toast(res.pushed ? '记下了，也把话递给教练了' : '记下了 —— 没送到教练那儿', !res.pushed)
+      } catch (e) {
+        el.disabled = false
+        toast('没记上：' + (e && e.message ? e.message : e), true)
+      }
       render()
     } else if (act === 'atlas-annotate') {
       const id = el.dataset.id || ''

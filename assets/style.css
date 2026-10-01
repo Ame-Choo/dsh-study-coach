@@ -548,12 +548,26 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 .atlas-unit.miss .atlas-id { color: var(--faint); }
-.atlas-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; justify-content: flex-end; max-width: 62%; }
+/* 右边那一串（类型 / 页码 / 链接）只占自己需要的宽度；`max-width: 100%` 就够——
+   写 `62%` 会让它在 auto 轨道里按自身 max-content 打个折，于是一行视频被折成两行（踩过）。 */
+.atlas-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; justify-content: flex-end; max-width: 100%; }
 .atlas-kind { flex: none; padding: 0 5px; line-height: 16px; font-size: var(--fs-micro); color: var(--faint); border: 1px solid var(--line); }
 /* 挂了知识地图单元的 id 筹码：名字是人话，id 是它归到哪儿，两样都得看得见 */
 .atlas-point { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .atlas-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .atlas-links .mini { line-height: 16px; }
+/* 「看完了」只有网课才有：一颗安静的小按钮，点过之后变成已完成的筹码（不再可点）。
+   它记的是「这一讲我听过了」，跟右边那颗档位筹码是两件事，所以配色也分得开。 */
+.watch-btn { flex: none; line-height: 16px; cursor: pointer; color: var(--dim); font-variant-numeric: tabular-nums; }
+.watch-btn:hover { border-color: var(--accent); color: var(--accent); }
+.watch-btn::before { content: '○'; margin-right: 4px; font-size: 10px; opacity: 0.75; }
+.is-watched {
+  flex: none; display: inline-flex; align-items: center; line-height: 16px; padding: 0 7px;
+  font-size: var(--fs-micro); color: var(--accent); font-variant-numeric: tabular-nums;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.is-watched::before { content: '✓'; margin-right: 3px; font-size: 10px; }
 .atlas-pg-none { font-size: var(--fs-micro); }
 .atlas-blank { margin-top: var(--sp-3); padding: var(--sp-3); background: var(--card-2); border-left: 2px solid var(--warn); }
 .atlas-blank > b { display: block; margin-bottom: 6px; color: var(--ink); }
@@ -672,6 +686,18 @@ html[data-mode="sidebar"] .list.tasks li.task-item > .task-meta { text-align: le
 .gc-bar.sm { width: 64px; }
 .gc-pct { flex: none; font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* 四层掌握度：大类、模块这一级是一条色带（一段一档，宽度按底下单元数分），
+   最小单元那一级是四格灯（亮到它自己那一档，越亮越稳）。两样都只靠深浅说话，
+   具体数字在悬停的 title 里——三个层级都摆一份，扫一眼就知道哪一层在拖后腿。 */
+.band-strip {
+  flex: none; display: inline-flex; width: 72px; height: 6px; align-self: center;
+  border-radius: var(--radius-sm); overflow: hidden; background: var(--card-2);
+}
+.band-strip i { display: block; height: 100%; }
+.band-cells { flex: none; display: inline-flex; gap: 2px; align-items: center; }
+.band-cells i { width: 4px; height: 11px; background: var(--card-2); border: 1px solid var(--line); }
+.band-cells i.on { background: var(--c); border-color: var(--c); }
+
 /* ── 掌握度那张卡：饼图 + 四档图例 + 大类细账（地图页「知识图谱」下面那一节） ──
    饼图是纯 SVG（stroke-dasharray 画弧），颜色只取档位色板那四个 token，别写死色值。 */
 .mastery {
@@ -742,6 +768,16 @@ button.mini.danger:hover, a.mini.danger:hover { background: var(--danger-bg); }
   border-left: 3px solid var(--accent); background: var(--hl);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 9px 13px; margin: 6px 0 10px; line-height: 1.6;
 }
+
+/* 学生档案（综合那张卡）：一条四层带子 + 四个数字横着排。
+   带子比别处粗一点、长一点——这张卡上它是要被细看的东西。 */
+.who-bands { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin: 8px 0 2px; }
+.who-bands > .band-strip { width: 132px; height: 8px; }
+.who-bands .pie-legend { margin: 0; grid-auto-flow: column; grid-auto-columns: max-content; gap: 14px; }
+.who-bands .pie-legend li { font-size: var(--fs-micro); }
+.who-bands .pie-legend .lg { min-width: 0; }
+.who .judgement { margin-top: 4px; }
+.who .stats { margin-bottom: 2px; }
 
 /* 七天柱状图：panel.js 出的是 <i style="height:总分钟占比%"><b style="height:做完占比%"></b></i>，
    外层是当天总量的浅色轨道，内层是已完成的部分。两处别各写各的。 */
