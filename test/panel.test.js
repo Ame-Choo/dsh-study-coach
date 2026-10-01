@@ -241,8 +241,6 @@ const TREES = {
     loose: [
       { title: '封面与目录', pointId: '', kind: '目录', from: 1, to: 3, note: '', url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E5%BF%85%E4%BF%AE%E4%B8%80.pdf#page=1', pages: [] },
     ],
-    // 书没有「看完」这回事（那是页码进度），账本是空的
-    watched: {},
   },
   'mat-video': {
     ok: true,
@@ -288,14 +286,6 @@ const TREES = {
       },
     ],
     loose: [],
-    // 网课才有「看完了」：02 那一讲已经点过，04 还没点
-    watched: {
-      '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C02.mp4': {
-        at: '2026-10-01T10:00:00.000Z',
-        title: '02.【必看】观看指南.mp4',
-        pointId: '',
-      },
-    },
   },
   'mat-ai': {
     ok: true,
@@ -475,8 +465,6 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
   document.visibilityState = hidden ? 'hidden' : 'visible'
   const calls = []
   const posts = []
-  // 「看完」那本账：跨这一页里的几次点击记着（真服务端就是这么回事），初值取夹具那份
-  const watched = {}
   globalThis.document = document
   globalThis.window = window
   // 假的 EventSource：面板接通对话时会开一条广播通道（真浏览器里是 SSE）。
@@ -565,18 +553,6 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
       body = MEDIA[id] || { ok: true, pointId: id, title: '', video: null }
     }
     else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
-    // 资料图谱「看完了」：记一笔，回这份材料**最新的整本账**（面板拿它整份换掉）
-    else if (path.includes('/api/watched')) {
-      const payload = options && options.body ? JSON.parse(options.body) : {}
-      const mid = String(payload.materialId || '')
-      const book = watched[mid] || (watched[mid] = { ...((TREES[mid] && TREES[mid].watched) || {}) })
-      book[String(payload.key || '')] = {
-        at: '2026-10-02T09:00:00.000Z',
-        title: payload.title || '',
-        pointId: payload.pointId || '',
-      }
-      body = { ok: true, watched: { ...book }, pushed: true }
-    }
     // 工具栏目：番茄钟跟清单各两条写接口，回的同构，够面板接着往下走就行。
     if (path.includes('/api/toolbox')) body = { ok: true, ...TOOLBOX }
     else if (path.includes('/api/focus')) body = { ok: true, action: 'start', ...TOOLBOX }
@@ -796,18 +772,21 @@ test('换页走前端，不整页跳——服务端没重启时子页面也点�
   assert.equal(window.history.pushes.at(-1), '/study')
 })
 
-test('今天页：任务能跳转、能改能删；看课的任务先看再练，顺序不能反', async () => {
+test('今天页：任务能跳转、能改能删；一行只留「打开 / 改 / 删除」', async () => {
   const { html, clickAct } = await boot(fixture(), { path: '/study/today' })
 
   assert.match(html(), /data-card="today"/)
   assert.match(html(), /data-act="task-toggle"/)
+  // 一条任务只给一颗「打开」，指向教练手上那份东西（这条任务没写 open，就退到 M1.1 的网课）
   assert.match(html(), /\/study\/file\?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C01\.%E7%AC%AC%E4%B8%80%E8%8A%82/)
-  assert.match(html(), /观看本节网课/)
-  assert.match(html(), /本节讲义/)
-  assert.match(html(), /\/study\/practice\?point=M1\.1/)
-  assert.match(html(), /看完后做题/)
-  assert.ok(html().indexOf('观看本节网课') < html().indexOf('看完后做题'), '看课按钮要排在练习前面')
-  assert.doesNotMatch(html(), /做题 \/ 查看掌握度/, '看课任务的按钮说的是「看完后做题」')
+  assert.equal((html().match(/class="open-link[^"]*"/g) || []).length, 1, '一条任务只该有一颗跳转按钮')
+  assert.match(html(), /class="open-link[^"]*"[^>]*>打开<\/a>/)
+  // 那几颗旧按钮全没了：看课、讲义、做题页都不再单挂
+  assert.doesNotMatch(html(), /观看本节网课/)
+  assert.doesNotMatch(html(), /本节讲义/)
+  assert.doesNotMatch(html(), /看完后做题/)
+  assert.doesNotMatch(html(), /做题 \/ 查看掌握度/)
+  assert.doesNotMatch(html(), /\/study\/practice\?point=M1\.1/)
 
   assert.match(html(), /data-act="task-edit"/)
   assert.match(html(), /data-act="task-remove"/)
@@ -1954,27 +1933,9 @@ test('学习页：挑一份材料，按它自己的目录摊成三层，每一�
   assert.match(page.html(), /<span class="atlas-kind atlas-point">M2\.3<\/span>/)
   assert.match(page.html(), /<span class="atlas-kind">习题<\/span>/)
 
-  // ⑫ 「看完了」：网课那几行才有——点过的换成筹码，没点过的给按钮，书一行都没有
+  // ⑫ 网课那一份：一行只有类型筹码 + 一颗「打开视频」，没有别的按钮
   await page.clickAct({ act: 'atlas-pick', id: 'mat-video' })
-  const vkey = '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C02.mp4'
-  assert.match(page.html(), /<span class="mini is-watched" title="看完了：2026-10-01">已看完 · 10-01<\/span>/)
-  assert.equal((page.html().match(/data-act="atlas-watch"/g) || []).length, 1, '只有 04 那一讲还没点')
-  assert.match(
-    page.html(),
-    /data-act="atlas-watch" data-key="\/study\/file\?path=[^"]*04\.mp4" data-title="04\.基础知识&amp;基本例题\.mp4"/,
-  )
-
-  // ⑬ 点它：记一笔（POST 那本账），回来把这一行换成筹码
-  await page.clickAct({ act: 'atlas-watch', key: vkey.replace('02', '04'), title: '04.基础知识&基本例题.mp4' })
-  assert.equal(page.posts.at(-1).path, '/study/api/watched')
-  assert.equal(page.posts.at(-1).body.materialId, 'mat-video')
-  assert.equal(page.posts.at(-1).body.key, vkey.replace('02', '04'))
-  assert.match(page.posts.at(-1).body.title, /04\.基础知识/)
-  assert.match(page.boxes.get('toast').textContent, /递给教练/)
-  assert.doesNotMatch(page.html(), /data-act="atlas-watch"/, '记完这笔，这一份就没有可点的了')
-
-  // ⑭ 书（教辅）不给这颗按钮：那是页码进度，不是「看完」
-  await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
-  assert.doesNotMatch(page.html(), /data-act="atlas-watch"/)
-  assert.doesNotMatch(page.html(), /is-watched/)
+  assert.match(page.html(), /<span class="atlas-kind">video<\/span>/)
+  assert.match(page.html(), /<a class="mini" href="\/study\/file\?path=[^"]*04\.mp4"[^>]*>打开视频<\/a>/)
+  assert.equal((page.html().match(/data-act="atlas-watch"/g) || []).length, 0)
 })

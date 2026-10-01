@@ -1147,11 +1147,13 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   `/study/api/point/media`）、`test/graph.test.js` 两条按新行为改口、`test/panel.test.js` 加了 `MEDIA` 夹具与两条断言。
 - 这一批动了 `lib/material-tree.js` 与 `lib/routes.js`（**→ 要重启 DSH**），`assets/*` 刷新即可。
 
-## 补：四层掌握度、综合学生档案、网课「看完了」
+## 补：四层掌握度、综合学生档案、两份档案一起更新
 
-用户一次提了四件事（原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度，在档案界面增加一个学生档案（综合性的），
-然后学生每次有完成作业，听完课都要更新两个学生档案，一个是掌握度模块的档案（并且同步更新掌握度），一个是总体评价，
-然后学习界面的资料图谱，网课类资料应该增加一个"看完了"按钮」）。
+用户一次提了三件事（原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度，在档案界面增加一个学生档案（综合性的），
+然后学生每次有完成作业，听完课都要更新两个学生档案，一个是掌握度模块的档案（并且同步更新掌握度），一个是总体评价」）。
+当天他还提过一个「看完了」按钮，**后来自己撤了**（原话：「算了，看完了那个功能也不太必要，删了吧，
+然后让教练在每次布置任务的时候看看学生档案就行了，然后需要的时候更新档案就行了」）——那一整套已经删干净，
+判断「他有没有在学」只看下面这两份档案。
 
 ### 一、四层掌握度：大类、模块、最小单元各一条
 
@@ -1178,33 +1180,37 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 `PAGE_CARDS.library` 的 main 因此变成 `[['who','学生档案',studentFileCard], ['library','学习档案',libraryCard],
 ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`（掌握度那张跟地图页是**同一张** `abilityCard()`）。
 
-### 三、两份档案一起更新（写进 `SKILL.md`）
+### 三、两份档案一起更新（写进 `SKILL.md` 与布置作业的规矩）
 
 第 7 节「收作业」里新增「收完作业 / 听完课：两份档案一起更新」：**掌握度档案**用 `study_record` 记证据
 （作业 `quiz` / `photo`、上课 `lesson`，note 写清哪天哪份材料什么表现），一次只推一档，`nextReview` 跟档位
 （见过 1 / 能跟做 2 / 能独立做 4 / 熟练稳定 7 天），错了就挂 `mistake`（`origin` 必填，`cause` + `fix` 齐了才能标「已订正」）；
 **总体评价**用 `study_ability action=set` 写判词、`from` 填综合了哪几条画像，`study_student` 只在有挂得上证据的新结论时才动。
-顺序是「先流水后结论」，时机是当场（他交作业 / 说听完课 / 面板递来「我看完了《…》「…」（M1.1）」）。
-**档位只有 `study_record` 的 `stage` 一个入口**——面板点「看完了」绝不许直接改档。
+顺序是「先流水后结论」，时机是当场（他交作业 / 说听完课 / 说「这节课听完了」）。
 
-### 四、网课那几行的「看完了」
+第 6 节「排每日任务」的「布置作业之前，先过这三关」开头又钉了一遍：**动手排任务之前先看这两份档案**
+（掌握度档的当前档位与该复习的、学生画像、总体评价），跟眼前这一次对不上就顺手更新掉——不看档案排出来的活儿
+是在猜；**档位只有 `study_record` 的 `stage` 一个入口**，面板上任何一颗按钮都不许直接改档。
 
-- 账本 `watched.json`（`lib/watched.js`：`watchKey(materialId, key)` = `` `${id}|${key}` ``、`addWatch` / `watchedIn` / `watchCount`），
-  `GET /study/api/material/tree` 顺带回这份材料的 `watched`（键 → 记录）。
-- `POST /study/api/watched` 记一笔（`{ materialId, key, title, pointId, materialTitle }`），再**把话递给教练**：
-  「我看完了《…》「…」（M1.1）。请你按规矩记一条上课证据（`study_record`，`kind=lesson`），该推档就推；
-  并顺手更新那两份档案：掌握度档案（档位与证据）和总体评价（`study_ability` + 必要时 `study_student`）。」
-  没有投递通道时照样记下（回 `pushed: false` + `pushError`），话还在面板上。
-- 面板：`watchable()` 认网课（`u.kind === 'video'`，或材料 `kind === 'video'` 且 url 是视频扩展名），
-  没看过给一颗「看完了」按钮，看过换成「已看完 · MM-DD」筹码。**书不给这颗按钮**——那是页码进度，不是「看完」。
-  POST 回来把响应的**整本账**换回 `atlasTree.watched` 再 `render()`（别只往本地塞一条）。
+### 四、今日任务那一行只留「打开 / 改 / 删除」
+
+用户原话：「然后布置的东西加在今日任务里，今日任务的打开 看这节网课 这一节的讲义 做题 / 看掌握度 改 删除
+这几个功能只需要留下打开 改 删除就可以了」。所以任务行不再挂一串跳转：
+
+- 面板 `taskView()` 与工具那半吃的 `lib/map.js` 的 `taskLinks()` **是同一套挑法**（两边别漂）：
+  `task.open`（教练指的「就做这一份这一段」）→ 单元的 `video` → 单元的 `practice`，都没有就**不给按钮**；
+- 一颗按钮的 label 一律是「打开」，URL 照旧走唯一的门牌规则 `openPath()`（md / txt 进读卷页，其余走 `/study/file`）；
+- 「观看本节网课 / 本节讲义 / 看完后做题 / 做题 / 查看掌握度」**全部删掉，不许加回来**——要练哪个单元，
+  走知识地图上那颗「做题」，让教练按学生档案挑材料页码与题号（第 6 节那四步）；
+- 「改」「删除」是任务行自己画的按钮，跟跳转无关，照旧。
 
 ### 五、测试与生效
 
-- 新增 `test/watched.test.js`（3 条：`watchKey` / `addWatch` 一条一记、路由缺参、真 tmp 网课文件夹走一遍 tree + POST），
-  `test/panel.test.js` 补 `watched` 夹具与三步点击断言（筹码、按钮、POST body、书没有按钮）、掌握度页补四层色带与四格灯断言、
-  档案页补学生档案卡断言；全量 `node --test` = **336 pass / 0 fail / 0 skipped**。
-- 这一批动了 `lib/`（`schema.js` 多一份 `watched.json`、`store.js` 的 snapshot、`routes.js` 多一条 POST 路由）
+- `test/panel.test.js` 的「今天页」那条改成「一行只留打开 / 改 / 删除」（一颗 `open-link`、旧按钮全不许出现），
+  掌握度页补了四层色带与四格灯断言，档案页补了学生档案卡断言，学习页把「看完了」那三步换成「网课那行只有类型筹码 + 打开视频」；
+  `test/ask.test.js` 里任务按钮那几条也改成「只给一颗 `kind: 'open'`」；
+  全量 `node --test` = **333 pass / 0 fail / 0 skipped**（少了 `test/watched.test.js` 那 3 条）。
+- 这一批动了 `lib/`（`schema.js` / `store.js` / `routes.js` 里删掉 watched 那一套、`map.js` 的 `taskLinks`）
   → **要重启 DSH**；`assets/*` 刷新即可。
 
 

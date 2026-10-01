@@ -556,18 +556,6 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .atlas-point { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .atlas-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .atlas-links .mini { line-height: 16px; }
-/* 「看完了」只有网课才有：一颗安静的小按钮，点过之后变成已完成的筹码（不再可点）。
-   它记的是「这一讲我听过了」，跟右边那颗档位筹码是两件事，所以配色也分得开。 */
-.watch-btn { flex: none; line-height: 16px; cursor: pointer; color: var(--dim); font-variant-numeric: tabular-nums; }
-.watch-btn:hover { border-color: var(--accent); color: var(--accent); }
-.watch-btn::before { content: '○'; margin-right: 4px; font-size: 10px; opacity: 0.75; }
-.is-watched {
-  flex: none; display: inline-flex; align-items: center; line-height: 16px; padding: 0 7px;
-  font-size: var(--fs-micro); color: var(--accent); font-variant-numeric: tabular-nums;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-.is-watched::before { content: '✓'; margin-right: 3px; font-size: 10px; }
 .atlas-pg-none { font-size: var(--fs-micro); }
 .atlas-blank { margin-top: var(--sp-3); padding: var(--sp-3); background: var(--card-2); border-left: 2px solid var(--warn); }
 .atlas-blank > b { display: block; margin-bottom: 6px; color: var(--ink); }

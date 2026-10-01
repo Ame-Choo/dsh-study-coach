@@ -2381,24 +2381,13 @@ function taskView(t) {
     }
   }
   const links = []
-  const addLink = (kind, label, raw) => {
-    const value = String(raw || '').trim()
-    if (!value) return
-    links.push({ kind, label, url: openPath(value) })
-  }
-  const watching = String(t.kind || '') === 'watch'
-  // 看课为主线：先看，再去做练习。顺序反了学生一点就跳过课直接做题。
-  if (watching) addLink('video', '观看本节网课', point && point.video)
-  if (t.open) addLink('open', '打开', t.open)
-  if (point) {
-    if (!watching) addLink('video', '观看本节网课', point.video)
-    addLink('practice', '本节讲义', point.practice)
-    links.push({
-      kind: 'point',
-      label: watching ? '看完后做题' : '做题 / 查看掌握度',
-      url: '/study/practice?point=' + encodeURIComponent(point.id),
-    })
-  }
+  // 一条任务只给一颗「打开」（用户要求：今日任务那一行只留「打开 / 改 / 删除」）。
+  // 挑法跟服务端 taskLinks 一致：教练写在任务上的 `open` 优先——那是他指的「就做这一份这一段」；
+  // 没有就退到单元的网课，再没有退到配套讲义；都没有就不给按钮。
+  const pick = String(t.open || '').trim()
+    || String((point && point.video) || '').trim()
+    || String((point && point.practice) || '').trim()
+  if (pick) links.push({ kind: 'open', label: '打开', url: openPath(pick) })
   return {
     id: String(t.id),
     title: String(t.title || ''),
@@ -2755,49 +2744,6 @@ function atlasLinks(u) {
 }
 
 /**
- * 这一讲在「看完了」那本账里认哪个键。服务端原样存这个键，所以它得**稳**：
- * 优先用那条链接（就是这一讲的文件），没有链接才退回标题。
- */
-function watchKeyOf(u) {
-  const url = String(u.url || '');
-  if (url) return url;
-  return String(u.title || u.pointId || '');
-}
-
-/** 这一讲在不在「看完了」那本账里。 */
-function watchMarkOf(u) {
-  const marks = (atlasTree && atlasTree.watched) || {};
-  return marks[watchKeyOf(u)] || null;
-}
-
-/**
- * 只有网课才给「看完了」——书和讲义是页码进度，没有「看完」这回事。
- * 网课材料里 kind 本来就是 video（按扩展名认的），两条都兜一层，别漏。
- */
-function watchable(u) {
-  if (u.kind === 'video') return true;
-  const mat = (atlasTree && atlasTree.material) || {};
-  if (mat.kind !== 'video') return false;
-  return /\.(mp4|m4v|mov|mkv|flv|avi|wmv|webm|ts)$/i.test(String(u.url || '').split('#')[0]);
-}
-
-/**
- * 「看完了」那颗按钮 / 已看完那枚筹码。
- *
- * 点一下 = 记一笔（`watched.json`）+ 把这句话递进对话，让教练按规矩记上课证据、
- * 更新掌握度档案与总体评价。**它自己不动掌握度**（看完一讲只说明见过了）。
- */
-function watchCell(u) {
-  if (!watchable(u)) return '';
-  const mark = watchMarkOf(u);
-  if (mark) {
-    const day = String(mark.at || '').slice(0, 10);
-    return `<span class="mini is-watched" title="看完了：${esc(day)}">已看完 · ${esc(day.slice(5))}</span>`;
-  }
-  return `<button type="button" class="mini watch-btn" data-act="atlas-watch" data-key="${esc(watchKeyOf(u))}" data-title="${esc(u.title || '')}" data-point="${esc(u.pointId || '')}" title="看完这一讲就点一下：记一笔，并让教练更新掌握度和总评">看完了</button>`;
-}
-
-/**
  * 一行最小单元：左边是它叫什么（单元名 + 一句说明），右边是挂到哪个单元 / 类型 / 页码 / 链接。
  *
  * 名字用它自己的标题（材料目录里写的人话）；挂了 pointId 的再单挂一枚 id 筹码——
@@ -2817,7 +2763,6 @@ function atlasUnitRow(u) {
       ${point ? `<span class="atlas-kind atlas-point">${esc(point)}</span>` : ''}
       ${kind ? `<span class="atlas-kind">${esc(kind)}</span>` : ''}
       ${range ? `<span class="atlas-range">${esc(range)}</span>` : ''}
-      ${watchCell(u)}
       ${atlasLinks(u)}
     </span>
   </li>`
@@ -3970,29 +3915,6 @@ document.addEventListener('click', async (event) => {
       const shut = atlasShut()
       if (shut.has(key)) shut.delete(key)
       else shut.add(key)
-      render()
-    } else if (act === 'atlas-watch') {
-      // 看完一讲：记一笔（服务端那本账），并把这句话递进对话，让教练更新两份档案。
-      // 一节课听完不等于学会了——档位要教练看完作业再推，所以这儿只记账、不动掌握度。
-      const key = el.dataset.key || ''
-      const mat = ((atlasTree && atlasTree.material) || {})
-      const id = String(ui.atlasPick || mat.materialId || '')
-      if (!key || !id || el.disabled) return
-      el.disabled = true
-      try {
-        const res = await api('/study/api/watched', {
-          materialId: id,
-          key,
-          title: el.dataset.title || '',
-          pointId: el.dataset.point || '',
-          materialTitle: mat.title || '',
-        })
-        if (atlasTree) atlasTree.watched = res.watched || {}
-        toast(res.pushed ? '记下了，也把话递给教练了' : '记下了 —— 没送到教练那儿', !res.pushed)
-      } catch (e) {
-        el.disabled = false
-        toast('没记上：' + (e && e.message ? e.message : e), true)
-      }
       render()
     } else if (act === 'atlas-annotate') {
       const id = el.dataset.id || ''

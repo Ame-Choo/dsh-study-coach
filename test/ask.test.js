@@ -176,16 +176,26 @@ test('做题页：按钮按下去，话真进了对话', async () => {
   assert.equal(tasks.data.day.length, 1)
   assert.equal(tasks.data.day[0].title, '刷讲义习题 10 页')
   assert.equal(tasks.data.day[0].pointId, 'M1.1', '任务得挂在知识点上才带得出跳转按钮')
-  const kinds = tasks.data.day[0].links.map((l) => l.kind)
-  assert.ok(kinds.includes('video'))
-  assert.ok(kinds.includes('practice'))
+  // 一行只有一颗「打开」：挑了任务自己写的 open，没写就退到这一节的网课 / 讲义
+  const links = tasks.data.day[0].links
+  assert.equal(links.length, 1, '一条任务只给一颗按钮')
+  assert.equal(links[0].kind, 'open')
+  assert.equal(links[0].label, '打开')
+  assert.match(links[0].url, /^\/study\/file\?path=/)
+  assert.match(decodeURIComponent(links[0].url), /1\.1 行列式的定义\.pdf/, '自己安排的任务带着这一节的讲义')
 
-  // ⑦ 看课任务：主线是先看完这一讲，练习排在它后面
+  // ⑦ 看课任务：同样只有一颗「打开」，不再跟一串「看这节网课 / 做完去练习」
   const watch = await json(await post('/study/api/task', { kind: 'watch', title: '看第 1 讲', target: 'M1.1', minutes: 30 }))
-  assert.equal(watch.data.task.links[0].kind, 'video', '看课任务得把「看这节网课」摆在最前')
-  assert.equal(watch.data.task.links.at(-1).kind, 'point')
-  assert.equal(watch.data.task.links.at(-1).label, '看完去做练习')
-  assert.match(watch.data.task.links.at(-1).url, /\/study\/practice\?point=M1\.1/)
+  assert.deepEqual(watch.data.task.links.map((l) => l.kind), ['open'], '一行只有一颗按钮')
+  assert.equal(watch.data.task.links[0].label, '打开')
+  assert.match(decodeURIComponent(watch.data.task.links[0].url), /02\.行列式/)
+
+  // 任务自己写了 open 就用它，哪怕这一节还挂着网课
+  const withOpen = await json(
+    await post('/study/api/task', { kind: 'read', title: '读第 3 节', target: 'M1.1', open: LECTURE, minutes: 20 }),
+  )
+  assert.equal(withOpen.data.task.links.length, 1)
+  assert.match(decodeURIComponent(withOpen.data.task.links[0].url), /1\.1 行列式的定义\.pdf/, 'open 优先')
 
   // ⑧ 参数不对就挡回去
   assert.equal((await post('/study/api/practice/ask', { mode: 'ai' })).status, 400, '得说练哪一节')

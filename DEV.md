@@ -19,7 +19,7 @@
 
 1. **代码那一半**——给 DSH 宿主和浏览器跑的：
    - `index.js`：host 半边入口，注册 `/study` 路由前缀、独立端口、21 个工具、学习教练预设。
-   - `lib/`：服务端。HTTP 层（`handler.js` / `routes.js`）、领域层（`map.js` / `memory.js` / `student.js` / `toolbox.js` / `review.js` / `analysis.js` / `material-tree.js` / `watched.js`）、落盘层（`store.js` / `schema.js` / `paths.js` / `library.js`）、外挂集成（`bridge.js` / `chat.js` / `preset.js` / `memes.js` / `events.js` / `pages.js`）。
+   - `lib/`：服务端。HTTP 层（`handler.js` / `routes.js`）、领域层（`map.js` / `memory.js` / `student.js` / `toolbox.js` / `review.js` / `analysis.js` / `material-tree.js`）、落盘层（`store.js` / `schema.js` / `paths.js` / `library.js`）、外挂集成（`bridge.js` / `chat.js` / `preset.js` / `memes.js` / `events.js` / `pages.js`）。
    - `assets/`：面板前端。`panel.js` 一个文件就是全部界面，`style.css` 是唯一视觉事实来源，`graph.js` 是知识图谱那份 SVG，`md.js` 是唯一的正文渲染器。
 2. **agent 那一半**——给对话里的模型读的，三层，别记混：
    - **persona**（`lib/preset.js` 的 `PERSONA_PREFIX`）：每一轮都占上下文，只写「最小交代」。
@@ -57,7 +57,7 @@ index.js                    host 入口：apply(ctx) 里把下面这些东西装
 cordis.patch.yml            只放一行 insert（插件声明）。**别把预设写这儿**，包名解析不到会让 loader 直接爆
 lib/
   handler.js   HTTP 层最外层：页面 / 静态资源 / 文件出口 / 上传落盘，再交给 router
-  routes.js    API 路由表：53 条正则，按注册顺序匹配
+  routes.js    API 路由表：52 条正则，按注册顺序匹配
   tools.js     21 个 study_* 工具（buildTools 出 spec，registerTools 补 schema 再注册）
   preset.js    学习教练预设：persona + skill-filesystem 指向包内 skills/
   session-preset.js  「这个会话是不是学习模式」的唯一切判处
@@ -115,7 +115,7 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 - `{ raw: { type, body, cache } }` → 发字节（表情包走这条，`cache-control: public, max-age=86400`）。
 - 其它 → `sendJson`，一律 `cache-control: no-store`。
 
-`routes.js` 里 `handle` 先把 `HEAD` 当 `GET`（`:1468`），按序跑 53 条正则；命中后调 `fn({ body, query, params, req, res })`；校验失败统一 `bad(message)` → 400 `{ok:false,error:{code:'bad-request',message}}`；全不中 → 404 `unknown study route`；漏出来的异常在最外层变 500（`internal`）。
+`routes.js` 里 `handle` 先把 `HEAD` 当 `GET`（`:1468`），按序跑 52 条正则；命中后调 `fn({ body, query, params, req, res })`；校验失败统一 `bad(message)` → 400 `{ok:false,error:{code:'bad-request',message}}`；全不中 → 404 `unknown study route`；漏出来的异常在最外层变 500（`internal`）。
 
 ## 5. 数据落在哪、长什么样
 
@@ -132,7 +132,6 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 <root>/profiles/<id>/toolbox.json   番茄钟 + 清单
 <root>/profiles/<id>/memory.json    记忆卡与排期
 <root>/profiles/<id>/student.json   学生画像
-<root>/profiles/<id>/watched.json   资料图谱里「这讲看完了」的账（不是掌握度——档位只由 study_record 推）
 <root>/profiles/<id>/guide.json     面板顶上一句话
 <root>/profiles/<id>/inbox.json     学生在面板上留的话
 <root>/pages/                  拆出来的页图 p%04d.png + manifest.json

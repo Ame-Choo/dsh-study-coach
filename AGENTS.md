@@ -290,7 +290,7 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
   `atlasLinks(m)` 直接挂模块头。来源那行是 `.atlas-src`（`srcHint`：`basis === 'agent'` 与自动摊两套文案）。
   `atlasUnits()` 要把 leaf 模块也算成一条内容，否则「N 条内容」少一截。
   **`.atlas-meta` 的 `max-width` 只能写 `100%`**：写 `62%` 时它在 `auto` 轨道里按自身 max-content 打折，
-  一行里塞四件（类型 / 「看完了」/ 页码 / 链接）就折成两行，一屏 494 条内容全变高的（踩过，样张上看出来的）。
+  一行里塞三件（类型 / 页码 / 链接）就折成两行，一屏 494 条内容全变高的（踩过，样张上看出来的）。
   **材料一律写全名，不许退回 A/B/C**（用户原话：「教辅的名字要显示它的名字而不是一串字母」）。
 - `linkLabel(u)` **按扩展名说话**：`.pdf` → 打开 PDF、`.mp4|m4v|mov|mkv|flv|avi|wmv` → 打开视频、
   `.md|markdown|txt` → 打开正文、`u.kind === 'folder'` → 打开文件夹、其余 → 打开。
@@ -299,17 +299,17 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 - `tree.loose`（封面、目录、答案这些没归到任何模块的页）单开一块「没归到目录里的」，
   **标题退回内容类型**（`moduleTitle` 传 `''`，别写「其余」）；一条 pointId 都没有的那几份收进 `.atlas-blank`
   （「这份材料还没挂到最小单元上」）+ 一颗「交给教练去标」。
-- **网课那几行有「看完了」**（用户原话：「学习界面的资料图谱，网课类资料应该增加一个"看完了"按钮」）：
-  账本是 `watched.json`（`lib/watched.js`：`watchKey(materialId, key)` = `` `${id}|${key}` ``、
-  `addWatch` / `watchedIn` / `watchCount`），`GET /study/api/material/tree` 顺带回这份材料的
-  `watched`（键 → 记录），`POST /study/api/watched` 记一笔并**把话递给教练**（正文写明「记一条上课证据
-  （study_record，kind=lesson），并更新掌握度档案和总体评价」）。
-  · **它不是掌握度**：看完只说明见过，档位只由 `study_record` 的 `stage` 推——面板点这一下绝不许直接改档。
-  · 面板 `watchKeyOf()`（优先 `u.url`，没有才用标题——键要跟账本对得上）、`watchMarkOf()`、`watchable()`
-    （`u.kind === 'video'`，或材料 `kind === 'video'` 且 url 去 `#` 后是视频扩展名）、`watchCell()`
-    （没看过给 `.watch-btn` 的 `data-act="atlas-watch"`，看过换成 `.is-watched` 筹码「已看完 · MM-DD」）。
-    **书不给这颗按钮**——那是页码进度，不是「看完」。POST 回来要把响应的整本账换回 `atlasTree.watched`
-    再 `render()`（别只往本地塞一条，服务端那份才是准的）。
+- **一行内容只有「类型 + 页码 + 链接」，没有别的按钮**（用户原话：「今日任务的打开 / 看这节网课 /
+  这一节的讲义 / 做题 / 看掌握度 / 改 / 删除 这几个功能只需要留下打开 改 删除就可以了」；
+  「看完了那个功能也不太必要，删了吧，然后让教练在每次布置任务的时候看看学生档案就行了」）。
+  · 「看完了」那一整套**已经删掉，别再捡回来**：账本 `watched.json`、`lib/watched.js`、
+    `POST /study/api/watched`、面板 `watchKeyOf` / `watchMarkOf` / `watchable` / `watchCell`、
+    `.watch-btn` / `.is-watched` 全没了。**判断「他有没有在学」只看两份档案**
+    （掌握度档案 + 总体评价），入口仍是对话里的 `study_record` / `study_ability`。
+  · **今日任务那一行的按钮只有「打开」+ 行尾的「改 / 删除」**：`taskView()`（面板）与 `taskLinks()`
+    （`lib/map.js`，工具那半吃同一份）只给**一颗** `打开`，挑法是 `task.open` → 单元 `video` → 单元
+    `practice`（都没有就不给按钮）。旧的「观看本节网课 / 本节讲义 / 看完后做题 / 做题 / 查看掌握度」
+    **不许加回来**——要练哪个单元，走知识地图那颗「做题」，让教练按学生档案挑材料页码与题号。
 - **转给教练只有一个出口**：`forwardToCoach({materialId, title, path, reason, annotate})`。
   `annotate: false` 是「读不动」的措辞，`true` 是「没标到单元上」的措辞——两套话都写在那一个函数里，
   别在其它地方再拼一遍。**同一份 + 同一个理由只投一次**（`acted` 表），否则刷新会刷出一串重复消息。
