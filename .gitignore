@@ -9,3 +9,7 @@ Thumbs.db
 !.env.example
 scratch/
 coverage/
+
+# 跑 node --test 时把输出落到这里再 Select-String，别提交
+.t.txt
+

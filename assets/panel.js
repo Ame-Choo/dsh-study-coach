@@ -47,7 +47,7 @@ let capabilities = null
 const STALE_NEED = [
   ['ability', '总体能力判断', '知识地图页「掌握度」那张总评卡'],
   ['archive', '每级掌握档案', '点「档案」看单个单元的明细'],
-  ['student', '学生画像', '档案页「学习目标」下面那张画像卡（知识地图页边上也有一张）'],
+  ['student', '学生画像', '档案页「学习目标」下面那张画像卡'],
   ['library', '学习目标库', '档案页切目标、新建目标'],
   ['practice', '做题页', '「做题」那一整页'],
   ['mistakes', '错题本', '错题本卡和每条的「再练」'],
@@ -843,7 +843,7 @@ function chatFingerprint(snapshot) {
 const PAGES = [
   { id: 'home', path: '/study', label: '主页', hint: '当前进度与下一步' },
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
-  { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
+  { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可拖动看、可逐单元自评' },
   { id: 'atlas', path: '/study/atlas', label: '学习', hint: '挑一份材料，按它自己的目录摊成三层' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学生档案、学习目标、学生画像、材料、掌握度' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
@@ -902,11 +902,11 @@ function resolvePage() {
  */
 const PAGE_CARDS = {
   today: { main: [['today', '今日任务', tasksCard], ['review', '今日复盘图', reviewCard]] },
-  // 知识图谱这一页三节：图谱 → 掌握度（饼图 + 大类）→ 错题本；学生画像在边上。
+  // 知识图谱这一页三节：图谱 → 掌握度（饼图 + 大类）→ 错题本，**一栏到底**。
   // 「能力」那一页已经不单独存在了——它的内容就是下面那两节。
+  // 学生画像原来在边栏摆过一份，用户看过之后说「地图页的删了」——只留档案页那一份。
   map: {
     main: [['map', '知识地图', mapCard], ['ability', '掌握度', abilityCard], ['mistakes', '错题本', mistakesCard]],
-    aside: [['student', '学生画像', studentCard]],
   },
   // 学习这一页：选资料 → 看「资料图谱」——哪个大类、哪个模块、哪个最小单元有材料对上。
   atlas: {

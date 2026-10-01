@@ -849,27 +849,34 @@ test('地图页下面的掌握度：整体饼图 · 四档分布 · 大类点开
 })
 
 test('学生画像：一句话带着当年的那次证据，证据没了要当着面说', async () => {
-  const { html, posts, boxes, clickAct } = await boot(fixture(), { path: '/study/ability' })
+  // 画像只在档案页那一张（用户：学生画像加到档案里，学习目标下面；「地图页的删了」）
+  const { html, posts, boxes, clickAct } = await boot(fixture(), { path: '/study/library' })
+  // 这一页还有一张「学生档案」（who）也列前 4 条判断，所以过滤要看画像卡自己那一段
+  const card = () => {
+    const body = html()
+    const at = body.indexOf('data-card="student"')
+    return body.slice(at, body.indexOf('</section>', at))
+  }
 
   // 卡头上写着有几条、几要修；两张判断都画出来
   assert.match(html(), /data-card="student"/)
-  assert.match(html(), /2 条判断 · 1 条要修/)
-  assert.match(html(), /换元之后容易忘记回代/)
-  assert.match(html(), /早读效率高/)
+  assert.match(card(), /2 条判断 · 1 条要修/)
+  assert.match(card(), /换元之后容易忘记回代/)
+  assert.match(card(), /早读效率高/)
 
   // 判断是结论，底下得挂着「哪一次」——兑得上就把那次的类型和原话摆出来
-  assert.match(html(), /集合的表示 · quiz/)
-  assert.match(html(), /第一章第九组第 3 题做错了/)
+  assert.match(card(), /集合的表示 · quiz/)
+  assert.match(card(), /第一章第九组第 3 题做错了/)
 
   // 兑不上的不能藏起来（地图重画换了单元号，或者证据被删了，都是真会发生的）
-  assert.match(html(), /证据没了/)
-  assert.match(html(), /1 条判断引的证据找不到了/)
+  assert.match(card(), /证据没了/)
+  assert.match(card(), /1 条判断引的证据找不到了/)
 
   // 分档：默认全看，点「弱项」只剩那条
-  assert.match(html(), /data-act="fact-filter" data-kind="弱项"/)
+  assert.match(card(), /data-act="fact-filter" data-kind="弱项"/)
   await clickAct({ act: 'fact-filter', kind: '弱项' })
-  assert.match(html(), /换元之后容易忘记回代/)
-  assert.doesNotMatch(html(), /早读效率高/)
+  assert.match(card(), /换元之后容易忘记回代/)
+  assert.doesNotMatch(card(), /早读效率高/)
 
   // 觉得不对就删：打的是 POST，回来重拉一次
   await clickAct({ act: 'fact-del', id: 'f-1' })
@@ -1148,11 +1155,13 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   const one = await boot(fixture(), { path: '/study/today' })
   assert.doesNotMatch(one.html(), /<div class="col aside">/)
 
-  // 地图页现在也是两栏：图谱 / 掌握度 / 错题本在主栏，学生画像在边栏
+  // 地图页也回到一栏：图谱 / 掌握度 / 错题本全在主栏，边栏没有了
+  // （学生画像原来在边栏摆过一份，用户说「地图页的删了」，现在只在档案页那一张）
   const map = await boot(fixture(), { path: '/study/map' })
   assert.match(map.html(), /<div class="col main">.*data-card="map"/s)
   assert.match(map.html(), /<div class="col main">.*data-card="ability"/s)
-  assert.match(map.html(), /<div class="col aside">.*data-card="student"/s)
+  assert.doesNotMatch(map.html(), /<div class="col aside">/)
+  assert.doesNotMatch(map.html(), /data-card="student"/)
 
   // 反着来：宽屏默认浏览器模式
   const wide = await boot(fixture())

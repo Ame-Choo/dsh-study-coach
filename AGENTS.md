@@ -219,7 +219,9 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 
 导航里**没有「能力」了**（用户要的）：那一页的两节落到知识地图页图谱下面，`PAGE_CARDS.map` =
 main `[['map','知识地图',mapCard], ['ability','掌握度',abilityCard], ['mistakes','错题本',mistakesCard]]`、
-aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` 靠 `resolvePage()` 的 `alias`
+aside 空着（用户后来把地图页那张画像删了：「地图页的删了」），所以这一页是**一栏到底**。
+
+**学生画像只在档案页那一张**（见本节末与「档案」页那条），地图页不许再摆。老网址 `/study/ability` 靠 `resolvePage()` 的 `alias`
 落到地图页，`PANEL_PAGES` 里**留着**它（老 URL 不能 404）——`test/pages-consistency.test.js` 钉着这条。
 
 - **图谱卡里那份大类折叠列表只此一份**：`groupedBlocks(modules)` 现在只由 `abilityCard()` 调用
@@ -228,8 +230,8 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
   `[['who','学生档案',studentFileCard], ['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`，
   跟地图页**同一张** `abilityCard()`、同一个展开 id `ability`（别复制一份改改，那会开始漂）。
   **边栏是 `[['goal','学习目标',goalCard], ['student','学生画像',studentCard], ['tools','基本工具',toolsCard]]`**——
-  学生画像就摆在「学习目标」下面（用户 m21687 原话：「学生画像加到档案里，学习目标下面」），
-  跟地图页那张是同一个 `studentCard()`、同一个展开 id `student`（两份数据源不共享的做法见下条）。
+  学生画像就摆在「学习目标」下面（用户 m21687 原话：「学生画像加到档案里，学习目标下面」；
+  之后又说「地图页的删了」，所以**全仓只有这一张** `studentCard()`）。
   `test/panel.test.js` 的档案页那条钉着 `data-card="ability"` + `pie-slice` + 「整体掌握度」，
   以及边栏次序 `goal → student → tools`。
 - **四层掌握度每一级都给一条**（用户原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度」）：

@@ -481,7 +481,7 @@ node --test
 | --- | --- | --- |
 | `/study` | 主页 | 一屏说清「现在什么水平、今天还剩什么、下一步点哪儿」，只放入口不放编辑表单 |
 | `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
-| `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿；下面接**「掌握度」**那一节（整体饼图 + 各大类，行尾「档案」展开细账）；再下面是错题本，边栏是学生画像 |
+| `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿；下面接**「掌握度」**那一节（整体饼图 + 各大类，行尾「档案」展开细账）；再下面是错题本（一栏到底，学生画像不在这儿，在档案页） |
 | `/study/atlas` | 学习 | 资料图谱：挑一份材料，按它自己的目录摊成大类 → 模块 → 最小单元三层，每层都能直接打开对应那一页 / 那一段；没标的交给教练 |
 | `/study/library` | 档案 | 综合学生档案（这个人现在什么水平）→ 学习档案 → 掌握度 → 材料；边栏是学习目标、**学生画像**、基本工具 |
 | `/study/materials` | 资料 | 资料书架：一本拆到哪、归到哪个单元，按页直达；右栏登记新资料 |
@@ -1074,7 +1074,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 用户说：「能力部分可以删掉，合并到知识图谱部分的下面，知识图谱下面本来就有个能力的同一种东西，这位于做成饼图，饼图的下面是大类名字，也是依据知识图谱的大类，掌握程度用不同颜色表示……然后档案按键保留，就在饼图下面的大类名字旁边，一点就展开掌握的详情，然后整体的掌握程度也要有个地方写出来」。
 
-- **导航里不再有「能力」**（`assets/panel.js` 的 `PAGES` 删掉那一项），它的两节并进 `PAGE_CARDS.map` 的 `main`：`[['map','知识地图',mapCard], ['ability','掌握度',abilityCard], ['mistakes','错题本',mistakesCard]]`，`aside` 是学生画像。地图页现在是「图谱 → 掌握度 → 错题本」三节 + 边上画像。
+- **导航里不再有「能力」**（`assets/panel.js` 的 `PAGES` 删掉那一项），它的两节并进 `PAGE_CARDS.map` 的 `main`：`[['map','知识地图',mapCard], ['ability','掌握度',abilityCard], ['mistakes','错题本',mistakesCard]]`。地图页现在是「图谱 → 掌握度 → 错题本」三节，**一栏到底**——`aside` 原来摆着学生画像，用户看过之后说「地图页的删了」，现在画像只在档案页那一张（见本文末「学生画像也摆一份到档案页」）。
 - **图谱卡里那份重复的大类列表搬走了**：`mapCard()` 末尾的 `${groupedBlocks(modules)}` 去掉，`groupedBlocks()` 现在只由 `abilityCard()` 调用一次。之前两处各铺一份同样的「大类 + 进度条 + 档案」，看着像两件事，其实是一件事。
 - **饼图是「整体四档分布」**：`masteryBands(byStage, total)` 把六档并成四档（`MASTERY_BANDS`：熟练掌握 = 熟练稳定 + 能讲明白 → `--stage-6`；大概掌握 = 能独立做 → `--stage-4`；薄弱 = 能跟做 + 见过 → `--stage-2`；完全不会 = 没接触过 → `--stage-1`），`masteryPie()` 用 `stroke-dasharray` 画环（`pathLength="100"`，每段的 `stroke-dashoffset` 累加），圆心写「整体掌握度 N%」。颜色只取 `--stage-*` 那四个 token —— 深色和浅色两套色板都靠它们自动换。**「整体的掌握程度也要有个地方写出来」就是圆心那个数字 + 图例那一列百分比 + `一共 N 个单元：熟练掌握 …` 那行。**
 - **饼图下面是大类名字**（`<h3 class="sub">各大类</h3>` + `<div class="grouped">`），行尾还是那枚「档案」（`archiveBtn('group', name)`），点行首箭头就地展开模块 → 最小单元；按 `.sub` 分节往下是薄弱环节 / 待复习 / 最近七天。
@@ -1214,19 +1214,23 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - 这一批动了 `lib/`（`schema.js` / `store.js` / `routes.js` 里删掉 watched 那一套、`map.js` 的 `taskLinks`）
   → **要重启 DSH**；`assets/*` 刷新即可。
 
-### 六、学生画像也摆一份到档案页
+### 六、学生画像也摆一份到档案页（随后地图页那张删了）
 
 用户说（m21687）：「学生画像加到档案里，学习目标下面」。所以档案页边栏是
 `[['goal','学习目标',goalCard], ['student','学生画像',studentCard], ['tools','基本工具',toolsCard]]`，
 画像卡就在「学习目标」正下方。
 
-- 跟知识地图页边上那张是**同一个 `studentCard()`、同一个展开 id `student`**——别复制一份改改，那会开始漂；
-  数据源仍是 `student.json`（写走对话里的 `study_student`），两张卡只是同一个东西出现在两页。
-- `STALE_NEED` 里那条的说明也跟着改成「档案页「学习目标」下面那张画像卡（知识地图页边上也有一张）」，
+- 数据源是 `student.json`（写走对话里的 `study_student`），全仓只此一张 `studentCard()`；展开 id 是 `student`。
+- `STALE_NEED` 里那条的说明跟着改成「档案页「学习目标」下面那张画像卡」，
   `PAGES` 的 `library.hint` 补上「学生画像」；`test/panel.test.js` 的档案页那条钉住边栏次序
   `goal → student → tools` 与 `<h2>学生画像</h2>`。
-- 地图页边栏那张**先留着**（用户说的是「加到」，没说搬走）；哪天嫌地图页侧栏重复，再单独问。
+- **看完之后用户又说「地图页的删了」（m21774）**，于是 `PAGE_CARDS.map` 的 `aside` 整条删掉、
+  地图页变成一栏到底，学生画像只剩档案页这一张。`test/panel.test.js` 相应地：画像那条用例走
+  `/study/library`（原来走 `/study/ability`），画像的断言都收在一个 `card()` 局部函数里读
+  `data-card="student"` 到 `</section>` 那一段——因为档案页那张「学生档案」(`who`) 也列前 4 条判断，
+  拿整页断言会被它带红；「两栏/一栏」那条改成断言地图页**没有** `aside` 也没有 `data-card="student"`。
 - 只动 `assets/panel.js` + 测试 + 文档 → **刷新页面即可，不用重启 DSH**；全量 `node --test` 仍是 333 pass。
+- 教训：**「也摆一份」反悔时要把旧的那张一起收掉**，否则同一张卡在两页各出现一次，用户会以为是两件事。
 
 
 
