@@ -52,6 +52,7 @@ const STALE_NEED = [
   ['practice', '做题页'],
   ['mistakes', '错题本'],
   ['review', '今日复盘图'],
+  ['shelf', '资料书架'],
   ['file', '打开网课 / 讲义'],
 ]
 
@@ -65,6 +66,12 @@ let library = null
 let mistakes = null
 /* 今日复盘图：{ date, data, svg }；这一天没动过任何单元就是 null */
 let review = null
+/* 书架：{ materials: [...], pagesRoot }；只有「资料」页拉 */
+let shelf = null
+/* 书架里正摊开哪一本（materialId），空串就是都折着 */
+let shelfOpen = ''
+/* 摊开那一本的页级索引：{ materialId, toc, spans, pages, chapters } */
+let shelfIndex = null
 /* 对话那份快照：{ available, sessionId, messages, sessions, error } */
 let chat = null
 /* 「对话」页开着时的轮询句柄；离开这一页就停 */
@@ -105,6 +112,12 @@ const ui = {
   float: false,
   /* 错题本只看哪一档，空串 = 全看 */
   mistakeStatus: '',
+  /* 资料页：正在上传/登记，别让人连点两下 */
+  importing: false,
+  /* 上传到哪儿了（一行一句，最多留五句） */
+  importLog: '',
+  /* 「只看文件夹里有什么」的结果 */
+  importPreview: null,
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -256,6 +269,38 @@ async function api(path, body) {
   return data
 }
 
+/**
+ * 把一个 File 原样 POST 过去。不能走 api()——那是 JSON 体，
+ * 而这边要的是整块二进制；文件名靠 x-file-name 头带过去（服务端按最后一段取名字）。
+ * 走 fetch 的 body 直接给 File，浏览器自己会边读边发，不会把整个文件摊进内存。
+ */
+async function uploadFile(file) {
+  const res = await fetch('/study/api/material/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+    body: file,
+  })
+  let data = {}
+  try {
+    data = await res.json()
+  } catch {
+    /* 空响应就当空对象 */
+  }
+  if (!res.ok || data.ok === false) {
+    throw new Error((data.error && data.error.message) || `HTTP ${res.status}`)
+  }
+  return data
+}
+
+/** 往导入日志里追一句（只留最后五句，免得这一栏越滚越长）。 */
+function importLog(line) {
+  const lines = (ui.importLog || '').split('\n').filter(Boolean)
+  lines.push(line)
+  ui.importLog = lines.slice(-5).join('\n')
+  const el = document.getElementById('import-log')
+  if (el) el.textContent = ui.importLog
+}
+
 let toastTimer = null
 function toast(message, bad = false) {
   const el = document.getElementById('toast')
@@ -283,15 +328,16 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, review] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, review, shelfAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
     alive('/study/practice'),
     alive('/study/api/mistakes'),
     alive('/study/api/review'),
+    alive('/study/api/materials'),
   ])
-  return { ability, archive, library, practice, mistakes, review, file: await fileAlive() }
+  return { ability, archive, library, practice, mistakes, review, shelf: shelfAlive, file: await fileAlive() }
 }
 
 /**
@@ -349,6 +395,8 @@ async function load() {
     mistakes = await loadMistakes()
     // 复盘图只有「今天」这一页要。其余页不拉，省一趟请求和 9 KB。
     review = page === 'today' ? await loadReview() : null
+    // 书架只有「资料」这一页要。
+    shelf = page === 'materials' ? await loadShelf() : null
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
     // 只有「对话」页才顺带多要一份会话清单。
     await loadChat({ withSessions: page === 'coach' })
@@ -423,6 +471,40 @@ async function loadReview() {
 }
 
 /**
+ * 书架：登记过的材料 + 每一本拆到哪一步、归了多少页。
+ * 只有「资料」页要；服务端是旧代码（没有这条路由）就返回 null。
+ */
+async function loadShelf() {
+  if (!capabilities || !capabilities.shelf) return null
+  try {
+    const out = await api('/study/api/materials')
+    if (!Array.isArray(out.materials)) return null
+    return { materials: out.materials, pagesRoot: out.pagesRoot || '' }
+  } catch {
+    return null
+  }
+}
+
+/** 摊开某一本时再去拉它的页级索引（区间 + 目录 + 每一页的地址）。 */
+async function loadShelfIndex(materialId) {
+  shelfIndex = { materialId, loading: true, toc: [], spans: [], pages: [], error: '' }
+  try {
+    const out = await api('/study/api/material?materialId=' + encodeURIComponent(materialId))
+    shelfIndex = {
+      materialId,
+      loading: false,
+      toc: Array.isArray(out.toc) ? out.toc : [],
+      spans: Array.isArray(out.spans) ? out.spans : [],
+      pages: Array.isArray(out.pages) ? out.pages : [],
+      error: '',
+    }
+  } catch (error) {
+    shelfIndex = { materialId, loading: false, toc: [], spans: [], pages: [], error: error.message }
+  }
+  return shelfIndex
+}
+
+/**
  * 读一份对话快照。
  *
  * 走插件自己的 `/study/api/chat`，那一头拿的是 DSH 的 sessionController，
@@ -464,6 +546,7 @@ const PAGES = [
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
+  { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
 ]
 
@@ -527,6 +610,11 @@ const PAGE_CARDS = {
   library: {
     main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
+  },
+  // 资料这一页：主栏是书架，边栏是导入入口。
+  materials: {
+    main: [['shelf', '书架', shelfCard]],
+    aside: [['import', '导入资料', importCard], ['guide', '教练的指引', guideCard]],
   },
   // 对话页不放别的：这一页就是那个聊天窗口，整屏给它。
   coach: { main: [['chat', '与教练对话', chatCard]] },
@@ -684,6 +772,7 @@ function homePage() {
     { id: 'map', title: '知识地图', hint: '课程全貌，可逐单元自评', count: built ? `${points} 个单元` : '还没画' },
     { id: 'ability', title: '总体能力', hint: '总体数据、薄弱环节、复习安排', count: total ? `碰过 ${pct}%` : '还没数据' },
     { id: 'library', title: '学习档案', hint: '切换目标、登记材料、记录基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
+    { id: 'materials', title: '资料书架', hint: '教辅拆成页图、每一页归到哪个单元', count: materials.length ? `${materials.length} 份` : '还没登记' },
     { id: 'coach', title: '与教练对话', hint: '有疑问、想换材料、时间有变，直接说', count: '' },
   ]
 
@@ -1543,6 +1632,173 @@ function materialsCard() {
   </section>`
 }
 
+/* ── 资料页（书架 + 导入） ────────────────────────────────────────────────
+ * 一本教辅在这页上有两条进度：**拆到第几页**（PDF → 编号 PNG，`p0007.png` 对应物理第 7 页）
+ * 和**归了多少页**（每一页归到知识地图的哪个单元）。前者是机器干的活，后者是教练读完目录、
+ * 看过页面之后写进去的。两者都到位，做题页才能说「M1.4 在教辅 A 是第 12—17 页」。
+ */
+const PAGE_KIND_LABEL = { 讲解: '讲', 例题: '例', 习题: '练', 目录: '目', 答案: '答', 其他: '他' }
+
+function shelfState(s) {
+  if (!s.file) return { text: '原件不在了', cls: 'bad' }
+  if (s.rendering) return { text: `正在拆 ${s.rendered}/${s.total || '?'}`, cls: 'hot' }
+  if (!s.total) return { text: '还没拆', cls: '' }
+  if (s.rendered < s.total) return { text: `拆了一半 ${s.rendered}/${s.total}`, cls: 'hot' }
+  return { text: `拆完了 ${s.rendered} 页`, cls: 'ok' }
+}
+
+function shelfPages(s) {
+  if (!s.indexed) return '<p class="dim">还没归类。让教练读完目录、看过页面之后把每一页归到单元上。</p>'
+  const gaps = s.total && s.indexed < s.total ? `，还有 ${s.total - s.indexed} 页没归` : ''
+  return `<p class="dim">归了 ${s.indexed} 页，覆盖 ${s.points.length} 个单元${gaps}。</p>`
+}
+
+function shelfDetail(s) {
+  if (shelfIndex && shelfIndex.materialId !== s.materialId) return ''
+  const idx = shelfIndex
+  if (!idx || idx.loading) return '<p class="dim">读取中…</p>'
+  if (idx.error) return `<p class="dim bad">读不出来：${esc(idx.error)}</p>`
+
+  // 一段一段：左边「12—17 页 · 练 · M1.4」，右边每一页一颗能点开的按钮。
+  const spans = idx.spans.length
+    ? idx.spans
+        .map((sp) => {
+          const pages = []
+          for (let p = Number(sp.from); p <= Number(sp.to); p += 1) {
+            const hit = idx.pages.find((x) => Number(x.page) === p)
+            const label = `${p}`
+            pages.push(
+              hit && hit.url
+                ? `<a class="pg-btn" href="${esc(hit.url)}" target="_blank" rel="noopener">${label}</a>`
+                : `<span class="pg-btn off" title="这一页还没拆出来">${label}</span>`,
+            )
+          }
+          const range = Number(sp.from) === Number(sp.to) ? `${sp.from}` : `${sp.from}—${sp.to}`
+          return `<li>
+            <span class="tag">${esc(PAGE_KIND_LABEL[sp.kind] || '他')}</span>
+            <div class="mat-main">
+              <b>${esc(sp.pointId || '没归到单元')} <span class="dim">· ${range} 页 · ${esc(sp.kind || '其他')}</span></b>
+              ${sp.note ? `<div class="path">${esc(sp.note)}</div>` : ''}
+              <div class="pg-row">${pages.join('')}</div>
+            </div>
+          </li>`
+        })
+        .join('')
+    : '<li><p class="dim">还没有页级索引：教练要先拆图、读目录，再把每一页归到单元上。</p></li>'
+
+  const toc = idx.toc.length
+    ? `<h3 class="sub">目录（${idx.toc.length} 条）</h3><ul class="list tight">${idx.toc
+        .map(
+          (t) => `<li><span class="dim">${esc(String(t.page))}</span><b style="margin-left:6px">${esc(t.title || '')}</b></li>`,
+        )
+        .join('')}</ul>`
+    : '<p class="dim">这本书没有书签，目录得靠看图抄——教练渲染前几页读出来的那份会记在这儿。</p>'
+
+  return `${shelfPages(s)}${spans ? `<ul class="list tight">${spans}</ul>` : ''}${toc}`
+}
+
+function shelfCard() {
+  if (!shelf) {
+    return `<section class="card">
+      <div class="card-head"><h2>书架</h2></div>
+      <p class="dim">服务端还是旧代码，这条读不出来。重启 DSH 之后再看。</p>
+    </section>`
+  }
+  const list = shelf.materials || []
+  if (!list.length) {
+    return `<section class="card">
+      <div class="card-head"><h2>书架</h2></div>
+      <p class="dim">还没有登记资料。右边可以粘贴一个本机路径，或者选个文件夹上传。</p>
+    </section>`
+  }
+
+  const rows = list
+    .map((s) => {
+      const open = shelfOpen === s.materialId
+      const st = shelfState(s)
+      const pct = s.total ? Math.min(100, Math.round((s.rendered / s.total) * 100)) : 0
+      const meta = [
+        s.total ? `${s.total} 页` : '',
+        s.scanned ? '扫描件' : '有文字层',
+        s.points.length ? `${s.points.length} 个单元` : '',
+        s.chapters ? `${s.chapters} 章有页码` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return `<li class="shelf-row${open ? ' open' : ''}">
+        <div class="shelf-head">
+          <span class="tag">${esc(KIND[s.kind] || '其他')}</span>
+          <div class="mat-main">
+            <b>${esc(s.title)}</b>
+            <div class="dim">${esc(meta)}</div>
+            ${s.path ? `<div class="path">${esc(s.path)}</div>` : ''}
+          </div>
+          <span class="stage-tag ${st.cls}">${esc(st.text)}</span>
+        </div>
+        ${s.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}
+        <div class="row-acts">
+          <button class="mini" data-act="shelf-toggle" data-id="${esc(s.materialId)}">${open ? '收起归类' : '看页级归类'}</button>
+          ${
+            s.rendering
+              ? '<span class="dim">拆图中，过一会儿刷新看看</span>'
+              : `<button class="mini" data-act="shelf-build" data-id="${esc(s.materialId)}">${
+                  !s.rendered ? '拆成页图' : s.rendered < s.total ? '继续拆' : '重新拆一遍'
+                }</button>`
+          }
+        </div>
+        ${open ? `<div class="shelf-body">${shelfDetail(s)}</div>` : ''}
+      </li>`
+    })
+    .join('')
+
+  const root = shelf.pagesRoot ? `<p class="hint">页图存在 <span class="path">${esc(shelf.pagesRoot)}</span>，改了路径也不会动你的原文件。</p>` : ''
+  return `<section class="card">
+    <div class="card-head"><h2>书架</h2><span class="dim">共 ${list.length} 份</span></div>
+    <p class="dim">每本两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）。</p>
+    <ul class="list shelf">${rows}</ul>
+    ${root}
+  </section>`
+}
+
+function importCard() {
+  const busy = ui.importing
+  return `<section class="card">
+    <div class="card-head"><h2>导入资料</h2></div>
+    <p class="dim">两种都行：文件大就用路径（不搬原件），手机或别处拿来的就上传（复制一份到插件数据目录）。</p>
+
+    <form data-form="import" class="form">
+      <label>本机路径
+        <input name="path" placeholder="例如 F:\\教辅\\必修一.pdf，也可以是整个文件夹" ${busy ? 'disabled' : ''}>
+      </label>
+      <div class="row-acts">
+        <button class="btn" type="submit" ${busy ? 'disabled' : ''}>登记</button>
+        <button class="mini" type="button" data-act="import-list" ${busy ? 'disabled' : ''}>只看文件夹里有什么</button>
+      </div>
+    </form>
+
+    <hr>
+
+    <label class="file-drop">
+      <input type="file" id="import-files" multiple accept=".pdf,.docx,.md,.txt,.epub" ${busy ? 'disabled' : ''}>
+      <span>${busy ? '上传中…' : '或者选文件上传'}</span>
+    </label>
+    <p class="hint">可以多选。上传的文件会复制到插件数据目录，原文件不动。</p>
+    <div id="import-log" class="import-log">${ui.importLog || ''}</div>
+
+    ${
+      ui.importPreview
+        ? `<div class="preview">
+            <p class="dim">${esc(ui.importPreview.path)} 里有这些：</p>
+            <ul class="list tight">${ui.importPreview.files
+              .map((f) => `<li><span class="dim">${f.known ? '已登记' : ''}</span><span class="mat-main">${esc(f.name)}</span></li>`)
+              .join('')}</ul>
+            <button class="mini" data-act="import-all">整个文件夹登记进来</button>
+          </div>`
+        : ''
+    }
+  </section>`
+}
+
 function toolsCard() {
   const list = (state.profile && state.profile.tools) || []
   if (!list.length) return ''
@@ -1797,6 +2053,74 @@ document.addEventListener('click', async (event) => {
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 2000)
       toast('已下载今日复盘图（SVG，浏览器直接双击就能看）')
+    } else if (act === 'shelf-toggle') {
+      const id = el.dataset.id || ''
+      if (shelfOpen === id) {
+        shelfOpen = ''
+      } else {
+        shelfOpen = id
+        await loadShelfIndex(id)
+      }
+      render()
+    } else if (act === 'shelf-build') {
+      const id = el.dataset.id || ''
+      el.disabled = true
+      try {
+        const out = await api('/study/api/materials/build', { materialId: id })
+        if (out.running) {
+          toast(`这本书已经在拆了：${out.rendered}/${out.total} 页，过一会儿刷新看看`)
+        } else if (out.started) {
+          toast('开始拆了，几百页要几分钟。可以先干别的，回来点「看页级归类」。')
+        } else {
+          toast(out.summary || '拆图已经排上')
+        }
+        shelf = await loadShelf()
+      } catch (error) {
+        toast('没能开始拆：' + error.message, true)
+      } finally {
+        el.disabled = false
+        render()
+      }
+    } else if (act === 'import-list') {
+      const path = (document.querySelector('[data-form="import"] [name="path"]') || {}).value || ''
+      if (!path.trim()) {
+        toast('先把路径填上', true)
+      } else {
+        ui.importing = true
+        render()
+        try {
+          const out = await api('/study/api/materials/import', { path: path.trim() })
+          if (out.dir) {
+            ui.importPreview = { path: out.path, files: out.files || [], dirs: out.dirs || [] }
+            toast(`这个文件夹里有 ${(out.files || []).length} 份能登记的`)
+          } else {
+            ui.importPreview = null
+            shelf = await loadShelf()
+            toast(`登记了「${(out.added[0] || {}).title || path.trim()}」`)
+          }
+        } catch (error) {
+          ui.importPreview = null
+          toast('看不了：' + error.message, true)
+        } finally {
+          ui.importing = false
+          render()
+        }
+      }
+    } else if (act === 'import-all') {
+      const path = (ui.importPreview && ui.importPreview.path) || ''
+      ui.importing = true
+      render()
+      try {
+        const out = await api('/study/api/materials/import', { path, all: true })
+        ui.importPreview = null
+        shelf = await loadShelf()
+        toast(`登记了 ${out.added.length} 份${out.skipped ? `，跳过 ${out.skipped} 份已经在书架上的` : ''}`)
+      } catch (error) {
+        toast('没登记成：' + error.message, true)
+      } finally {
+        ui.importing = false
+        render()
+      }
     } else if (act === 'card-toggle') {
       const cardId = el.dataset.card
       if (ui.open.has(cardId)) ui.open.delete(cardId)
@@ -1889,6 +2213,29 @@ document.addEventListener('click', async (event) => {
 document.addEventListener('change', async (event) => {
   const el = event.target
   if (!el.dataset) return
+  // 选文件上传：一次把选中的都传上去，一个个来（并发太高容易把内存堆满）。
+  if (el.id === 'import-files') {
+    const files = Array.from(el.files || [])
+    if (!files.length) return
+    ui.importing = true
+    ui.importLog = ''
+    render()
+    let done = 0
+    for (const file of files) {
+      try {
+        await uploadFile(file)
+        done += 1
+        importLog(`✓ ${file.name}（${Math.round(file.size / 1024)} KB）`)
+      } catch (error) {
+        importLog(`✗ ${file.name}：${error.message}`)
+      }
+    }
+    ui.importing = false
+    shelf = await loadShelf()
+    render()
+    toast(done ? `登记了 ${done} 份` : '一份都没登记上，看下面那几行', !done)
+    return
+  }
   if (el.dataset.act === 'chat-session') {
     ui.chatSession = el.value
     await loadChat({ sessionId: el.value, withSessions: true })
@@ -1916,7 +2263,31 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault()
   const data = new FormData(form)
   try {
-    if (kind === 'chat') {
+    if (kind === 'import') {
+      const path = String(data.get('path') || '').trim()
+      if (!path) {
+        toast('先把路径填上', true)
+        return
+      }
+      ui.importing = true
+      render()
+      try {
+        const out = await api('/study/api/materials/import', { path })
+        if (out.dir) {
+          // 目录不直接登记：先把里头有什么摆出来，让他点一下再收
+          ui.importPreview = { path: out.path, files: out.files || [], dirs: out.dirs || [] }
+          toast(`这是个文件夹，里面有 ${(out.files || []).length} 份能登记的`)
+        } else {
+          shelf = await loadShelf()
+          toast(`登记了「${(out.added[0] || {}).title || path}」`)
+        }
+      } catch (error) {
+        toast('没登记成：' + error.message, true)
+      } finally {
+        ui.importing = false
+        render()
+      }
+    } else if (kind === 'chat') {
       const text = String(data.get('text') || '').trim()
       if (!text) {
         toast('内容为空', true)

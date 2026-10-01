@@ -100,6 +100,7 @@ const PROBE_PATHS = [
   '/study/practice',
   '/study/api/mistakes',
   '/study/api/review',
+  '/study/api/materials',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -113,6 +114,43 @@ const CHAT_MESSAGES = [
 const REVIEW = {
   data: { branches: [{ side: 'left' }, { side: 'right' }], error_count: 1 },
   svg: '<svg viewBox="0 0 2048 1180" width="2048" height="1180"><title>今日复盘</title></svg>\n',
+}
+
+/** 书架：一本已经拆完、归了 8 页的教辅。 */
+const SHELF = {
+  materials: [
+    {
+      materialId: 'mat-1',
+      title: '必修一',
+      kind: 'book',
+      path: 'F:\\课件\\必修一.pdf',
+      file: true,
+      pageDir: 'C:/data/pages/必修一-abc',
+      total: 20,
+      rendered: 20,
+      rendering: false,
+      scanned: true,
+      dpi: 110,
+      toc: [],
+      indexed: 8,
+      chapters: 1,
+      points: ['M1.1', 'M1.4'],
+      kinds: ['讲解', '习题'],
+      coverage: '部分通读',
+    },
+  ],
+  pagesRoot: 'C:/data/pages',
+}
+
+/** 摊开那一本时拉的页级索引：一段区间，其中第 4 页拆出来了、第 5 页还没。 */
+const SHELF_INDEX = {
+  ok: true,
+  toc: [{ level: 1, title: '第一章 集合', page: 1 }],
+  spans: [{ from: 4, to: 6, pointId: 'M1.4', kind: '讲解', note: '', count: 3 }],
+  pages: [
+    { page: 4, pointId: 'M1.4', kind: '讲解', note: '', file: 'p0004.png', url: '/study/page?path=C%3A%2Fdata%2Fp0004.png' },
+    { page: 5, pointId: 'M1.4', kind: '讲解', note: '', file: 'p0005.png', url: '' },
+  ],
 }
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
@@ -151,6 +189,12 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         : { ok: true, state: fixture }
     }
     if (path.includes('/api/review')) body = { ok: true, date: '2026-10-01', data: REVIEW.data, svg: REVIEW.svg }
+    // 资料页那几条。顺序要紧：/api/material? 是 /api/materials 的子串，得放在后面判。
+    if (path.includes('/api/materials/build')) body = { ok: true, started: true, pid: 4242, total: 20 }
+    else if (path.includes('/api/materials/import')) body = { ok: true, dir: false, added: [{ title: '必修一' }] }
+    else if (path.includes('/api/materials')) body = { ok: true, ...SHELF }
+    else if (path.includes('/api/material?')) body = SHELF_INDEX
+    else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
     if (path.includes('/api/chat/sessions')) {
@@ -300,7 +344,7 @@ test('主页面：只回答「现在什么情况、下一步点哪儿」，活�
   assert.match(html(), /class="hero"/)
   assert.match(html(), /class="stats"/)
   assert.match(html(), /class="entries"/)
-  assert.equal(html().split('class="entry"').length - 1, 5, '五个入口')
+  assert.equal(html().split('class="entry"').length - 1, 6, '六个入口')
 
   // 教练的指引摆在最显眼的地方，好把人叫回对话
   assert.match(html(), /看完回来答三个问题/)
@@ -659,4 +703,45 @@ test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() �
   // 卡片工厂吐的是 <div> 的话，fold() 会把 class 属性拼成 class="card<div class="review""
   // ——这一条就是上次那个 bug 的看门狗。
   assert.doesNotMatch(today.html(), /class="card[^"]*</, 'fold() 拿到非卡片 HTML 了')
+})
+
+test('资料页：书架列出每本拆到哪、归到哪，点开能看见页码并能跳过去', async () => {
+  const page = await boot(fixture(), { path: '/study/materials' })
+
+  // 导航上多了一页，且这一页真的在
+  assert.match(page.html(), /data-nav="materials"/)
+  assert.match(page.html(), /data-card="shelf"/)
+  assert.match(page.html(), /data-card="import"/)
+
+  // 一本教辅：标题、进度徽标、拆图按钮
+  assert.match(page.html(), /必修一/)
+  assert.match(page.html(), /20 页 · 扫描件 · 2 个单元/)
+  assert.match(page.html(), /拆完了 20 页/)
+  assert.match(page.html(), /data-act="shelf-build" data-id="mat-1"/)
+  assert.match(page.html(), /data-act="shelf-toggle" data-id="mat-1"/)
+
+  // 没摊开之前不画页级归类，也不该白拉一趟接口
+  assert.doesNotMatch(page.html(), /pg-btn/)
+  assert.equal(page.calls.filter((c) => c.includes('/api/material?')).length, 0)
+
+  // 摊开：区间、页码按钮。拆出来的那页是链接，没拆的是灰的（不给死链）
+  await page.clickAct({ act: 'shelf-toggle', id: 'mat-1' })
+  assert.match(page.html(), /归了 8 页，覆盖 2 个单元/)
+  assert.match(page.html(), /M1\.4/)
+  assert.match(page.html(), /4—6 页/)
+  const linked = page.html().match(/<a class="pg-btn" href="([^"]+)"/)
+  assert.ok(linked, '拆出来那页得是个能点的链接')
+  assert.match(decodeURIComponent(linked[1]), /p0004\.png/)
+  assert.match(page.html(), /<span class="pg-btn off"[^>]*>5<\/span>/, '第 5 页没拆出来，别给死链')
+  assert.match(page.html(), /第一章 集合/, '目录也要画出来')
+
+  // 再点一下收起，回到列表
+  await page.clickAct({ act: 'shelf-toggle', id: 'mat-1' })
+  assert.doesNotMatch(page.html(), /pg-btn/)
+
+  // 拆图：点了就打那条接口，回来顺手重拉一次书架
+  await page.clickAct({ act: 'shelf-build', id: 'mat-1' })
+  assert.equal(page.posts.at(-1).path, '/study/api/materials/build')
+  assert.deepEqual(page.posts.at(-1).body, { materialId: 'mat-1' })
+  assert.ok(page.calls.filter((c) => c === '/study/api/materials').length >= 2, '拆完要重拉书架看进度')
 })

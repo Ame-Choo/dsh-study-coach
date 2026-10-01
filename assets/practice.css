@@ -76,5 +76,19 @@ html[data-mode="sidebar"] .pg-btn { font-size: 12px; }
 .pg-btn b { color: var(--accent); font-weight: 600; }
 .pg.none { font-size: 12px; color: var(--dim); }
 
+/* 「按页直达」：一本教辅一段，段里一排页码。课上没拆出来的页做成灰的，别给死链。 */
+.hit {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 8px);
+  margin-top: 8px;
+}
+.hit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hit-head > * { min-width: 0; }
+.hit .pg { margin-top: 7px; gap: 6px; }
+.hit .pg-btn { padding: 3px 9px; }
+.pg-btn.off { color: var(--dim); border-style: dashed; }
+.pg-btn.off b { color: inherit; }
+
 .note-row { display: flex; gap: 8px; margin-top: 10px; }
 .note-row input { flex: 1; }

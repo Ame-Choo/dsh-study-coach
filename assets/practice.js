@@ -43,6 +43,8 @@ function openLink(target, page) {
 }
 
 let data = null
+/* 「按页直达」那份：{ hits: [...] }；服务端是旧代码就是 null */
+let pages = null
 let ui = { note: '', busy: '', askText: '', selfTitle: '', selfMinutes: 30, wrongOrigin: '', wrongText: '' }
 
 function materialPath(materialId) {
@@ -112,6 +114,60 @@ function pageHint() {
   if (total > 0) return ''
   return `<p class="dim">这几章现在只到「哪一份文件」，还没到「第几页」。
     将这份讲义逐页拆解后，即可按知识点直接跳转到页码。</p>`
+}
+
+/**
+ * 「按页直达」：同一个单元，手上这几本教辅各占哪几页。
+ *
+ * 跟上面那张「教辅对应位置」不是一回事——那张是按**章**列的（这一章在哪份文件的第几页），
+ * 这张是按**单元**列的（M1.4 在教辅 A 是第 12—17 页、在教辅 B 是第 30—34 页）。
+ * 于是他手上有什么就能做什么，不用被绑死在一本书上。
+ */
+function hitsCard() {
+  const hits = pages && Array.isArray(pages.hits) ? pages.hits : []
+  if (!hits.length) {
+    return `<section class="card">
+      <h2>按页直达</h2>
+      <p class="dim">还没有哪本教辅把这一节归过页。把教辅拆成页图、读一遍目录、把每一页归到单元上之后，
+      这里就会列出各本各占哪几页，点一下直接翻过去。</p>
+    </section>`
+  }
+  const rows = hits
+    .map((h) => {
+      const span = Number(h.from) === Number(h.to) ? `${h.from}` : `${h.from}—${h.to}`
+      const pagesHtml = (h.pages || [])
+        .map((p) =>
+          p.url
+            ? `<a class="pg-btn" href="${esc(p.url)}" target="_blank" rel="noopener"><b>第 ${esc(p.page)} 页</b></a>`
+            : `<span class="pg-btn off">第 ${esc(p.page)} 页</span>`,
+        )
+        .join('')
+      return `<div class="hit">
+        <div class="hit-head">
+          <span class="tag">${esc(KIND[h.kind] || '其他')}</span>
+          <b>${esc(h.material)}</b>
+          <span class="dim">${span} 页 · ${esc(h.pageKind || '其他')}</span>
+        </div>
+        ${h.note ? `<div class="dim">${esc(h.note)}</div>` : ''}
+        <div class="pg">${pagesHtml}</div>
+      </div>`
+    })
+    .join('')
+  return `<section class="card">
+    <h2>按页直达</h2>
+    <p class="dim">同一个单元，各本教辅各占哪几页。想做哪本点哪本。</p>
+    ${rows}
+  </section>`
+}
+
+async function loadPointPages(pointId) {
+  try {
+    const out = await api('/study/api/point/pages?point=' + encodeURIComponent(pointId))
+    return { hits: Array.isArray(out.hits) ? out.hits : [] }
+  } catch {
+    // 服务端是旧代码（没这条路由）就没这一块，别的照旧能用
+    return null
+  }
 }
 
 function pickBlock() {
@@ -198,6 +254,8 @@ function render() {
 
   ${pickBlock()}
 
+  ${pages ? hitsCard() : ''}
+
   <section class="card">
     <h2>当前掌握程度</h2>
     <div class="stages">
@@ -222,11 +280,14 @@ async function load() {
   }
   try {
     data = await api('/study/api/practice?point=' + encodeURIComponent(pointId))
-    render()
   } catch (error) {
     document.querySelector('#app').className = 'loading'
     document.querySelector('#app').textContent = String(error.message || error)
+    return
   }
+  // 这一条单独拉：服务端没有它照样能用，失败了也就是少一块，不该把整页打成报错
+  pages = await loadPointPages(pointId)
+  render()
 }
 
 document.addEventListener('click', async (event) => {

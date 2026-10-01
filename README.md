@@ -116,10 +116,11 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_library` | 管学习目标本身：`list` / `create` / `select` / `rename` / `remove` |
 | `study_files` | 看材料目录：`list` 列目录 / `stat` 看存在 / `url` 换成 `/study/file` 链接 |
 | `study_pages` | 把扫描版 PDF 的某几页渲成编号 PNG（`材料/路径 + from/to`），拿去看图认页码——「这一页讲的是哪个知识点」只能这么看出来 |
+| `study_book` | 整本书拆成页级索引：`action=info` 数页数、读书签 / `action=build` 后台把每一页渲成 `p0007.png` / `action=pages` 查某个单元在哪些教辅的哪几页 |
 | `study_guide` | 在面板顶上放一句指引，把学生叫回对话 |
 | `study_inbox` | 读学生在面板上的留言，读完标掉 |
 
-这 16 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
+这 17 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
 
 「先把整本教辅读一遍、分析它教什么」这件事不是靠谁记得，是写死在随包 SKILL.md 第 2 节里的：材料登记完就得通读，结论写进 `study_analysis`，画地图和排任务都从这份结论里取。册子厚就分批喂 `chapters`，或者拉几个子 agent 并行读——同一个 `no` 会覆盖，读到哪写到哪。
 
@@ -136,13 +137,18 @@ pnpm add link:/绝对路径/dsh-study-coach
 
 读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
-`/study/api/mistakes`、`/study/api/review`。
+`/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
+`/study/api/point/pages`。
 
 写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
 `/study/api/mastery`、`/study/api/ability`、`/study/api/library`、`/study/api/task`、
 `/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
-`/study/api/practice/ask`、`/study/api/reset`。
+`/study/api/practice/ask`、`/study/api/reset`、`/study/api/materials/import`、
+`/study/api/materials/build`、`/study/api/material/upload`。
+
+还有两条不走 router 的：`/study/page?path=…` 把拆出来的页图发出去（只放行数据根 `pages/` 底下的文件），
+`/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」）。
 
 实现见 `lib/routes.js`，它不碰 cordis，所以能脱开 DSH 单测。`/study/api/inbox` 与
 `/study/api/practice/ask` 是**异步**的（要把话投进会话），`lib/handler.js` 那边是
@@ -445,5 +451,76 @@ node --test
 - **两个入口**：`GET /study/api/review?date=` 给 `{date, data, svg}`；面板把 `svg` 直接嵌进卡片，右上角一颗「下载 SVG」把它当文件存下来。侧栏模式版心太窄，缩到 100% 字看不清，所以那边给 820px 下限横着滑。
 
 **一个踩过的坑**：卡片工厂必须返回 `<section class="card …">`。`fold(id, label, html)` 是靠 `html` 开头那段来拼外层 `class` 的——返回 `<div class="review">` 会拼成 `class="card<div class="review""`，浏览器把这段 class 解析得乱七八糟，症状是**卡片没有卡框、卡头消失、内容却还在**，看截图很容易以为是 CSS 问题。`test/panel.test.js` 里留了一条看门狗：`assert.doesNotMatch(html, /class="card[^"]*</)`。
+
+### 八、资料库：从「哪一份」到「第几页」再到「归哪个单元」
+
+前面几节解决了「教辅拆到页」，这一节把它变成一个**成体系的东西**：一份资料进来之后，知道自己有多少页、每一页属于哪个最小单元、哪些页拆成图了；学生点开一个知识点，能看到「教辅 A 占 10—12 页、教辅 B 占 30 页」，点页码直接翻过去。
+
+面板上多了一个「资料」页（`/study/materials`），左边是书架，右边是导入。**但这条线的主角不是面板，是工具**——面板只是把工具写下的数据画出来，agent 不来登记、不来拆图、不来归类，书架就是空的。
+
+#### 一、数据放在哪：原件一个字节都不搬
+
+衍生数据全部落在插件数据根，**不碰用户原来的文件夹**：
+
+```
+~/.dsh/study-coach/
+  profiles/<档案>/pages/<书名的去掉扩展名部分>-<sha1(路径)前10位>/
+      manifest.json          拆图清单：总页数、dpi、rendered、rendering、书签、时间
+      p0001.png  p0002.png … 每一页一张图，文件名就是物理页码
+  uploads/                   网页上传进来的原件（up-<base36>-<rand>）
+```
+
+目录名带路径哈希，所以**同一本书换个位置再来一次也认得出来**；`p0007.png` 反过来一眼能看出这是第 7 页。`manifest.json` 里的 `rendering` 是「正在拆」的旗子，跑完才落 `false`——面板靠它显示进度，agent 靠它避免重复起一个拆图进程。
+
+#### 二、六个动作
+
+| 谁 | 动作 | 落到哪 |
+| --- | --- | --- |
+| agent | `study_book action=info` | `analysis` 里的 `pageCount` / `pageDir` / `dpi` / `toc` |
+| agent | `study_book action=build` | 后台进程逐页渲图 + `manifest.json` |
+| agent | `study_pages` + `read_image` | 把目录页渲出来看，抄成 `toc` |
+| agent | `study_analysis action=save`（`toc` + `spans`） | `analysis` 里的页级索引 |
+| agent | `study_book action=pages` | 查某个单元在哪些教辅的哪几页 |
+| 学生 | 资料页点「拆成页图」/「看页级归类」 | 直接打那两条 HTTP |
+
+**为什么 `build` 要起子进程**：`renderBook` 内部是 `execFileSync` 调 python 渲页，164 页要二十来秒、三百页一分多钟。留在面板进程里会把整个 HTTP 服务冻住，所以 `lib/build-pages.mjs` 是个独立的一次性进程（`detached` + `unref`，起完就撒手）。工具返回时就明说「别在这儿等」。
+
+**页码一律是物理页**：`p0003.png` 里印的可能是「4」。教辅的印数和 PDF 物理页常常差 1，页级索引必须记物理页——因为面板的「打开」按钮拼的是 `#page=N`，PDF 阅读器认的是物理页。
+
+#### 三、归类只写区间，不写逐页
+
+```json
+{ "from": 12, "to": 15, "pointId": "M1.4", "kind": "例题", "note": "含参讨论" }
+```
+
+一本两百页的教辅逐页写 JSON 又长又容易写错，而且**页与页之间的边界本来就是对不齐的**。所以入参只收区间，落盘时 `spansOf` 把相邻、同单元、同 `kind` 的合并成一段，`expandSpans` 反过来算出「哪些页还没归」——那个 `gaps` 就是「这本还没读完」的诚实答案，**排作业前必须看一眼**，不然会给学生指到一段还没归类的页上。
+
+`kind` 只有六种：`讲解 / 例题 / 习题 / 目录 / 答案 / 其他`。面板上缩成一个字（讲 / 例 / 练 / 目 / 答 / 他）。
+
+#### 四、跨两本教辅找同一节
+
+`pagesForPoint(analysis, materials, pointId)` 是这条线的收口：遍历所有登记的材料，把各自命中的区间按**材料登记顺序**排、材料内部**按页码**排。
+
+**刻意不做全局按页数重排**——那样会把同一本书里本来连着的好几段打散（A 书 10—12 页、A 书 40—42 页本来是一整块，插进 B 书的 20 页之后就读不出「这本书要先看完哪段」了）。
+
+做题页那张「按页直达」卡就是这么来的：每本教辅一段，段头写清「哪一本、占哪几页、是什么页」，下面一排页码按钮。**拆出来的页是链接，没拆的是灰的**——不给死链，这是这条线里最容易犯的错（归了类不等于图已经渲出来了）。
+
+#### 五、导入的两条路
+
+- **粘贴本机路径**：原地登记，原件不动。填文件夹会先列清单让你看一眼（`{files, dirs}`，每个文件带 `known` 标记），确认了再 `all: true` 整夹登记，已经登记过的跳掉。**这是给电脑上已经有一堆教辅的人用的。**
+- **网页选文件上传**：手机、别人那边拿来的走这条。`lib/handler.js` 里是**边收边写盘**（不是先 `Buffer.concat` 再存）——一百兆的书整个进堆会把进程撑爆。超过 300 MB 直接拒，文案让用户改走「粘贴路径」。
+
+上传走的是 `content-type: application/octet-stream` + `x-file-name` 头，**不是 JSON 体**，所以面板里另写了一个 `uploadFile()`，没走通用的 `api()`。
+
+#### 六、页图怎么发出去
+
+`/study/page?path=…` 只放行数据根 `pages/` 底下的文件，别的路径一律 404（`allowedPage()` 里 `resolve` 之后比对前缀）。**原先 `/study/file` 只放行登记过的材料路径**，拆出来的图在那个范围之外——这是「面板取不到页图」的根因，所以另开了一个出口，而不是把 `pages/` 塞进材料清单。
+
+#### 七、测试
+
+`test/book.test.js`（10 条，页级索引的纯函数）、`test/shelf.test.js`（8 条，导入 / 拆图 / 书架 / 按单元找页，靠注入假的 `spawnBuild` 不起真进程）、`test/booktool.test.js`（6 条，三个工具的 `info` / `build` / `pages`）、`test/panel.test.js` 的资料页断言、`test/practice-ui.test.js` 的「按页直达」两条。
+
+写 `Store.update` 的时候踩过一次：`upsertAnalysis` 返回的是**那一份材料的条目**，而 `update('analysis', fn)` 要 fn 返回**整个 analysis**。写成 `store.update('analysis', (a) => upsertAnalysis(a, id, patch))` 会把整份文件写成一个条目——正确写法是 `{ upsertAnalysis(a, id, patch); return a }`。
+
 
 

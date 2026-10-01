@@ -742,6 +742,75 @@ html[data-mode="browser"] .chat-page .card {
 html[data-mode="sidebar"] .review-stage { overflow-x: auto; }
 html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 
+/* ── 资料页：书架与导入 ───────────────────────────────────────────────────
+ * 一本书一行，行里再摊开页级归类。页按钮故意做得小：一段区间常常十几页，
+ * 大了这一栏就成按钮墙了。
+ */
+/* 只认书架这一层：写 `.shelf li` 会把摊开之后里头的 li 也变成竖排。 */
+.shelf > li { align-items: stretch; flex-direction: column; }
+.shelf > li + li { margin-top: 2px; }
+.shelf-head { display: flex; align-items: center; gap: 9px; width: 100%; }
+.shelf-head > * { min-width: 0; }
+.shelf-row .bar { margin: 7px 0 4px; }
+.shelf-row .bar i { display: block; height: 100%; background: var(--accent); }
+.shelf-row .row-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.shelf-row .stage-tag {
+  margin-left: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.stage-tag.ok { color: var(--ok, #1f9d63); }
+.stage-tag.hot { color: var(--warn, #b8760a); }
+.stage-tag.bad { color: var(--bad, #cf4040); }
+.shelf-body { width: 100%; margin-top: 9px; border-top: 1px solid var(--line); padding-top: 9px; }
+.shelf-body .list.tight li { align-items: flex-start; }
+
+/* 一段区间下面那排页码。拆出来的页给链接，没拆的是灰的，不给人点空。 */
+.pg-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.pg-btn {
+  min-width: 30px;
+  padding: 2px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  color: var(--accent);
+  background: var(--card);
+}
+.pg-btn:hover { border-color: var(--accent); }
+.pg-btn.off { color: var(--dim); border-style: dashed; cursor: default; }
+
+/* 上传入口：做得像个能拖东西进来的框，别跟普通按钮混在一起 */
+.file-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-sm);
+  color: var(--dim);
+  cursor: pointer;
+  text-align: center;
+}
+.file-drop:hover { border-color: var(--accent); color: var(--accent); }
+.file-drop input { display: none; }
+.import-log {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.import-log:empty { display: none; }
+.preview { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

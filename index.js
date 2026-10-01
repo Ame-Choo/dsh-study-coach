@@ -44,6 +44,13 @@ const ASSETS = join(HERE, 'assets')
 /** 档案放哪儿。想换地方就设 DSH_STUDY_ROOT。 */
 export const DATA_ROOT = process.env.DSH_STUDY_ROOT || join(homedir(), '.dsh', 'study-coach')
 
+/**
+ * 拆出来的页图和网页上传的原件，都放档案库根下，**不动用户自己的文件夹**。
+ * 页图单独开一条只读出口（/study/page），因为它不归任何一份登记过的材料管。
+ */
+export const PAGES_ROOT = join(DATA_ROOT, 'pages')
+export const UPLOAD_ROOT = join(DATA_ROOT, 'uploads')
+
 /** @param {import('@deepseek-ai/cordis').Context} ctx */
 export function apply(ctx) {
   const store = new Library(DATA_ROOT)
@@ -65,8 +72,8 @@ export function apply(ctx) {
     resolve: () => (typeof ctx.get === 'function' ? ctx.get('sessionController') : null),
   })
 
-  const router = createRouter(store, { bridge, chat })
-  const handler = createHandler(store, router, { assetsDir: ASSETS })
+  const router = createRouter(store, { bridge, chat, pagesRoot: PAGES_ROOT })
+  const handler = createHandler(store, router, { assetsDir: ASSETS, pagesRoot: PAGES_ROOT, uploadRoot: UPLOAD_ROOT })
 
   /**
    * 面板在哪儿的两条地址。工具拿它告诉用户该开哪个。
@@ -103,11 +110,13 @@ export function apply(ctx) {
   }, 'dsh-study-coach: 面板独立端口')
 
   ctx.effect(() => {
-    // scratchDir 是 study_pages 渲出来的 PNG 落脚的地方。故意放在档案目录下、不进工作区：
-    // 那是过程产物（可以重渲），不是插件源码，别混在一起。
+    // pagesRoot 是拆书拆出来的页图落脚的地方（`pages/<书名>-<hash>/p0007.png`）。
+    // study_pages 也渲到这里：跟页面出口 /study/page 用同一个目录，渲完就能点开看。
+    // scratchDir 是老名字，留着给别处调用，值一样。故意放在档案目录下、不进工作区。
     const disposers = registerTools(ctx, store, defineTool, {
       panel,
-      scratchDir: join(DATA_ROOT, 'scratch', 'pages'),
+      pagesRoot: PAGES_ROOT,
+      scratchDir: PAGES_ROOT,
     })
     return () => {
       for (const dispose of disposers) {

@@ -75,14 +75,15 @@ const PAYLOAD = {
   ],
 }
 
-/** 起一次做题页，喂一份假数据，等它渲染完。 */
-async function boot(payload, tag) {
+/** 起一次做题页，喂一份假数据，等它渲染完。extra 按路径前缀覆盖某一条接口的返回。 */
+async function boot(payload, tag, extra = {}) {
   const { boxes, listeners } = stubDom()
   const calls = []
   globalThis.location = { search: '?point=M1.4', href: 'http://127.0.0.1:19388/study/practice?point=M1.4' }
   globalThis.fetch = async (path, init) => {
     calls.push({ path, body: init && init.body ? JSON.parse(init.body) : null })
-    return { ok: true, status: 200, json: async () => payload }
+    const hit = Object.keys(extra).find((k) => String(path).startsWith(k))
+    return { ok: true, status: 200, json: async () => (hit ? extra[hit] : payload) }
   }
   await import(PRACTICE + '?v=' + tag)
   for (let i = 0; i < 60 && !boxes.get('app').innerHTML; i += 1) await sleep(5)
@@ -127,6 +128,51 @@ test('没拆过页的时候，页面直说只到「哪一份」，别装', async
   assert.match(html, /本章尚未按页拆解/, '每一章都要自己说清楚，别让学生以为按钮被吃了')
   // 章还是翻得开的，别把整块藏起来
   assert.match(html, /打开/)
+})
+
+test('按页直达：同一个单元，各本教辅各占哪几页，点页码直接翻过去', async () => {
+  const hits = {
+    ok: true,
+    pointId: 'M1.4',
+    hits: [
+      {
+        materialId: 'mat-a', material: '必修一', kind: 'book', from: '12', to: '13',
+        pageKind: '例题', note: '含参讨论的三种情形',
+        pages: [
+          { page: 12, url: '/study/page?path=C%3A%2Fdata%2Fp0012.png' },
+          { page: 13, url: '' },
+        ],
+      },
+      {
+        materialId: 'mat-b', material: '一千题', kind: 'book', from: '30', to: '30',
+        pageKind: '习题', note: '',
+        pages: [{ page: 30, url: '/study/page?path=C%3A%2Fdata%2Fp0030.png' }],
+      },
+    ],
+  }
+  const page = await boot(PAYLOAD, 'hits', { '/study/api/point/pages': hits })
+  const html = page.html()
+
+  assert.match(html, /按页直达/)
+  assert.ok(page.calls.some((c) => c.path.startsWith('/study/api/point/pages?point=M1.4')))
+
+  // 两本教辅各一段，段头写清「哪一本、占哪几页、是什么页」
+  assert.match(html, /必修一/)
+  assert.match(html, /一千题/)
+  assert.match(html, /12—13 页 · 例题/)
+  assert.match(html, /30 页 · 习题/)
+  assert.match(html, /含参讨论的三种情形/)
+
+  // 拆出来的页是链接，没拆的是灰的
+  assert.ok(html.includes('/study/page?path=C%3A%2Fdata%2Fp0012.png'), '拆出来的页要能点进去看')
+  assert.match(html, /<span class="pg-btn off">第 13 页<\/span>/, '第 13 页没拆出来，别给死链')
+})
+
+test('这一节还没归过页的时候，直说，别摆一张空卡', async () => {
+  const page = await boot(PAYLOAD, 'nohits', { '/study/api/point/pages': { ok: true, hits: [] } })
+  assert.match(page.html(), /按页直达/)
+  assert.match(page.html(), /还没有哪本教辅把这一节归过页/)
+  assert.doesNotMatch(page.html(), /class="hit"/)
 })
 
 test('点「让 AI 出几道」把这一节和补的话一起递过去', async () => {
