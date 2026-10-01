@@ -777,11 +777,13 @@ export function renderGraph(host, options) {
     const buttons = []
     if (onOpen) {
       let bx = x + BTN_X
-      for (const [kind, label, target] of [
-        ['video', '看课', String(point.video || '')],
-        ['practice', '做题', String(point.practice || '')],
+      /* 这两颗永远点得动：看课会去资料图谱里找这一讲（挂没挂 video 只决定走哪条路），
+         做题是把教练叫来布置。所以不再有 is-empty——按钮灰着反而让人以为没救。 */
+      for (const [kind, label] of [
+        ['video', '看课'],
+        ['practice', '做题'],
       ]) {
-        const btn = pill(label, target ? '' : 'is-empty', () => onOpen(kind, point))
+        const btn = pill(label, '', () => onOpen(kind, point))
         buttons.push({ btn, at: bx })
         bx += btn.w + BTN_GAP
         right = bx - BTN_GAP

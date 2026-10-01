@@ -94,7 +94,7 @@ const ARCHIVE = {
 }
 
 /**
- * 面板开机先探的那五条新路由；stale 模式下把它们全按 404 回。
+ * 面板开机先探的那几条新路由；stale 模式下把它们全按 404 回。
  * 最后一条要用**登记过的材料路径**去问——`/study/file` 只放行登记过的材料，
  * 空 path 在新旧代码里都是 404，拿它探等于永远报旧。
  */
@@ -111,6 +111,8 @@ const PROBE_PATHS = [
   '/study/api/memory',
   // 这一条跟上面那十条一样，都在 probeCapabilities() 的 Promise.all 里
   '/study/api/material/tree',
+  // 知识地图「看课」问的那一条：缺参数在新代码回 400、旧代码回 404
+  '/study/api/point/media',
   // 这条是 await fileAlive()，排在 Promise.all 之后，所以它在最后
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
@@ -322,6 +324,52 @@ const TREES = {
   },
 }
 
+/**
+ * 知识地图「看课」问服务端「这一节该看哪一讲」的答案（`/study/api/point/media`）。
+ * M1.1 对到网课里具体那一讲；M1.2 只对到「这一部分」——面板要把 why 讲给学生听。
+ * 没列进来的单元回 `video: null`，面板退回它自己挂的那条 `video` / 发留言。
+ */
+const MEDIA = {
+  'M1.1': {
+    ok: true,
+    pointId: 'M1.1',
+    title: '集合',
+    video: {
+      file: 'F:\\课件\\一轮课程\\04.mp4',
+      url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C04.mp4',
+      kind: 'video',
+      title: '04.基础知识&基本例题.mp4',
+      pointId: 'M1.1',
+      materialId: 'mat-video',
+      material: '一轮课程',
+      module: '集合',
+      group: '模块一 基础知识',
+      score: 100,
+      why: '资料图谱里写着 M1.1',
+      level: 'unit',
+    },
+  },
+  'M1.2': {
+    ok: true,
+    pointId: 'M1.2',
+    title: '逻辑用语',
+    video: {
+      file: 'F:\\课件\\一轮课程\\模块二',
+      url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C%E6%A8%A1%E5%9D%97%E4%BA%8C',
+      kind: 'folder',
+      title: '模块二 逻辑',
+      pointId: '',
+      materialId: 'mat-video',
+      material: '一轮课程',
+      module: '模块二 逻辑',
+      group: '模块二',
+      score: 20,
+      why: '对到这一部分的目录「模块二 逻辑」（里面 3 个视频）',
+      level: 'part',
+    },
+  },
+}
+
 /** 工具栏目：一个跑着的番茄钟 + 两条清单（一条没做完、一条做完了）。 */
 const TOOLBOX = {
   focus: {
@@ -499,6 +547,11 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         pointId: new URL('http://x' + path).searchParams.get('point') || '',
         hits: [{ materialId: 'mat-1', title: '必修一', pages: [{ page: 4, url: '/study/page?path=C%3A%2Fdata%2Fp0004.png' }, { page: 5, url: '' }] }],
       }
+    }
+    // 知识地图「看课」：服务端按资料图谱把这一节对到哪一讲。命中就直开，落空回 null。
+    else if (path.includes('/api/point/media')) {
+      const id = new URL('http://x' + path).searchParams.get('point') || ''
+      body = MEDIA[id] || { ok: true, pointId: id, title: '', video: null }
     }
     else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
     // 工具栏目：番茄钟跟清单各两条写接口，回的同构，够面板接着往下走就行。
@@ -901,6 +954,7 @@ test('服务端是旧代码时，面板把话说清楚，而不是让人对着�
   assert.match(home.html(), /每级掌握档案/)
   assert.match(home.html(), /做题页/)
   assert.match(home.html(), /打开网课 \/ 讲义/)
+  assert.match(home.html(), /按资料图谱找那一讲/)
   assert.match(home.html(), /重启 DSH/)
 
   // 东西还是照常渲染，不是一屏错误
@@ -931,6 +985,7 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
   assert.match(stale.html(), /服务端还是旧代码，\d+ 处点下去会 404/)
   assert.match(stale.html(), /学生画像——知识地图页边上的画像卡/)
   assert.match(stale.html(), /记忆卡——工具页的记忆卡/)
+  assert.match(stale.html(), /按资料图谱找那一讲/, '知识地图那颗「看课」没了也得说出来')
   assert.match(stale.html(), /重启 DSH/)
 
   // 挡路那条不给「去看」按钮：这个学生自己点不回去，只能重启

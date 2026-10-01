@@ -1091,6 +1091,62 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - 测试跟着改口：`test/graph.test.js` 六处 `wheel` 派发补 `ctrlKey: true`，两条用例名改成「滚轮要按住 Ctrl／⌘ 才缩放…；光滚轮不动画面」与「画布不跟鼠标拖（拖动整条路都拆了）；缩放要按住 Ctrl／⌘ 滚轮」，新增「在板块上按住挪一段再松手：那一发 click 不算点，板块不折叠」（**要在同一个节点上派发 `pointerdown` 与 `click`**——判据里比了 `event.target`）；`test/panel.test.js` 的档案页那条补 `data-card="ability"` + `pie-slice` + 「整体掌握度」。全量 **316 pass / 0 fail**。
 - **这一批只动 `assets/*` 与测试**：刷新面板即可，不用重启 DSH。
 
+## 补：看课直接落到那一讲；做题把教练叫来
+
+用户一次提了两件事（原话：「教练布置作业的时候的规范是根据现在对学生水平的了解，掌握度，结合知识图谱和资料图谱布置，
+注意要他思考学生现在到底需要什么，然后他想到的资料可以起到什么作用，其次我需要你把知识地图的看课和做题区域重做，
+看课的话自动指向特定文件，做题的话就直接跳转 AI 教练让他布置」）。前半件是**写给教练的规矩**，后半件是**两个按钮的活法**。
+
+### 一、布置作业的规范：先过三关（`skills/study-coach/SKILL.md`）
+
+落在第 6 节「排每日任务」里的新小节「布置作业之前，先过这三关」——四步：**他现在在哪儿**（`study_report` 的档位与
+该复习的、`study_mistakes` 待验证 / 该复做的、`study_archive` 的最近表现、`study_student` 的判断、基本工具表；
+证据不够就先出一道题看看）、**他现在到底需要什么**（一句话说清：概念没分清 / 看得懂下不了手 / 能跟做但独立不了 /
+做错了要纠 / 该复习 / 该背到点）、**哪份材料的哪一段能干什么活**（知识地图管「练哪个单元」、资料图谱管「去哪儿练」；
+翻 `study_analysis` 的 `role` / `pairing` 和每章的 `pages` / `examples` / `exercises` / `marks`；讲解用精讲册例题段、
+上手用基础题、独立做变式、对答案用答案册、定时练用真题，别把三本书都排上）、**落成成对任务**（watch + practice、
+`target` 写 pointId、`minutes` 不超 `minutesPerDay`，每条都能回答「为什么是这一份这一段这些题」）。
+后面跟六条「别做的」（别排整本书 / 别只看不练 / 别排刚做对过的 / **材料没通读就别写页码题号** / 别越档位 / 别把该复习的压掉）。
+
+### 二、看课：从「打开那个文件夹」变成「打开那一讲」
+
+- 新路由 `GET /study/api/point/media?point=<id>`（`lib/routes.js` → `lib/material-tree.js` 的 `videoForPoint()`）：
+  把这一份单元交给地图里的每个单元，命中的那一讲回 `{ video: { file, url, kind, title, material, materialId, level, why, … } }`。
+- 三档评分：**100** 图谱里写着同一个 `pointId`（资料图谱最准）、**80** 名字 key 完全相等、**60** 互相包含且短的那边 ≥5 字、
+  **40** 最长公共子串 ≥6；再往下模块名 / 大类名只算「这一部分」（20 / 10，`level: 'part'`）。
+  `nameKey()` 去序号、标点、空白，**还去连词 `与和及`**——`基础知识与基本例题` 与 `基础知识&基本例题` 必须算同一件东西。
+- 同分比三档 `[score, aff, kindRank]`：`aff = coverOf(父目录名, 这一节的名字)`，用的是**两字片段的交集个数**
+  （比最长公共子串更看整体重叠）；**只跟这一节的名字比，不掺模块 / 大类名**——父目录跟模块名本来就是同一个名字，
+  互相加成会把长文件夹名抬起来。
+- **收口很紧：只有 `score >= 60` 且命中的不是文件夹，才敢直接开那个文件**；其余一律 `partHit()` 退成那个文件夹
+  （里面正好只有一讲就展开成那一个 mp4），再没有才用它自己挂的 `point.video`，最后才空手。
+- **踩过两回**：① `sharedRun(key, uk) >= 3` 太松——「题型1」人人有，真数据 67 个单元里有一串全指到同一个
+  `05.题型1：集合间的基本关系.mp4`；② 拿父目录跟模块名互相加成抬分。收紧后同一批真数据复核：
+  **67 个单元 42 个落到具体 mp4、25 个落到文件夹、0 个空手**，`M1.1 集合基础知识与基本例题` 落到
+  `02.模块一 基础知识 集合\04.基础知识&基本例题.mp4`、`M1.4 逻辑基础知识与基本例题` 落到
+  `03.模块一 基础知识 逻辑\14.基础知识与基本例题.mp4`，两份都不串。
+- 面板侧 `openLesson(point)`：有 `video.url` 就打开；命中是文件夹（或不是「资料图谱里写着」那一档）再补一条
+  toast（「对到这一部分的目录「…」（里面 N 个视频）」）——**得让他知道没落到单集**。旧服务端（`capabilities.media` 为假）
+  才退回 `point.video`，再没有才发那句「这一节尚未关联网课」的 inbox。
+
+### 三、做题：不跳做题页了，把教练叫来布置
+
+- `askCoachForWork(point)`（`assets/panel.js`）往 `/study/api/chat/send` 递四行话：想练哪个单元（带 `pointId` 和标题）、
+  先看掌握度 / 该复习的 / 最近的错题、再从材料里挑出具体那一段（哪份材料、第几页 / 第几题）并说清为什么挑它、
+  最后用 `study_plan` 落一条今天的任务；发完 `go('coach', '/study/coach')` 直接就位。
+- 同一个单元只递一次（`FORWARDED` 的键 `'work|' + point.id`），**发送失败要把那条键删掉**，不然重试一次都没了。
+- 两颗按钮**永远活着**：`assets/graph.js` 里不再拿 `point.video` / `point.practice` 决定 `is-empty`，
+  点下去要干什么由 `openMaterial(kind, point)` 分派（`test/graph.test.js` 钉着）。
+- 面板开机探针多了一条 `/study/api/point/media`（`capabilities.media`），体检卡也跟着多一条「按资料图谱找那一讲」；
+  探针按「缺参新代码回 400、旧代码回 404」认新旧。
+
+### 四、测试与生效
+
+- `test/material-tree.test.js` 15 条（视频目标解析、pointId 命中、PDF 不算看课、只对到「这一部分」时摆文件夹、
+  **两个文件夹里都有「基础知识」那种课靠父目录分开**）、`test/shelf.test.js` 9 条（真 tmp 目录 + 真 store 走一遍
+  `/study/api/point/media`）、`test/graph.test.js` 两条按新行为改口、`test/panel.test.js` 加了 `MEDIA` 夹具与两条断言。
+- 这一批动了 `lib/material-tree.js` 与 `lib/routes.js`（**→ 要重启 DSH**），`assets/*` 刷新即可。
+
 
 
 

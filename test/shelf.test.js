@@ -295,3 +295,56 @@ test('pagesForPoint 的分组顺序跟材料登记顺序一致（面板要靠它
   assert.deepEqual(hits.map((h) => h.material), ['教辅A', '教辅A', '教辅B'])
   assert.deepEqual(hits.map((h) => h.from), ['3', '9', '1'])
 })
+
+/* ── 知识地图上那颗「看课」：这一节该看哪一讲 ───────────────────────────── */
+
+test('看课：先去资料图谱里找这一讲，找不着才用它自己挂的 video', async () => {
+  const f = fresh()
+  try {
+    // 一门网课：一个文件夹，里面躺着两讲
+    const dir = join(f.root, 'course')
+    mkdirSync(dir, { recursive: true })
+    const one = join(dir, '01.集合的概念.mp4')
+    writeFileSync(one, 'x')
+    writeFileSync(join(dir, '02.逻辑用语.mp4'), 'x')
+
+    f.store.update('profile', (p) => ({
+      ...p,
+      materials: [{ id: 'mat-v', kind: 'video', title: '一轮课程', path: dir, note: '' }],
+    }))
+    f.store.update('map', (m) => ({
+      ...m,
+      status: 'confirmed',
+      modules: [
+        {
+          id: 'M1',
+          title: '第一模块',
+          group: '第一块',
+          points: [
+            { id: 'M1.1', title: '集合的概念', why: '', source: '' },
+            { id: 'M1.2', title: '逻辑用语', why: '', source: '', video: 'F:\\课件\\没了.mp4' },
+          ],
+        },
+      ],
+    }))
+
+    assert.match((await f.call('GET', '/study/api/point/media', {}, {})).body.error.message, /point required/)
+
+    const hit = await f.call('GET', '/study/api/point/media', {}, { point: 'M1.1' })
+    assert.equal(hit.body.ok, true)
+    assert.equal(hit.body.title, '集合的概念')
+    assert.equal(hit.body.video.kind, 'video')
+    assert.equal(hit.body.video.file, one, '讲次名字对上了就开那一讲')
+    assert.equal(hit.body.video.material, '一轮课程')
+    assert.equal(hit.body.video.materialId, 'mat-v')
+    assert.equal(hit.body.video.level, 'unit')
+    assert.match(hit.body.video.why, /讲次名字对上了/)
+    assert.match(hit.body.video.url, /^\/study\/file\?path=/)
+
+    // 图谱里没有这一节（名字也对不上）：回 null，让面板去问教练
+    const miss = await f.call('GET', '/study/api/point/media', {}, { point: 'M9.9' })
+    assert.equal(miss.body.video, null)
+  } finally {
+    f.done()
+  }
+})

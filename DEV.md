@@ -329,6 +329,8 @@ node scripts/check-live.mjs 19387 19388
 | `new Date('2026-10-01')` 差一天 | 面板里日期一律自己拼字符串 / 用 `weekdayOf()`，别让 UTC 偏移把它挪走 |
 | `Library.store()` 顺手造空档案 | 带 `profileId` 的路由先 `storeFor()` 查名册 |
 | 探活把终端挂住 | SSE 那条永不结束；`check-live.mjs` 的字节数是 `.length`；用后台任务 |
-| `/study/api/point/pages` 当探针会误判 | 旧服务端的 `/study/api/point/:id` 会把 `pages` 当单元 id 接住并回 200 |
+| `/study/api/point/pages` 当探针会误判 | 旧服务端的 `/study/api/point/:id` 会把 `pages` 当单元 id 接住并回 200；探「看课」那条新路由要用 `/study/api/point/media`（缺参新代码 400、旧代码 404） |
+| 看课匹配「人人有份」 | 别拿 3 字公共子串当判据（「题型1」谁都有）；`videoForPoint()` 现在是 80 完全相等 / 60 互相包含且短边 ≥5 字 / 40 公共子串 ≥6，弱匹配一律退成文件夹；改完拿 `.recon-media.mjs` 过一遍真数据 |
+| 预览服务器「刚起就死」 | `Start-Job` 起的进程随那次 pwsh 调用结束就没；**起服务器与跑探针 / 截图必须写在同一段脚本里**（`Start-Job -Name preview … Stop-Job`） |
 | `--dump-dom` 空、新 headless 报 Multiple targets | 用老 `--headless` + `--virtual-time-budget` + `--screenshot` |
 

@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentTree, bookTree, fileKind, folderTree, materialTree, splitFolderName, stripIndex, MAX_UNITS } from '../lib/material-tree.js'
+import { agentTree, bookTree, fileKind, folderTree, materialTree, mediaKindOf, mediaTargetOf, splitFolderName, stripIndex, videoForPoint, MAX_UNITS } from '../lib/material-tree.js'
 
 /** 造一棵假的目录清单：`list('/root')` → 里面有什么。 */
 function fakeList(shape) {
@@ -317,4 +317,190 @@ test('入口：教练写过就用他写的，没写过才按目录摊', () => {
     tree: [],
   })
   assert.equal(auto.basis, 'toc')
+})
+
+/* ── 「看课」到底开哪一讲 ───────────────────────────────────────────────── */
+/*
+ * 单元上那颗「看课」原来只认知识点自己挂的 `video`；现在先去资料图谱里找这一讲。
+ * 找法三档：图谱里写着同一个 pointId → 讲次名字对得上 → 只对到「这一部分」。
+ * 这里全都用注入的假目录，别碰真盘。
+ */
+
+test('媒体目标：url 里藏着的路径解得出来，网课 / 别的文件 / 文件夹分得开', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mtree-media-'))
+  try {
+    const mp4 = join(root, '01 集合.mp4')
+    writeFileSync(mp4, 'x')
+    writeFileSync(join(root, '讲义.pdf'), 'x')
+
+    assert.equal(mediaTargetOf('/study/file?path=' + encodeURIComponent(mp4)), mp4)
+    assert.equal(mediaTargetOf(mp4), mp4, '本来就是个路径就原样回')
+    assert.equal(mediaTargetOf('/study/read?path=a%2Fb.md#q3'), 'a/b.md', '正文链接带着 #qN，别把页码当路径')
+    assert.equal(mediaTargetOf(''), '')
+
+    assert.equal(mediaKindOf(mp4), 'video')
+    assert.equal(mediaKindOf(join(root, '01 集合.MP4')), 'video')
+    assert.equal(mediaKindOf(join(root, '讲义.pdf')), 'file')
+    assert.equal(mediaKindOf(root), 'folder', '盘上真是目录就是目录')
+    assert.equal(mediaKindOf(''), '')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('看课：图谱里写着同一个 pointId 就开那一讲，名字对得上也算，PDF 不算看课', () => {
+  const root = 'F:\\课件\\一轮课程'
+  const open = (name) => '/study/file?path=' + encodeURIComponent(join(root, name))
+  const tree = {
+    basis: 'folder',
+    groups: [
+      {
+        title: '模块一 基础知识',
+        units: [],
+        modules: [
+          {
+            title: '02.模块一 基础知识 集合',
+            leaf: false,
+            units: [
+              { title: '03.集合的概念（讲义）', pointId: '', url: open('03.pdf') },
+              { title: '04.基础知识&基本例题', pointId: '', url: open('04.mp4') },
+              { title: '05.题型1：集合间的基本关系', pointId: 'M1.1', url: open('05.mp4') },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const entries = [{ materialId: 'mat-v', materialTitle: '一轮课程', tree }]
+
+  // ① 图谱里写着同一个 pointId —— 最准的一档
+  const byId = videoForPoint({ point: { id: 'M1.1', title: '集合' }, entries })
+  assert.equal(byId.kind, 'video')
+  assert.equal(byId.file, join(root, '05.mp4'))
+  assert.equal(byId.level, 'unit')
+  assert.equal(byId.material, '一轮课程')
+  assert.equal(byId.materialId, 'mat-v')
+  assert.match(byId.why, /M1\.1/)
+
+  // ② 名字对得上（pointId 换了也不影响）
+  const byName = videoForPoint({ point: { id: 'M9.9', title: '集合间的基本关系' }, entries })
+  assert.equal(byName.file, join(root, '05.mp4'))
+  assert.match(byName.why, /讲次名字对上了/)
+
+  // ③ 教辅的 PDF 不许当「看课」
+  const pdf = videoForPoint({
+    point: { id: 'M1.1', title: '集合' },
+    entries: [
+      {
+        materialId: 'mat-b',
+        materialTitle: '精讲册',
+        tree: {
+          groups: [
+            {
+              title: '专题一 集合',
+              units: [],
+              modules: [
+                {
+                  title: '1.1 集合',
+                  leaf: true,
+                  pointId: 'M1.1',
+                  url: '/study/file?path=' + encodeURIComponent('F:\\教辅\\精讲册.pdf'),
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  })
+  assert.equal(pdf, null, 'pointId 对上了也不开教辅 PDF——「看课」要的是课')
+})
+
+test('看课：两个文件夹里都有「基础知识」那种课，靠文件夹把两份讲次分开', () => {
+  // 真课就是这样：`02.模块一 基础知识 集合\04.基础知识&基本例题.mp4`
+  // 和 `03.模块一 基础知识 逻辑\14.基础知识与基本例题.mp4` 都像「基础知识与基本例题」，
+  // 光看文件名分不出来，得看父目录跟这一节的名字哪边更贴。
+  const root = 'F:\\课件\\一轮课程'
+  const open = (...parts) => '/study/file?path=' + encodeURIComponent(join(root, ...parts))
+  const entries = [
+    {
+      materialId: 'mat-v',
+      materialTitle: '一轮课程',
+      tree: {
+        basis: 'folder',
+        groups: [
+          { title: '02.模块一 基础知识 集合', units: [{ title: '04.基础知识&基本例题', pointId: '', url: open('02.模块一 基础知识 集合', '04.基础知识&基本例题.mp4') }], modules: [] },
+          { title: '03.模块一 基础知识 逻辑', units: [{ title: '14.基础知识与基本例题', pointId: '', url: open('03.模块一 基础知识 逻辑', '14.基础知识与基本例题.mp4') }], modules: [] },
+        ],
+      },
+    },
+  ]
+
+  const set = videoForPoint({ point: { id: 'M1.1', title: '集合基础知识与基本例题' }, entries })
+  assert.equal(set.file, join(root, '02.模块一 基础知识 集合', '04.基础知识&基本例题.mp4'))
+
+  const logic = videoForPoint({ point: { id: 'M1.4', title: '逻辑基础知识与基本例题' }, entries })
+  assert.equal(logic.file, join(root, '03.模块一 基础知识 逻辑', '14.基础知识与基本例题.mp4'))
+})
+
+test('看课：只对到「这一部分」时摆文件夹，里面只有一讲就展开；挂的 video 是最后的兜底', () => {
+  const root = 'F:\\课件\\一轮课程'
+  const open = (name) => '/study/file?path=' + encodeURIComponent(join(root, name))
+  const tree = {
+    groups: [
+      {
+        title: '模块一 基础知识',
+        units: [],
+        modules: [
+          {
+            title: '02.模块一 基础知识 集合',
+            leaf: false,
+            units: [
+              { title: '04.热身', pointId: '', url: open('04.mp4') },
+              { title: '05.讲解', pointId: '', url: open('05.mp4') },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const entries = [{ materialId: 'mat-v', materialTitle: '一轮课程', tree }]
+  const two = fakeList({ [root]: [{ name: '04.mp4' }, { name: '05.mp4' }] })
+
+  // 模块名对得上、讲次名对不上 —— 只能定位到这一部分
+  const part = videoForPoint({ point: { id: 'M1.2', title: '基础知识' }, entries, list: two })
+  assert.equal(part.level, 'part')
+  assert.equal(part.kind, 'folder')
+  assert.equal(part.file, root)
+  assert.match(part.why, /里面 2 个视频/)
+
+  // 同一档，但那个文件夹里只有一讲 —— 直接开那一讲
+  const one = videoForPoint({
+    point: { id: 'M1.2', title: '基础知识' },
+    entries,
+    list: fakeList({ [root]: [{ name: '04.mp4' }] }),
+  })
+  assert.equal(one.kind, 'video')
+  assert.equal(one.file, join(root, '04.mp4'))
+  assert.match(one.why, /只有这一讲/)
+
+  // 图谱里什么都没有：才轮到知识点自己挂的那个 video
+  const own = videoForPoint({
+    point: { id: 'M9.1', title: '导数', video: join(root, '09.mp4') },
+    entries: [],
+  })
+  assert.equal(own.file, join(root, '09.mp4'))
+  assert.equal(own.why, '这个单元上挂着的')
+
+  // 挂的是文件夹：只有一讲就展开，多了就摆文件夹
+  const folder = videoForPoint({
+    point: { id: 'M9.2', title: '导数', video: root },
+    entries: [],
+    list: two,
+  })
+  assert.equal(folder.kind, 'folder')
+  assert.equal(folder.file, root)
+
+  // 什么都没有：回 null，让面板去问
+  assert.equal(videoForPoint({ point: { id: 'M9.3', title: '导数' }, entries: [] }), null)
 })

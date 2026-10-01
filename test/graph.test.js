@@ -439,7 +439,7 @@ test('不给 onOpen：一个按钮都不渲染，单元本身还在', () => {
   assert.equal(byClass(host, 'kg-btn').length, 0)
 })
 
-test('没挂材料的按钮带 is-empty', () => {
+test('看课 / 做题两颗按钮一直在，没挂材料也是活的', () => {
   const host = makeHost()
   resetState(host)
   renderGraph(host, baseOpts({ onOpen: () => {} }))
@@ -450,12 +450,11 @@ test('没挂材料的按钮带 is-empty', () => {
   const isEmpty = (row) =>
     byClass(row, 'kg-btn').map((b) => b.classList.contains('is-empty'))
 
-  // M1.1 有 video、没有 practice
-  assert.deepEqual(labels(rows[0]), ['看课', '做题'])
-  assert.deepEqual(isEmpty(rows[0]), [false, true])
-  // M1.2 只有 practice
-  assert.deepEqual(labels(rows[1]), ['看课', '做题'])
-  assert.deepEqual(isEmpty(rows[1]), [true, false])
+  // 挂没挂材料都不灰：看课去资料图谱里找这一讲，做题是把教练叫来布置——两颗都有去处。
+  for (const row of rows) {
+    assert.deepEqual(labels(row), ['看课', '做题'])
+    assert.deepEqual(isEmpty(row), [false, false])
+  }
 })
 
 test('点 .kg-btn：kind 是 video/practice，第二个参数是那个 point', () => {

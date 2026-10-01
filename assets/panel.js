@@ -56,6 +56,7 @@ const STALE_NEED = [
   ['toolbox', '工具栏目', '工具页'],
   ['memory', '记忆卡', '工具页的记忆卡'],
   ['file', '打开网课 / 讲义', '任务里所有「打开」按钮'],
+  ['media', '按资料图谱找那一讲', '知识地图上「看课」直接落到具体那一讲'],
 ]
 
 let state = null
@@ -326,7 +327,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, treeAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, treeAlive, mediaAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -339,6 +340,7 @@ async function probeCapabilities() {
     alive('/study/api/memory'),
     // 缺参数在新代码里回 400、旧代码回 404，正好分得开
     alive('/study/api/material/tree'),
+    alive('/study/api/point/media'),
   ])
   return {
     ability,
@@ -352,6 +354,7 @@ async function probeCapabilities() {
     toolbox: toolboxAlive,
     memory: memoryAlive,
     tree: treeAlive,
+    media: mediaAlive,
     file: await fileAlive(),
   }
 }
@@ -1296,23 +1299,83 @@ function mountGraph() {
   })
 }
 
-/** 点「看课」直接开那一节网课；点「做题」进做题页（那儿有页码题号、能让我出题、能自评）。 */
+/**
+ * 点「看课」直接开那一节网课；点「做题」把教练叫过来布置（他挑材料、挑页码题号）。
+ */
 function openMaterial(kind, point) {
-  if (kind === 'practice') {
-    if (capabilities && !capabilities.practice) return toast('做题页还没上线（服务端是旧代码，重启 DSH）', true)
-    openUrl('/study/practice?point=' + encodeURIComponent(point.id))
+  if (kind === 'practice') return askCoachForWork(point)
+  return openLesson(point)
+}
+
+/**
+ * 看课：先在**资料图谱**里找这一节到底是哪一讲（`/study/api/point/media`）——
+ * 教练写树的时候把 pointId 写上去，点一下就落到那个 mp4 上，不再停在文件夹。
+ * 图谱里找不着才退回单元自己挂的 `video`，再没有才去问教练。
+ */
+async function openLesson(point) {
+  const open = (url) => {
+    if (capabilities && !capabilities.file) {
+      toast('打开文件这条路还没上线（服务端是旧代码，重启 DSH）', true)
+      return false
+    }
+    openUrl(url)
+    return true
+  }
+  let hit = null
+  if (!capabilities || capabilities.media) {
+    try {
+      const res = await api('/study/api/point/media?point=' + encodeURIComponent(point.id))
+      hit = (res && res.video) || null
+    } catch {
+      hit = null
+    }
+  }
+  if (hit && hit.url) {
+    if (!open(hit.url)) return
+    // 钉死的那一讲（`资料图谱`）不用解释；对到文件夹、或者只是名字像，得说一声——
+    // 不然他以为点开的就是这一节，听半天发现不是。
+    if (hit.kind === 'folder' || !String(hit.why || '').startsWith('资料图谱')) {
+      toast(`${hit.title || '这一讲'} · ${hit.why || '按图谱对上的'}`)
+    }
     return
   }
   const target = String(point.video || '').trim()
-  if (target) {
-    if (capabilities && !capabilities.file) return toast('打开文件这条路还没上线（服务端是旧代码，重启 DSH）', true)
-    openUrl(openPath(target))
-    return
-  }
+  if (target) return void open(openPath(target))
   const name = `${point.id} ${point.title || ''}`.trim()
   api('/study/api/inbox', { text: `「${name}」这一节尚未关联网课，请帮忙配置。` })
     .then(() => toast('已发送到对话'))
     .catch((err) => toast('发送失败：' + err.message))
+}
+
+/**
+ * 做题：不把他扔进做题页自己挑题——让教练按他现在的水平布置。
+ *
+ * 这一句就是「布置作业规范」的入口（`skills/study-coach/SKILL.md` 第 6 节）：
+ * 先看掌握度、该复习的、错题，再想他现在需要什么，然后从资料里挑出具体那一段。
+ * 递完话把他送到对话页，等安排。
+ */
+async function askCoachForWork(point) {
+  const name = `${point.id} ${point.title || ''}`.trim()
+  const key = `work|${point.id}`
+  if (FORWARDED.has(key)) {
+    toast('已经交给教练了，去对话页看')
+    go('coach', '/study/coach')
+    return
+  }
+  const text = [
+    `【面板·知识地图】我想练「${name}」，请你布置。`,
+    '先看我现在的掌握度、该复习的、最近的错题，再想我现在到底需要什么；',
+    '然后从资料里挑出具体的那一段（哪份材料、第几页 / 第几题），说清你为什么挑它；',
+    '最后用 study_plan 给我落一条今天的任务。',
+  ].join('\n')
+  FORWARDED.add(key)
+  try {
+    await api('/study/api/chat/send', { text, sessionId: (chat && chat.sessionId) || ui.chatSession || '' })
+    go('coach', '/study/coach')
+  } catch (err) {
+    FORWARDED.delete(key)
+    toast('没送到教练那儿：' + err.message, true)
+  }
 }
 
 /**

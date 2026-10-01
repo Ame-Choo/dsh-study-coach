@@ -161,6 +161,26 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   `preventDefault`，页面得照旧滚）；**Ctrl／⌘ + 滚轮**才缩放。`test/graph.test.js` 所有 `wheel` 派发都要带
   `ctrlKey: true`，另有一条钉「光滚轮不动画面、不 preventDefault」。`.kg-tool` 的
   `复位视图` / `全部收起` 与 Ctrl 滚轮是全部交互。
+- **单元上那两颗按钮永远活着**（用户要求：「看课的话自动指向特定文件，做题的话就直接跳转 AI 教练让他布置」）：
+  `assets/graph.js` 里就是 `for (const [kind, label] of [['video','看课'],['practice','做题']]) pill(label, '', () => onOpen(kind, point))`
+  ——点下去要做什么由 `assets/panel.js` 的 `openMaterial(kind, point)` 分派，**别在这里判 `point.video` 有没有**
+  （挂没挂只决定 `openLesson` 走哪条兜底路，按钮本身不灰）。`test/graph.test.js`
+  「看课 / 做题两颗按钮一直在，没挂材料也是活的」钉着。
+  · **看课** `openLesson(point)`：先 `GET /study/api/point/media?point=`（`lib/routes.js` 那条路由 →
+    `videoForPoint()`），有 `hit.url` 就打开；`hit.kind === 'folder'` 或 why 不是「资料图谱里写着…」时补一条 toast
+    （「这一部分里 N 个视频」，得让学生知道没落到单集）。旧服务端（`capabilities.media` 为假）才退回 `point.video`，
+    再没有才发那句「这一节尚未关联网课」的 inbox。
+  · **做题** `askCoachForWork(point)`：**不再跳做题页**，而是把四行请求（我想练哪个单元 / 先看掌握度该复习的错题 /
+    从材料里挑具体那一段并说清为什么 / 用 `study_plan` 落一条今天的任务）POST 到 `/study/api/chat/send`，
+    然后 `go('coach', '/study/coach')`。同一个单元只递一次（`FORWARDED` 的键 `'work|' + point.id`）；
+    **发送失败要把那条键删掉**，否则重试一次都没了。
+- **`videoForPoint()`（`lib/material-tree.js`）是这一节的核心，改它之前先读那几句注释**：三档评分
+  （100 图谱里写着同一个 `pointId` / 80 key 完全相等 / 60 互相包含且短的 ≥5 字 / 40 最长公共子串 ≥6，
+  20 模块名、10 大类名只算「这一部分」），`nameKey()` 去序号标点**和连词**（`与和及`——`基础知识与基本例题` 与
+  `基础知识&基本例题` 要算同一件东西），同分比 `[score, aff, kindRank]`，`aff` 是 `coverOf()`（两字片段重叠）
+  **只跟这一节的名字比**、不掺模块名。**只有 `score >= 60` 且不是文件夹才敢直接开文件**，其余一律 `partHit()`
+  退成文件夹（里面正好一讲就展开）。踩过两回：`sharedRun >= 3` 太松（「题型1」人人有，10 个单元全指到同一个
+  mp4）、父目录跟模块名同名互相加成会把长文件夹名抬高。真数据 67 个单元复核 = 42 个落到具体 mp4 / 25 个落到文件夹 / 0 个空手。
 - 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
 - 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
   —— 所以它好测，别往里加 requestAnimationFrame。
