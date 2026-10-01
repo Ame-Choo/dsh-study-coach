@@ -2,7 +2,7 @@
  * 学习教练面板。纯原生 JS，同源调 /study/api/*。
  *
  * 分工摆在这儿：对话那边负责问、解析材料、生成地图、写档案；这一端只负责
- * 给人看、让人自评、勾任务，再加一个留言口，把话带回对话里去。
+ * 给人看、让人自评、勾任务，再加一页对话和一个悬浮小窗，把话带回对话里去。
  * 所以这里没有「改目标」「加材料」的表单 —— 那些都归对话。
  */
 /**
@@ -93,6 +93,8 @@ const ui = {
   chatSession: '',
   /* 正在发的话（发出后先乐观占位，等服务端日志追上再换成真的） */
   chatSending: false,
+  /* 右下角那个悬浮小窗开着没有 */
+  float: false,
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -332,8 +334,9 @@ async function load() {
     if (!capabilities) capabilities = await probeCapabilities()
     agenda = await loadAgenda()
     library = await loadLibrary()
-    // 对话只有那一页要看，别每回开机都多打一次接口
-    if (page === 'coach') await loadChat({ withSessions: true })
+    // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
+    // 只有「对话」页才顺带多要一份会话清单。
+    await loadChat({ withSessions: page === 'coach' })
     applyMode()
     app.className = ''
     render()
@@ -379,7 +382,7 @@ async function loadLibrary() {
  *
  * 走插件自己的 `/study/api/chat`，那一头拿的是 DSH 的 sessionController，
  * 所以画的就是真正的对话，不是另抄一份。服务端是旧代码（没有这条路由）时
- * 回 404，这里收成 `available:false`，卡片退回「留言」那套。
+ * 回 404，这里收成 `available:false`，对话页只说「未接通」。
  */
 async function loadChat({ sessionId = ui.chatSession, withSessions = false } = {}) {
   const query = '?max=60' + (sessionId ? '&sessionId=' + encodeURIComponent(sessionId) : '') + (withSessions ? '&sessions=1' : '')
@@ -416,7 +419,7 @@ const PAGES = [
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
-  { id: 'coach', path: '/study/coach', label: '对话', hint: '留言给教练，由对话处理' },
+  { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
 ]
 
 let page = resolvePage()
@@ -475,10 +478,8 @@ const PAGE_CARDS = {
     main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
   },
-  coach: {
-    main: [['chat', '与教练对话', chatCard]],
-    aside: [['inbox', '留言', inboxCard], ['guide', '教练的指引', guideCard]],
-  },
+  // 对话页不放别的：这一页就是那个聊天窗口，整屏给它。
+  coach: { main: [['chat', '与教练对话', chatCard]] },
 }
 
 /* ── 渲染 ─────────────────────────────────────────────────────────────── */
@@ -491,6 +492,7 @@ function render() {
     ${staleCard()}
     ${page === 'home' ? homePage() : pageCards()}
     ${archiveModal()}
+    ${floatChat()}
   `
   mountGraph()
   syncChatPolling()
@@ -516,10 +518,14 @@ function chatHidden() {
   }
 }
 
+function chatVisible() {
+  return page === 'coach' || ui.float
+}
+
 function syncChatPolling() {
   // 通道没接通就别空转定时器——那会让页面永远有个活动的 interval 停不下来。
   // 接通之前靠卡片上那颗「重新连接」手动再试一次。
-  if (page !== 'coach' || chatHidden() || !chat || !chat.available) {
+  if (!chatVisible() || chatHidden() || !chat || !chat.available) {
     stopChatPolling()
     return
   }
@@ -530,7 +536,7 @@ function syncChatPolling() {
 }
 
 async function refreshChat() {
-  if (page !== 'coach' || chatHidden()) {
+  if (!chatVisible() || chatHidden()) {
     stopChatPolling()
     return
   }
@@ -539,21 +545,25 @@ async function refreshChat() {
   if (!chatStamp || chatStamp !== before) paintChat()
 }
 
-/** 只换消息列表那一块，不整页重画。 */
+/**
+ * 只换消息列表那一块，不整页重画。
+ * 整页那个日志和悬浮窗那个日志都挂 `[data-chat-log]`，谁在页面上就填谁。
+ */
 function paintChat() {
-  const host = document.getElementById('chat-log')
   const snapshot = chat || { messages: [] }
   chatStamp = chatFingerprint(snapshot)
-  if (!host) {
+  const hosts = ['chat-log', 'float-log'].map((id) => document.getElementById(id)).filter(Boolean)
+  if (!hosts.length) {
     render()
     return
   }
-  const stick = host.scrollHeight - host.scrollTop - host.clientHeight < 60
-  host.innerHTML = chatLog(snapshot)
-  if (stick) host.scrollTop = host.scrollHeight
+  for (const host of hosts) {
+    const stick = host.scrollHeight - host.scrollTop - host.clientHeight < 60
+    host.innerHTML = chatLog(snapshot)
+    if (stick) host.scrollTop = host.scrollHeight
+  }
 }
 
-/** 当前这一页的卡片；侧栏模式一律折成一条一条。 */
 /**
  * 侧栏模式一屏只放得下一张卡，所以进哪一页就把那一页的主卡摊开。
  * 只在换页时做一次——放进 render 里会让折叠按钮按不动。
@@ -567,16 +577,18 @@ function openFirstCard(id) {
 
 function pageCards() {
   const spec = PAGE_CARDS[page] || PAGE_CARDS.today
-  // 卡片工厂返回空串就是「这一页现在不需要它」——比如对话通道通了，留言卡就让位。
+  // 卡片工厂返回空串就是「这一页现在不需要它」（留个口子，省得以后想隐藏卡片时改渲染）。
   const draw = (col) =>
     (spec[col] || [])
       .map(([id, label, make]) => ({ id, label, html: make() }))
       .filter((card) => card.html)
       .map((card) => fold(card.id, card.label, card.html))
       .join('')
+  // 对话页要占满一屏（输入框钉在底下），给它一个自己的类名，样式在 style.css 里
+  const cls = page === 'coach' ? 'cards chat-page' : 'cards'
   const aside = draw('aside')
-  if (isSidebar()) return `<div class="cards">${draw('main')}${aside}</div>`
-  return `<div class="cards${aside ? ' two' : ''}">
+  if (isSidebar()) return `<div class="${cls}">${draw('main')}${aside}</div>`
+  return `<div class="${cls}${aside ? ' two' : ''}">
     <div class="col main">${draw('main')}</div>
     ${aside ? `<div class="col aside">${aside}</div>` : ''}
   </div>`
@@ -622,7 +634,7 @@ function homePage() {
     { id: 'map', title: '知识地图', hint: '课程全貌，可逐单元自评', count: built ? `${points} 个单元` : '还没画' },
     { id: 'ability', title: '总体能力', hint: '总体数据、薄弱环节、复习安排', count: total ? `碰过 ${pct}%` : '还没数据' },
     { id: 'library', title: '学习档案', hint: '切换目标、登记材料、记录基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
-    { id: 'coach', title: '与教练对话', hint: '有疑问、想更换材料、时间有变，都可留言', count: '' },
+    { id: 'coach', title: '与教练对话', hint: '有疑问、想换材料、时间有变，直接说', count: '' },
   ]
 
   return `
@@ -1505,50 +1517,62 @@ function chatCard() {
   if (!snapshot || !snapshot.available) {
     return `<section class="card">
       <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}</div>
-      <p class="dim">未接通对话通道（服务端可能是旧版本，或会话服务不可用）。可用右下角的「留言」先写下来，教练下次开口时会读到。</p>
+      <p class="dim">未接通对话通道。这一页要等 DSH 重启之后才能用——路由是进程启动时加载的，改完代码不重启就还是旧的。</p>
       ${snapshot && snapshot.error ? `<p class="dim">原因：${esc(snapshot.error)}</p>` : ''}
       <div class="row"><button class="mini" data-act="chat-reload">重新连接</button>
       <span class="dim">重启 DSH 之后点这里，不用刷新整页。</span></div>
     </section>`
   }
+  // 这一页就是聊天窗口：会话选择在上，气泡占满中间，输入框钉在底下
   return `<section class="card">
-    <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}</div>
+    <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}
+      <button class="mini" data-act="chat-reload" title="重新读取">刷新</button></div>
     ${chatPicker(snapshot)}
-    <div class="chat-log" id="chat-log">${chatLog(snapshot)}</div>
+    <div class="chat-log" id="chat-log" data-chat-log>${chatLog(snapshot)}</div>
     <form data-form="chat" class="form chat-form">
-      <label>说点什么<textarea name="text" rows="2" placeholder="例如：这节的含参讨论没跟上 / 换个教材 / 今天只剩 30 分钟"></textarea></label>
+      <textarea name="text" rows="2" placeholder="跟教练说一句，例如：这节的含参讨论没跟上 / 换个教材 / 今天只剩 30 分钟"></textarea>
       <div class="row">
         <button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${ui.chatSending ? '发送中…' : '发送'}</button>
-        <span class="dim">发送后进入对话，回复会自己出现在上面。</span>
+        <span class="dim">Enter 发送，Shift + Enter 换行。回复会自己出现在上面。</span>
       </div>
     </form>
   </section>`
 }
 
-/** 把话带回对话里。递到了教练立刻被叫起来；递不到就先存着，等他开口。 */
-function inboxCard() {
-  // 对话读得通就用不着留言了：那一页能直接说话。留言只在通道没接通时兜底。
-  if (chat && chat.available) return ''
-  const items = (state.inbox && state.inbox.items) || []
-  const recent = items.slice(-3).reverse()
-  return `<section class="card">
-    <div class="card-head"><h2>给教练留言</h2></div>
-    <p class="dim">此处内容会直接发送到对话。连接中断时会先保存，待下次对话处理。</p>
-    <form data-form="inbox" class="form">
-      <label>说点什么<textarea name="text" rows="3" placeholder="例如：这一部分没看懂 / 想更换教材 / 今天没有时间"></textarea></label>
-      <div class="row"><button type="submit" class="primary">发送</button></div>
+/**
+ * 右下角那个悬浮小窗。
+ *
+ * 面板任何一页都挂一颗圆按钮，点开就是简化版的聊天窗：同一份快照、同一条投递通道，
+ * 只是字号和留白收一档，宽度固定。走到哪一页都能顺手说一句，不用先绕回「对话」页。
+ * 「对话」页本身已经整屏是聊天窗口了，那一页不再挂。
+ */
+function floatChat() {
+  if (page === 'coach') return ''
+  if (!ui.float) {
+    return `<button class="fab" data-act="float-open" title="与教练对话" aria-label="与教练对话">💬</button>`
+  }
+  const snapshot = chat
+  const on = Boolean(snapshot && snapshot.available)
+  const head = `<header class="float-head">
+    <b>与教练对话</b>${on ? '' : '<span class="dim">未接通</span>'}
+    <span class="spread"></span>
+    <button class="mini" data-act="chat-reload" title="重新读取">↻</button>
+    <button class="mini" data-act="float-close" title="收起" aria-label="收起">✕</button>
+  </header>`
+  if (!on) {
+    return `<section class="float" role="dialog" aria-label="与教练对话">${head}
+      <p class="dim float-off">对话通道未接通。等 DSH 重启之后点上面的 ↻ 再试。</p>
+    </section>`
+  }
+  return `<section class="float" role="dialog" aria-label="与教练对话">${head}
+    <div class="float-log" id="float-log" data-chat-log>${chatLog(snapshot)}</div>
+    <form data-form="chat" class="chat-form float-form">
+      <textarea name="text" rows="1" placeholder="跟教练说一句…"></textarea>
+      <button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${ui.chatSending ? '…' : '发送'}</button>
     </form>
-    ${
-      recent.length
-        ? `<ul class="list">${recent
-            .map(
-              (i) => `<li class="${i.read ? 'done' : ''}"><span style="flex:1">${esc(i.text)}</span><span class="dim">${i.read ? '已读' : '未读'}</span></li>`,
-            )
-            .join('')}</ul>`
-        : ''
-    }
   </section>`
 }
+
 
 /* ── 交互 ─────────────────────────────────────────────────────────────── */
 
@@ -1661,6 +1685,13 @@ document.addEventListener('click', async (event) => {
       await loadChat({ withSessions: true })
       paintChat()
       toast('已刷新')
+    } else if (act === 'float-open') {
+      ui.float = true
+      if (!chat) await loadChat({ withSessions: true })
+      render()
+    } else if (act === 'float-close') {
+      ui.float = false
+      render()
     } else if (act === 'lib-rename') {
       ui.renameId = el.dataset.id
       ui.pendingDropProfile = null
@@ -1740,6 +1771,9 @@ document.addEventListener('submit', async (event) => {
           toast('没递进去：' + (out.pushError || '通道未通'), true)
         } else {
           form.reset()
+          // 悬浮窗里发完接着打字，别让人再点一次输入框
+          const box = form.querySelector('textarea')
+          if (box && box.focus) box.focus()
           toast('已发送')
         }
       } finally {
@@ -1749,14 +1783,6 @@ document.addEventListener('submit', async (event) => {
       await loadChat()
       paintChat()
       setTimeout(() => void refreshChat(), 1200)
-    } else if (kind === 'inbox') {
-      const text = String(data.get('text') || '').trim()
-      if (!text) {
-        toast('内容为空', true)
-        return
-      }
-      const out = await api('/study/api/inbox', { text })
-      toast(out.pushed ? '已发送' : '已暂存（' + (out.pushError || '通道未通') + '），请回到对话中说明')
     } else if (kind === 'task-edit') {
       const id = form.dataset.id
       await api('/study/api/task/update', {
@@ -1831,9 +1857,25 @@ document.addEventListener('submit', async (event) => {
 })
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    // Enter 发送、Shift + Enter 换行——聊天窗口该有的手感。
+    const box = event.target
+    if (!box || box.tagName !== 'TEXTAREA') return
+    const form = box.closest && box.closest('form')
+    if (!form || !form.dataset || form.dataset.form !== 'chat') return
+    event.preventDefault()
+    if (typeof form.requestSubmit === 'function') form.requestSubmit()
+    else if (typeof form.dispatchEvent === 'function') form.dispatchEvent(new Event('submit', { cancelable: true }))
+    return
+  }
   if (event.key !== 'Escape') return
   if (ui.archive) {
     ui.archive = null
+    render()
+    return
+  }
+  if (ui.float) {
+    ui.float = false
     render()
   }
 })

@@ -101,12 +101,22 @@ const PROBE_PATHS = [
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
+/** 一份假对话：一条学生说的、一条教练回的。形状跟 lib/chat.js 吐出来的一致。 */
+const CHAT_MESSAGES = [
+  { id: 'c1', seq: 9, role: 'user', text: '这一节的含参讨论没跟上', time: 1759300000000 },
+  { id: 'c2', seq: 16, role: 'bot', text: '分两种情形看：A 是不是空集会改变结论。', time: 1759300060000, tools: ['read'] },
+]
+
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study' } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false } = {}) {
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
   window.location.search = search
   window.location.pathname = path
+  // 通道通了、页面又在前台，面板就会开一个 2.5 秒的轮询定时器——node 的
+  // 事件循环就永远排不空，`node --test` 会挂着不退。要测「接通」的样子就
+  // 把标签页设成后台（这是真的会走到的分支，不是给测试开的后门）。
+  document.visibilityState = hidden ? 'hidden' : 'visible'
   const calls = []
   const posts = []
   globalThis.document = document
@@ -133,9 +143,16 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         : { ok: true, state: fixture }
     }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
-    // 测试进程就永远退不出去。要测接通的样子，得自己给 available:true 和一份 messages。
-    if (path.includes('/api/chat/sessions')) body = { ok: true, available: false, sessions: [] }
-    else if (path.includes('/api/chat')) body = { ok: true, available: false, messages: [], sessions: [] }
+    // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
+    if (path.includes('/api/chat/sessions')) {
+      body = chat
+        ? { ok: true, available: true, sessionId: 's1', sessions: [{ sessionId: 's1', title: '学习教练' }] }
+        : { ok: true, available: false, sessions: [] }
+    } else if (path.includes('/api/chat')) {
+      body = chat
+        ? { ok: true, available: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: [] }
+        : { ok: true, available: false, messages: [], sessions: [] }
+    }
     return { ok: true, status: 200, json: async () => body }
   }
   await import(`${PANEL}?v=${Math.random().toString(36).slice(2)}`)
@@ -156,7 +173,15 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         return this.map.has(key) ? this.map.get(key) : null
       }
     }
-    await listeners.get('submit')({ target: { dataset }, preventDefault() {} })
+    // 聊天那个表单会顺手禁掉提交按钮、发完 reset + 把焦点放回输入框，
+    // 所以假表单也得带上这几样。
+    const form = {
+      dataset,
+      querySelector: () => ({ disabled: false, focus() {} }),
+      reset() {},
+      preventDefault() {},
+    }
+    await listeners.get('submit')({ target: form, preventDefault() {} })
   }
   /** 点一个带 data-nav 的导航链接（它不该整页跳，该前端自己切页）。 */
   const clickNav = async (id) => {
@@ -583,4 +608,42 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   assert.match(coach.html(), /class="card open" data-card="chat"/)
   const libNarrow = await boot(fixture(), { innerWidth: 400, path: '/study/library' })
   assert.match(libNarrow.html(), /class="card open" data-card="library"/)
+})
+
+test('对话页就是一个完整聊天窗口；别的页挂一颗悬浮窗', async () => {
+  // ① 对话页：整页给聊天，没有「给教练留言」这张卡
+  const live = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true })
+  assert.match(live.html(), /class="cards chat-page"/)
+  assert.match(live.html(), /id="chat-log"/)
+  assert.match(live.html(), /data-form="chat"/)
+  assert.match(live.html(), /这一节的含参讨论没跟上/, '真消息得画出来')
+  assert.doesNotMatch(live.html(), /给教练留言/)
+  assert.doesNotMatch(live.html(), /data-form="inbox"/)
+  assert.doesNotMatch(live.html(), /data-act="float-open"/, '这一页本身就是聊天窗口，不用再挂一颗')
+
+  // 通道没接通时也得说清楚，而不是装作坏了
+  const off = await boot(fixture(), { path: '/study/coach' })
+  assert.match(off.html(), /未接通对话通道/)
+  assert.match(off.html(), /data-act="chat-reload"/)
+  assert.doesNotMatch(off.html(), /给教练留言/)
+
+  // ② 别的页：右下角一颗圆按钮，默认没展开
+  const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
+  assert.match(home.html(), /class="fab" data-act="float-open"/)
+  assert.doesNotMatch(home.html(), /class="float"/)
+
+  // ③ 点开：小窗出来，有自己的消息区和输入框，发消息走同一条通道
+  await home.clickAct({ act: 'float-open' })
+  assert.match(home.html(), /class="float"/)
+  assert.match(home.html(), /id="float-log"/)
+  assert.match(home.html(), /data-form="chat"/)
+  assert.doesNotMatch(home.html(), /class="fab"/)
+  await home.submitForm({ form: 'chat' }, { text: '今天只剩 30 分钟' })
+  assert.equal(home.posts.at(-1).path, '/study/api/chat/send')
+  assert.equal(home.posts.at(-1).body.text, '今天只剩 30 分钟')
+
+  // ④ 收起
+  await home.clickAct({ act: 'float-close' })
+  assert.match(home.html(), /class="fab" data-act="float-open"/)
+  assert.doesNotMatch(home.html(), /class="float"/)
 })

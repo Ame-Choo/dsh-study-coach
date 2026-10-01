@@ -562,9 +562,10 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
   .goal-line .v { flex: 1 1 100%; }
 }
 
-/* ── 对话页 ───────────────────────────────────────────────────────────────
-   左边一列消息，学生的话靠右、教练的话靠左；工具调用收成中间的小胶囊，
-   免得十几条 read/edit 把正文顶出屏幕。 */
+/* ── 对话 ───────────────────────────────────────────────────────────────
+   同一套气泡两种用法：整页（/study/coach）和右下角那个悬浮小窗（哪一页都能开）。
+   学生的话靠右、教练的话靠左；工具调用收成中间的小胶囊，免得十几条 read/edit
+   把正文顶出屏幕。小窗只是把这套标记的字号和留白收一档。 */
 .chat-pick { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
 .chat-pick label { font-size: 13px; }
 .chat-pick select { flex: 1; }
@@ -618,6 +619,95 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 
 .chat-empty { padding: 6px 0 10px; }
 .chat-form { margin-top: 4px; }
+.chat-form textarea { resize: vertical; }
+
+/* 整页那一版：卡片撑到视口高，气泡区吃掉剩下的空间，输入框永远钉在底下。
+   侧栏模式不这样——那边卡片本来就得矮，撑满会顶破折叠的版式。 */
+html[data-mode="browser"] .chat-page .card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 136px);
+  min-height: 380px;
+}
+.chat-page .chat-log { flex: 1 1 auto; min-height: 0; max-height: none; }
+.chat-page .chat-form { margin-top: 10px; }
+
+/* 右下角：一颗圆按钮，点开是简化版聊天窗 */
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, .24);
+}
+.fab:hover { filter: brightness(1.06); }
+
+.float {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  width: min(372px, calc(100vw - 24px));
+  height: min(540px, calc(100vh - 32px));
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  box-shadow: var(--shadow), 0 16px 48px rgba(16, 24, 40, .3);
+  overflow: hidden;
+}
+.float-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card-2);
+}
+.float-head b { font-size: 13px; }
+.float-head .spread { flex: 1; }
+.float-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 12px;
+  scroll-behavior: smooth;
+}
+.float .chat-msg { max-width: 92%; }
+.float .chat-text { font-size: 12.5px; padding: 7px 10px; border-radius: 12px; }
+.float-off { padding: 14px; }
+.float-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 10px;
+  border-top: 1px solid var(--line);
+}
+.float-form textarea { flex: 1; min-height: 40px; max-height: 132px; resize: none; }
+
+@media (max-width: 560px) {
+  .fab { right: 14px; bottom: 14px; }
+  .float {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    height: min(72vh, 520px);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

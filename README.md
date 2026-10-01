@@ -3,7 +3,7 @@
 DSH 的学习教练插件。把一门课拆成知识地图，逐单元记掌握度、排每日任务，并给学生一个看得见进度的网页面板。同源挂在 DSH 自己的 web 服务器上，面板地址 `/study`。
 
 - 对话里的 agent 用 15 个 `study_*` 工具读写全部数据；
-- 学生只在面板上看：自评档位、勾任务、留言。
+- 学生只在面板上看：自评档位、勾任务，以及在面板里直接跟教练对话（整页一个聊天窗口，右下角还有一颗悬浮窗）。
 
 **这个仓库里只有代码，一条学习内容都没有**——学生的目标、地图、掌握度全在数据目录里（见下面「插件是框架，数据在别处」）。
 
@@ -71,7 +71,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 | | 谁 |
 | --- | --- |
 | 对话里的 agent | 用 15 个 `study_*` 工具读和写全部数据；随包 `skills/study-coach/SKILL.md` 是工作法 |
-| 学生 | 只在面板上看：自评档位、勾任务、留言。面板对他只读，其余内容全由 agent 写 |
+| 学生 | 只在面板上看：自评档位、勾任务，以及在对话页 / 悬浮窗里直接跟教练说话。学习内容本身对他只读，全由 agent 写 |
 
 ## 插件是框架，数据在别处
 
@@ -193,7 +193,7 @@ node --test
 - **学习目标、材料、知识地图，只有对话那边能写**（`study_goal` / `study_material` / `study_map`）。面板上原来那几个表单已经拆掉 —— 学生自己在面板里填目标是错的，目标得是问出来的。
 - 面板上还能做的三件事：点知识点自评六档、勾掉今天做完的任务、确认地图草稿（「看过了，就这样」）。
 - 面板顶上那句指引由 `study_guide` 写，没写就是一句兜底提示（"想改目标、加材料、回对话里说"）。
-- 面板底下有个留言口，学生留的话进 `inbox.json`；下次对话用 `study_inbox` 读，读完标掉。
+- 面板底下有个留言口，学生留的话进 `inbox.json`；下次对话用 `study_inbox` 读，读完标掉。（**这个口后来删了**，面板改成直接开一个对话窗口打 `POST /study/api/chat/send`；`inbox.json` 与 `study_inbox` 还在，见「补：五」。）
 - 档案文件从 4 个变 6 个：多了 `guide.json`（面板指引）和 `inbox.json`（学生留言）。
 - 工具从 7 个变 9 个：多了 `study_guide`、`study_inbox`。`study_report` 的返回里也带上了 `guide` 和 `inboxItems`。
 - HTTP 多一条：`POST /study/api/inbox {text}`。
@@ -389,7 +389,7 @@ node --test
 | `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿 |
 | `/study/ability` | 能力 | 大盘数字、各大类、薄弱环节、待复习、最近七天 |
 | `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
-| `/study/coach` | 对话 | 直接看 DSH 里的对话、直接发消息 |
+| `/study/coach` | 对话 | 整页就是一个聊天窗口：听教练说、直接回话 |
 
 - 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。
 - 导航走 **`pushState` 前端切页**，不往服务端整页跳——因为服务端路由是 DSH 启动时加载的，改完 `lib/` 没重启时子页面会回 JSON 404，整页跳过去人看到的是一屏报错。前端切页让旧服务端也能用，地址栏仍是真地址。
@@ -397,12 +397,23 @@ node --test
 
 对话那条线（`lib/chat.js`）：
 
-- `sessionController` 是 DSH 的**可选**服务，和 `lib/bridge.js` 一样**不写进 `inject`**，拿不到就 `available:false`，面板自动退回「留言」那套，绝不白屏。
-- `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单，取第一个不带头会话的顶层会话当默认）、`history({sessionId, maxMessages})`（`sessionController.page()` 拿历史记录，翻成面板要的 `{id, role, text, time, tools, steps}`；折叠掉纯工具轮，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。
+- `sessionController` 是 DSH 的**可选**服务，和 `lib/bridge.js` 一样**不写进 `inject`**，拿不到就 `available:false`，对话页直说「没接通 / 原因 / 重新连接」，绝不白屏。
+- `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单：滤掉子会话，按 `updatedAt` 倒序）、`history({sessionId, maxMessages})`（只用 `sessionController.follow()` 拿第一帧 snapshot 就退订，翻成面板要的 `{id, role, text, time, tools, steps}`；`system` / `step` / 会话日志之类一律丢，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。**不用 `page()`**——它要 `throughSeq`，得先问 `projections()` 拿 `asOfSeq`，形状没侦察到；`follow` 一次就给窗口化 records + cursor。
 - HTTP 三条：`GET /study/api/chat/sessions`、`GET /study/api/chat?sessionId=&max=&sessions=1`、`POST /study/api/chat/send {text, sessionId?, mode?}`（`mode` 只收 `queue` / `steer`，复用 `lib/bridge.js` 的投递通道）。
-- 面板侧：开着对话页时**每 2.5 秒拉一次快照**，标签页切到后台、或者离开这一页就把定时器停掉；只有指纹变了才重画消息列表，正在输的字和滚到一半的位置都不动。**通道没接通就别开定时器**（会留一个永远停不下来的 interval），卡片上给一颗「重新连接」。**通道通了，右下角那张「给教练留言」卡自动让位**（`inboxCard()` 返回空串，`pageCards()` 把空卡滤掉）。
+- 面板侧：**整页对话**和**右下角悬浮窗**是同一份状态（`chat` 对象）两处渲染，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉。开着对话页或悬浮窗时**每 2.5 秒拉一次快照**，标签页切到后台、或者两者都关掉就把定时器停掉（`syncChatPolling()` + `chatVisible()`）；只有指纹变了才重画，正在输的字和滚到一半的位置都不动。**通道没接通就别开定时器**（会留一个永远停不下来的 interval，`node --test` 会因此跑不完）。
+- 悬浮窗：FAB（`[data-act="float-open"]`）在主页以外的每一页都在，点开是简化版——只有消息列表 + 一个输入框，不显示工具胶囊和时间戳，`×` 关掉、`Esc` 也关；`Enter` 发送、`Shift+Enter` 换行。
 - 侧栏模式下一屏只放得下一张卡，所以**换页时自动把那一页的主卡摊开**（`openFirstCard()` 只在换页和首次加载时调一次，放进 `render()` 里会让折叠按钮按不动）。
 
 三条路由同样是**服务端代码 → 必须重启 DSH 才生效**。没重启时对话页会直接说「服务端还没重启」，而不是装作坏了。
+
+### 五、对话页做成完整聊天窗口，外加一颗悬浮窗
+
+上一版里对话页是「主栏看对话 + 边栏写留言」两块。这一版把**面板上的留言口整个删掉**，对话页只剩一个占满一屏的聊天窗口，另外在每一页右下角挂一颗悬浮窗，随时能问一句。
+
+- **删的只是面板那半边。** `inbox.json`、`study_inbox` 工具、`POST /study/api/inbox`、`study_report` 里的 `inboxItems`、`study_guide` 全都没动——它们是 agent 侧的通道，不归这次改。面板里 `inboxCard()`、留言表单、`kind === 'inbox'` 那条提交分支一并删掉；`test/panel.test.js` 里那条「面板留言能写进档案」现在是直接打 HTTP 验的。
+- **对话页占满一屏。** `PAGE_CARDS.coach` 只剩主栏一张卡，`pageCards()` 给它一个 `chat-page` 类（两个分支都得带，漏一个 `--test` 会当场报出来）。CSS 里 `html[data-mode="browser"] .chat-page .card { height: calc(100vh - 136px) }`，`.chat-log` 改成 `flex:1; min-height:0` 在里面滚，输入框不再被消息推下去。窄屏（≤560px）让高度跟着 `100dvh` 走。
+- **悬浮窗和整页共用一份状态。** 同一个 `chat` 对象渲染两处，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉，所以点开悬浮窗就是接着刚才那段说。悬浮窗是简化版：只留消息列表 + 输入框，不显示工具胶囊和时间戳；`×` 或 `Esc` 关掉，`Enter` 发送、`Shift+Enter` 换行。FAB 在主页以外的每一页都在。
+- **定时器判据跟着改。** `syncChatPolling()` 原来只看 `page === 'coach'`，现在看 `chatVisible()`（在对话页**或**悬浮窗开着）；两者都不满足就 `clearInterval`。这条不只是省电：`node --test` 的假 DOM 里，一个停不下来的 interval 会让整个测试进程跑不完。
+- **脱开 DSH 也能看长相。** `DSH_STUDY_PREVIEW_CHAT=1 node scripts/preview.mjs` 会挂一份假对话，不必重启 DSH 就能把对话页和悬浮窗点一遍。真跑起来那段对话仍是 `sessionController` 给的。
 
 
