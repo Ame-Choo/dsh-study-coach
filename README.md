@@ -988,6 +988,20 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 - **记账**：只动了 `assets/*` 与三个 html（`lib/` 没碰）→ **刷新页面即可**，不必重启 DSH。
 
+## 补：知识图谱重做成「关卡面」
+
+用户说「今日复盘那个设计很好……参考一下明日方舟的关卡那种平面设计风格」，重点是知识图谱。复盘图（`lib/review.js`）已经把那套语言立起来了（方角、零模糊硬偏移、索引字、左侧信号条、分类色连线），图谱这次是把它搬到**可交互**的平面上——一动一静，所以手法要更省：棋盘格底 + 分区板块 + 正交连线，其余交给排版。`design.md` 的硬规矩照旧（圆角 0、一屏三处青以内、一个组件只用手法里的一样）。
+
+- **布局与连线**：三列**定宽**（大类 176 / 模块 168 / 单元行）。连线从贝塞尔改成**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`）——折线才是「电路/管线」的语言，贝塞尔太软。子树高度仍是确定性递归（没有力导向、没有动画循环），窗口变化防抖重排。
+- **分区底板**：每个大类一块 `.kg-band` 板块（方角、1px `--line`、左上角包），左侧一条 `.kg-rail` 索引轨：两位索引号 `.kg-ord`（Rajdhani + `tabular-nums`）+ 每个单元一枚刻线 + 一段百分比量尺 `.kg-gauge`。**该复习的大类**在板块左边贴一条斜纹 `.kg-band-hatch`（`repeating-linear-gradient(115deg, var(--warn) …)`）——info 不靠颜色也能看出来。
+- **档位点是菱形**（`rect` + `rotate(45deg)`，圆角 0 那套手法的「菱形」），颜色仍取 `--stage-N`；**选中**的单元是放大的菱形光晕 `.kg-halo`（全图只有一个）加一条 `.kg-row-mark` 行标。
+- **进度**：大类沿板块底沿、模块贴左沿、索引板里一条 258×3 的条。**信号青只给「选中 / 进度」**，`0%` 时回灰（`.kg-pct.is-zero`）。
+- **索引板（HUD）**：`.kg-plate` 写 `KNOWLEDGE MAP` + 「N 大类 · N 模块 · N 单元」+ 总体进度 + 进度条 + 「已接触 x/y · 斜纹＝该复习」；**钉在画布视口上**——`.kg-view` 是 `translate(t) scale(k)`，HUD 反向补一次 `translate(-t/k) scale(1/k)`，所以拖动缩放时它不跟着走（`test/graph.test.js` 把这条钉住了）。工具「全部收起 / 复位视图」同理钉在右上。
+- **面板那侧多了「简报条」**（`mapCard()`）：`KNOWLEDGE MAP` 眉标 + 总体进度 + 四格统计（模块 / 单元 / 已接触 / 平均把握）+ 六档色带 + 六档图例（菱形小点，不是胶囊）。原来那句解释图谱怎么用的 `<p class="dim">` 留着。
+- **几何常量全在 `assets/graph.js` 顶上**（`GROUP_W` / `MOD_W` / `STAGE_X` / `DUE_X` / `BTN_X` / `HEAD_Y` …）。加装饰请**另起 class**：`test/graph.test.js` 按 `.kg-box`（必须正好等于大类数）、`.kg-dot`（按可见单元数）、`.kg-halo`（全图 ≤1）的数量断言，别拿它们当底板或图例。
+- **两个坑**（都踩了）：①单元行的按钮与行槽原来用**绝对坐标**（忘了 `x +`）→ 全跑到模块列去；栏位宽度是定死的，按钮与行槽一律 `x + 常量` 起排。②折叠时也要报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数（原来折叠着显示「空」）。
+- **记账**：这一批只动 `assets/graph.js` / `assets/graph.css` / `assets/panel.js` / `assets/style.css`（`lib/` 没碰）→ **刷新页面即可**。视觉验收用离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` + `.graphcheck-server.mjs`（19392），不碰正在跑的 DSH。
+
 
 
 ### 七、跳转按钮「看不见内容」的病根（壁纸插件 + 别名层）

@@ -1,36 +1,71 @@
 /**
- * 知识图谱渲染。纯前端、零依赖，只画图，不碰数据、不碰别的 DOM。
+ * 知识图谱渲染：把课程地图画成一张「关卡面」。纯前端、零依赖，只画图，不碰数据、不碰别的 DOM。
  *
  * 三层折叠树，不是一股脑摊平：
  *   大类（group）→ 模块（module）→ 单元（point，一个点就是一节网课）
  * 默认只显示大类，点一下展开一层。最小单元上挂着「看课」「做题」两个按钮。
  *
+ * 版面照 design.md 与「明日方舟关卡选择面」那一套来：
+ *   · **正交连线**、方角板块（圆角一律 0）：三列对齐，连出来的是一条折起来的竖路。
+ *   · 每个大类一块**分区底板**，左边一条索引轨 + 两位索引字，板块右上角挂完成度。
+ *   · 档位是**菱形**（方角转 45°），信号青只给「当前选中」和「进度」，其余全是灰阶。
+ *   · 左上角一块**索引板**（HUD，不跟着拖），右上角工具也是方角细规，不抢视线。
+ *
  * 画布能拖、能滚轮缩放——东西多了全靠这两下看。
  * 几何全在这文件里算，皮在 graph.css。
  *
  * 调用方只需要给容器和这几样东西：
- *   renderGraph(host, { modules, mastery, stages, colorOf, openPoint, onPick, onOpen })
+ *   renderGraph(host, {
+ *     modules, mastery, stages, colorOf, openPoint, onPick, onOpen,
+ *     progress,   // lib/map.js 的 progressByGroup 输出：{ overall, groups, modules }（可选）
+ *     today,      // 'YYYY-MM-DD'：只有给了它才会标「该复习」的那些点（可选）
+ *   })
  * 其中 onOpen(kind, point) 的 kind 是 'video' | 'practice'。
  */
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
-const GROUP_W = 116
-const GROUP_H = 40
-const MOD_W = 140
-const MOD_H = 32
-const UNIT_H = 36
-const VGAP = 10
-const GROUP_GAP = 18
+/* ── 几何 ────────────────────────────────────────────────────────────────────
+   三列：大类板 / 模块板 / 单元行。列宽定死，行里也定死栏位 —— 排得齐才像一张图。 */
 
-const COL0 = 26
-const COL1 = COL0 + GROUP_W + 66
-const COL2 = COL1 + MOD_W + 58
+const COL0 = 46
+const GROUP_W = 176
+const GROUP_H = 58
+const MOD_W = 168
+const MOD_H = 48
+const UNIT_H = 38
 
-const GROUP_NAME_MAX = 7
-const MOD_NAME_MAX = 10
-const NAME_MAX = 12
-const BTN_H = 18
+const GAP_GM = 64
+const GAP_MU = 58
+const COL1 = COL0 + GROUP_W + GAP_GM
+const COL2 = COL1 + MOD_W + GAP_MU
+
+const VGAP = 12
+const MOD_GAP = 10
+const GROUP_GAP = 26
+const BAND_X = 14
+const BAND_PAD = 14
+/* 第一块板块的中心线：上面留给索引板与页眉，别让内容钻到 HUD 底下。 */
+const HEAD_Y = 146
+const BOTTOM_PAD = 44
+
+const GROUP_NAME_MAX = 8
+const MOD_NAME_MAX = 11
+const NAME_MAX = 10
+const CODE_MAX = 6
+
+/* 单元行里的栏位（相对行左沿）：编号 / 名字 / 档位 / 复习日 / 按钮 */
+const CODE_X = 24
+const NAME_X = 62
+const STAGE_X = 206
+const DUE_X = 274
+const BTN_X = 324
+const BTN_H = 22
+const BTN_GAP = 6
+
+/* 索引板（HUD）：不跟着拖，钉在左上角 */
+const PLATE = { x: 14, y: 14, w: 300, h: 56 }
+const PLATE_BAR = { x: 28, y: 60, w: 258, h: 3 }
 
 const MIN_K = 0.4
 const MAX_K = 2.4
@@ -94,12 +129,12 @@ function emptyState(host) {
   host.appendChild(box)
 }
 
-/** 一个能点的胶囊按钮。返回节点和它的宽度，宽度得算出来才能排版。 */
+/** 一个能点的方角按钮。返回节点和它的宽度，宽度得算出来才能排版。 */
 function pill(label, extraClass, onClick) {
   const w = Math.round(textWidth(label) + 22)
   const node = svgEl('g', { class: 'kg-btn' + (extraClass ? ' ' + String(extraClass).trim() : ''), tabindex: '0' })
-  node.appendChild(svgEl('rect', { class: 'kg-btn-bg', width: w, height: BTN_H, rx: BTN_H / 2 }))
-  const text = svgEl('text', { class: 'kg-btn-text', x: w / 2, y: 13, 'text-anchor': 'middle' })
+  node.appendChild(svgEl('rect', { class: 'kg-btn-bg', width: w, height: BTN_H }))
+  const text = svgEl('text', { class: 'kg-btn-text', x: w / 2, y: BTN_H / 2 + 4, 'text-anchor': 'middle' })
   text.textContent = label
   node.appendChild(text)
   node.addEventListener('click', (event) => {
@@ -118,7 +153,7 @@ function pill(label, extraClass, onClick) {
 /**
  * @param {HTMLElement} host 容器，会被清空
  * @param {{modules?: any[], mastery?: any, stages?: string[], colorOf?: Function, openPoint?: string|null,
- *          onPick?: Function, onOpen?: Function}} options
+ *          onPick?: Function, onOpen?: Function, progress?: any, today?: string}} options
  * @returns {undefined}
  */
 export function renderGraph(host, options) {
@@ -136,6 +171,10 @@ export function renderGraph(host, options) {
   const onPick = typeof opt.onPick === 'function' ? opt.onPick : null
   const onOpen = typeof opt.onOpen === 'function' ? opt.onOpen : null
   const colorOf = (stage) => (typeof opt.colorOf === 'function' ? opt.colorOf(stage) : null) || 'currentColor'
+  /* 进度口径以 lib/map.js 那份为准（调用方给）；没给就按六档位置自己算个大概。
+     复习日只认调用方给的 today：不给就不标，别让单测跟着系统时钟飘。 */
+  const given = opt.progress && typeof opt.progress === 'object' ? opt.progress : null
+  const today = typeof opt.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(opt.today) ? opt.today : null
 
   const modules = rawModules.filter((m) => m && (m.title || m.id))
   if (modules.length === 0) {
@@ -165,6 +204,7 @@ export function renderGraph(host, options) {
         return {
           kind: 'mod',
           key: modKey,
+          id: String(mod.id ?? mod.title ?? ''),
           title: String(mod.title || mod.id || ''),
           children: (Array.isArray(mod.points) ? mod.points : [])
             .filter((p) => p && p.id)
@@ -202,6 +242,33 @@ export function renderGraph(host, options) {
   const heightOf = (node) => (node.kind === 'group' ? GROUP_H : node.kind === 'mod' ? MOD_H : UNIT_H)
   const xOf = (node) => (node.kind === 'group' ? COL0 : node.kind === 'mod' ? COL1 : COL2)
 
+  /* ── 档位与进度：两处都要用 ─────────────────────────────────────────── */
+
+  function stageOf(point) {
+    const rec = mastery[point.id]
+    return rec && typeof rec.stage === 'string' && stages.indexOf(rec.stage) >= 0 ? rec.stage : fallbackStage
+  }
+
+  /** 该复习的日期（YYYY-MM-DD），没到点或调用方没给 today 就回空串。 */
+  function dueOf(pointId) {
+    if (!today) return ''
+    const rec = mastery[pointId]
+    const at = rec && typeof rec.nextReview === 'string' ? rec.nextReview.slice(0, 10) : ''
+    return /^\d{4}-\d{2}-\d{2}$/.test(at) && at <= today ? at : ''
+  }
+
+  /** 一组单元的进度：调用方给了就用它的（口径以 lib/map.js 那份为准），没有就按六档位置平均。 */
+  function ratioOf(points, known) {
+    if (typeof known === 'number' && Number.isFinite(known)) return Math.max(0, Math.min(100, Math.round(known)))
+    if (!points.length) return 0
+    const top = stages.length - 1 || 1
+    let sum = 0
+    for (const p of points) sum += Math.max(0, stages.indexOf(stageOf(p)))
+    return Math.round((sum / points.length / top) * 100)
+  }
+
+  /* ── 排版 ─────────────────────────────────────────────────────────────── */
+
   /** 一遍递归：算出每棵子树多高，父节点自己摆在这块高度的中间。 */
   function layout(node) {
     node.h = heightOf(node)
@@ -212,30 +279,34 @@ export function renderGraph(host, options) {
       node.y = node.h / 2
       return
     }
+    /* 模块之间比单元之间再紧一点：同属一块底板，缝太大就不成组了。 */
+    const gap = node.kind === 'group' ? MOD_GAP : VGAP
     let y = 0
     for (const kid of kids) {
       layout(kid)
       kid.y = y + kid.subH / 2
-      y += kid.subH + VGAP
+      y += kid.subH + gap
     }
-    const sum = y - VGAP
+    const sum = y - gap
     node.subH = Math.max(node.h, sum)
     node.top = (node.subH - sum) / 2
     node.y = node.subH / 2
   }
 
-  let cursor = 0
+  let cursor = HEAD_Y
   for (const group of tree) {
     layout(group)
     group.y = cursor + group.subH / 2
     cursor += group.subH + GROUP_GAP
   }
 
-  const contentH = Math.max(120, cursor - GROUP_GAP)
+  const contentH = Math.max(200, cursor - GROUP_GAP + BOTTOM_PAD)
   const vw = Math.max(320, Math.round(host.clientWidth || 0))
   /* 高度不封顶：大类一多（十二个往上）硬压到 620 就会把最后几个盒子关在画布外，只能靠拖。
      让它跟着内容长、页面自己滚，比悄悄裁掉强。 */
-  const vh = Math.max(320, Math.round(contentH + 48))
+  const vh = Math.max(320, Math.round(contentH + 24))
+  /* 底板宽度跟着画布走：画布宽就铺满，画布窄就按住内容宽度，剩下的靠拖。 */
+  const bandW = Math.max(COL2 + 430, vw - BAND_X - 16) - BAND_X
 
   const svg = svgEl('svg', {
     class: 'kg-svg',
@@ -246,17 +317,101 @@ export function renderGraph(host, options) {
     'aria-label': '知识图谱',
   })
 
+  /* SVG 内部没法用 CSS 变量的地方才写死形状 —— 这两块花样的颜色还是走 class。 */
+  const defs = svgEl('defs')
+  const grid = svgEl('pattern', { id: 'kg-grid', width: 26, height: 26, patternUnits: 'userSpaceOnUse' })
+  grid.appendChild(svgEl('path', { d: 'M 26 0 L 0 0 0 26', fill: 'none', class: 'kg-grid-line' }))
+  defs.appendChild(grid)
+  const hatch = svgEl('pattern', { id: 'kg-hatch', width: 10, height: 10, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(115)' })
+  hatch.appendChild(svgEl('rect', { width: 4, height: 10, class: 'kg-hatch-line' }))
+  defs.appendChild(hatch)
+  svg.appendChild(defs)
+  svg.appendChild(svgEl('rect', { class: 'kg-grid', x: 0, y: 0, width: vw, height: vh, fill: 'url(#kg-grid)' }))
+
   const view = svgEl('g', { class: 'kg-view' })
+  const bands = svgEl('g', { class: 'kg-bands' })
   const lines = svgEl('g', { class: 'kg-lines' })
   const nodes = svgEl('g', { class: 'kg-nodes' })
+  view.appendChild(bands)
   view.appendChild(lines)
   view.appendChild(nodes)
   svg.appendChild(view)
 
+  /* HUD（索引板 / 工具箱）是钉在画布视口上的：给它们补一次反向变换，
+     拖动缩放时就不跟着走——正向是 translate(t) scale(k)，反过来就是 translate(-t/k) scale(1/k)。 */
+  const hud = []
   const applyView = () => {
-    view.setAttribute('transform', `translate(${state.view.tx} ${state.view.ty}) scale(${state.view.k})`)
+    const { tx, ty, k } = state.view
+    view.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`)
+    const inverse = `translate(${-tx / k} ${-ty / k}) scale(${1 / k})`
+    for (const node of hud) node.setAttribute('transform', inverse)
   }
   applyView()
+
+  /* ── 分区底板 + 索引轨 ────────────────────────────────────────────────── */
+
+  const allPoints = []
+  for (const group of tree) for (const mod of group.children) for (const unit of mod.children) allPoints.push(unit.point)
+  const touched = allPoints.filter((p) => stageOf(p) !== fallbackStage).length
+  const overall = ratioOf(allPoints, given && given.overall)
+
+  let maxTop = HEAD_Y
+  for (const [index, group] of tree.entries()) {
+    const top = group.y - group.subH / 2
+    maxTop = Math.max(maxTop, top + group.subH)
+    bands.appendChild(svgEl('rect', {
+      class: 'kg-band',
+      x: BAND_X,
+      y: top - BAND_PAD,
+      width: bandW,
+      height: group.subH + BAND_PAD * 2,
+    }))
+    /* 这块分区里有该复习的点：左边贴一条斜纹，一眼就能扫到。 */
+    const due = group.children.some((mod) => mod.children.some((unit) => dueOf(unit.point.id)))
+    if (due) {
+      bands.appendChild(svgEl('rect', {
+        class: 'kg-band-hatch',
+        x: BAND_X,
+        y: top - BAND_PAD,
+        width: 5,
+        height: group.subH + BAND_PAD * 2,
+        fill: 'url(#kg-hatch)',
+      }))
+    }
+  }
+  /* 索引轨画在底板之上：一条竖线 + 每块一格刻度 + 两位索引字。 */
+  bands.appendChild(svgEl('line', { class: 'kg-rail', x1: 19.5, y1: Math.max(14, HEAD_Y - 52), x2: 19.5, y2: maxTop + BAND_PAD - 10 }))
+  for (const [index, group] of tree.entries()) {
+    bands.appendChild(svgEl('rect', { class: 'kg-tick', x: 18, y: group.y - 11, width: 3, height: 22 }))
+    const ord = svgEl('text', { class: 'kg-ord', x: 28, y: group.y + 5 })
+    ord.textContent = String(index + 1).padStart(2, '0')
+    bands.appendChild(ord)
+  }
+
+  /* ── 索引板（HUD） ────────────────────────────────────────────────────── */
+
+  const modCount = tree.reduce((n, g) => n + g.children.length, 0)
+  const plate = svgEl('g', { class: 'kg-plate' })
+  plate.appendChild(svgEl('rect', { class: 'kg-plate-bg', x: PLATE.x, y: PLATE.y, width: PLATE.w, height: PLATE.h }))
+  plate.appendChild(svgEl('path', { class: 'kg-corner', d: `M ${PLATE.x} ${PLATE.y + 12} L ${PLATE.x} ${PLATE.y} L ${PLATE.x + 12} ${PLATE.y}` }))
+  const eyebrow = svgEl('text', { class: 'kg-plate-eyebrow', x: PLATE.x + 14, y: PLATE.y + 19 })
+  eyebrow.textContent = 'KNOWLEDGE MAP'
+  plate.appendChild(eyebrow)
+  const headline = svgEl('text', { class: 'kg-plate-title', x: PLATE.x + 14, y: PLATE.y + 37 })
+  headline.textContent = `${tree.length} 大类 · ${modCount} 模块 · ${allPoints.length} 单元`
+  plate.appendChild(headline)
+  const pct = svgEl('text', { class: 'kg-plate-pct', x: PLATE.x + PLATE.w - 14, y: PLATE.y + 37, 'text-anchor': 'end' })
+  pct.textContent = `${overall}%`
+  plate.appendChild(pct)
+  plate.appendChild(svgEl('rect', { class: 'kg-plate-bar', x: PLATE_BAR.x, y: PLATE_BAR.y, width: PLATE_BAR.w, height: PLATE_BAR.h }))
+  if (overall) {
+    plate.appendChild(svgEl('rect', { class: 'kg-plate-bar-fill', x: PLATE_BAR.x, y: PLATE_BAR.y, width: PLATE_BAR.w * (overall / 100), height: PLATE_BAR.h }))
+  }
+  const note = svgEl('text', { class: 'kg-plate-note', x: PLATE.x + 14, y: PLATE.y + PLATE.h + 14 })
+  note.textContent = `已接触 ${touched}/${allPoints.length}${today ? ' · 斜纹＝该复习' : ''}`
+  plate.appendChild(note)
+  svg.appendChild(plate)
+  hud.push(plate)
 
   /* ── 画 ────────────────────────────────────────────────────────────────── */
 
@@ -274,50 +429,107 @@ export function renderGraph(host, options) {
     for (const kid of kids) {
       const kx = xOf(kid)
       const ky = baseY + node.top + kid.y
+      /* 正交折线：先横出去、再竖着走、再横进目标。关卡面那种走线，比曲线更像图纸。 */
+      const mx = x + widthOf(node) + (kx - x - widthOf(node)) / 2
       lines.appendChild(svgEl('path', {
         class: 'kg-link kg-link-' + kid.kind,
-        d: `M ${x + widthOf(node)} ${y} C ${x + widthOf(node) + 26} ${y}, ${kx - 26} ${ky}, ${kx} ${ky}`,
+        d: `M ${x + widthOf(node)} ${y} H ${mx} V ${ky} H ${kx}`,
       }))
       if (kid.kind === 'unit') unitCount += 1
     }
 
     if (node.kind === 'unit') nodes.appendChild(unitNode(node.point, x, y))
-    else nodes.appendChild(branchNode(node, x, y, kids.length))
+    else nodes.appendChild(branchNode(node, x, y))
 
     /* 子节点的坐标是相对「我这棵子树的顶」算的，所以得把自己那半截高度挪掉——
        不然同级的第二个子树会跟第一个叠在同一个 y 上。 */
     for (const kid of kids) drawNode(kid, baseY + node.y - node.subH / 2 + node.top)
   }
 
-  function branchNode(node, x, y, kidCount) {
+  /** 折叠着也要说得清「里面有几个」——所以栏位上写的是总子数，不是这次画出来的那个数。 */
+  function branchNode(node, x, y) {
     const w = widthOf(node)
     const h = heightOf(node)
+    const total = node.children.length
     const attrs = { class: 'kg-' + node.kind, tabindex: '0', role: 'treeitem' }
-    if (kidCount) attrs['aria-expanded'] = String(isOpen(node))
+    if (total) attrs['aria-expanded'] = String(isOpen(node))
     const g = svgEl('g', attrs)
 
     const tip = svgEl('title')
-    tip.textContent = node.title + (kidCount ? `（${kidCount} 项，点一下${isOpen(node) ? '收起' : '展开'}）` : '（空）')
+    tip.textContent = node.title + (total ? `（${total} 项，点一下${isOpen(node) ? '收起' : '展开'}）` : '（空）')
     g.appendChild(tip)
 
-    g.appendChild(svgEl('rect', { class: 'kg-box', x, y: y - h / 2, width: w, height: h, rx: 10 }))
-
-    const title = svgEl('text', {
-      class: 'kg-title',
-      x: x + w / 2,
-      y: kidCount || node.kind === 'group' ? y - 2 : y + 4,
-      'text-anchor': 'middle',
-    })
-    title.textContent = clip(node.title, node.kind === 'group' ? GROUP_NAME_MAX : MOD_NAME_MAX)
-    g.appendChild(title)
+    /* 方角板块：圆角一律 0，层次只靠「面」和细规。 */
+    g.appendChild(svgEl('rect', { class: 'kg-box', x, y: y - h / 2, width: w, height: h }))
+    /* 角包：只钉左上那一小块，标出这块的起点。 */
+    g.appendChild(svgEl('path', { class: 'kg-corner', d: `M ${x} ${y - h / 2 + 12} L ${x} ${y - h / 2} L ${x + 12} ${y - h / 2}` }))
 
     if (node.kind === 'group') {
-      const sub = svgEl('text', { class: 'kg-sub', x: x + w / 2, y: y + 13, 'text-anchor': 'middle' })
-      sub.textContent = kidCount ? `${kidCount} 个模块` : '空'
+      const points = []
+      for (const mod of node.children) for (const unit of mod.children) points.push(unit.point)
+      const pctValue = ratioOf(points, given && given.groups ? given.groups[node.title] : undefined)
+      const done = points.filter((p) => stageOf(p) !== fallbackStage).length
+
+      const title = svgEl('text', { class: 'kg-title', x: x + 14, y: y - 4 })
+      title.textContent = clip(node.title, GROUP_NAME_MAX)
+      g.appendChild(title)
+
+      const sub = svgEl('text', { class: 'kg-sub', x: x + 14, y: y + 14 })
+      sub.textContent = total ? `${total} 个模块 · ${points.length} 单元` : '空'
       g.appendChild(sub)
-    } else if (kidCount) {
-      const sub = svgEl('text', { class: 'kg-sub', x: x + w / 2, y: y + 13, 'text-anchor': 'middle' })
-      sub.textContent = `${kidCount} 节`
+
+      const pctText = svgEl('text', { class: 'kg-pct' + (pctValue ? '' : ' is-zero'), x: x + w - 14, y: y - 4, 'text-anchor': 'end' })
+      pctText.textContent = `${pctValue}%`
+      g.appendChild(pctText)
+
+      const count = svgEl('text', { class: 'kg-sub', x: x + w - 14, y: y + 14, 'text-anchor': 'end' })
+      count.textContent = `${done}/${points.length}`
+      g.appendChild(count)
+
+      /* 沿底沿的进度槽：讲的是「读到哪儿」，不跟板块自己的边抢。 */
+      const inset = 14
+      g.appendChild(svgEl('rect', { class: 'kg-gauge', x: x + inset, y: y + h / 2 - 9, width: w - inset * 2, height: 3 }))
+      if (pctValue) {
+        g.appendChild(svgEl('rect', {
+          class: 'kg-gauge-fill',
+          x: x + inset,
+          y: y + h / 2 - 9,
+          width: (w - inset * 2) * (pctValue / 100),
+          height: 3,
+        }))
+      }
+    } else {
+      const points = node.children.map((unit) => unit.point)
+      const pctValue = ratioOf(points, given && given.modules ? given.modules[node.id] : undefined)
+      const done = points.filter((p) => stageOf(p) !== fallbackStage).length
+
+      /* 左沿竖着的进度柱：模块板比大类板窄，槽立起来放左边。 */
+      const trackH = h - 8
+      g.appendChild(svgEl('rect', { class: 'kg-mark', x: x + 1, y: y - trackH / 2, width: 4, height: trackH }))
+      if (pctValue) {
+        g.appendChild(svgEl('rect', {
+          class: 'kg-mark-fill',
+          x: x + 1,
+          y: y + trackH / 2 - trackH * (pctValue / 100),
+          width: 4,
+          height: trackH * (pctValue / 100),
+        }))
+      }
+
+      const code = svgEl('text', { class: 'kg-code', x: x + 16, y: y - 8 })
+      code.textContent = clip(node.id, CODE_MAX)
+      g.appendChild(code)
+
+      const pctText = svgEl('text', { class: 'kg-pct' + (pctValue ? '' : ' is-zero'), x: x + w - 12, y: y - 8, 'text-anchor': 'end' })
+      pctText.textContent = `${pctValue}%`
+      g.appendChild(pctText)
+
+      const title = svgEl('text', { class: 'kg-title', x: x + 16, y: y + 6 })
+      title.textContent = clip(node.title, MOD_NAME_MAX)
+      g.appendChild(title)
+
+      const sub = svgEl('text', { class: 'kg-sub', x: x + 16, y: y + 20 })
+      sub.textContent = total ? `${total} 节 · 掌握 ${done}/${points.length}` : '空'
       g.appendChild(sub)
     }
 
@@ -342,25 +554,57 @@ export function renderGraph(host, options) {
   }
 
   function unitNode(point, x, y) {
-    const rec = mastery[point.id]
-    const stage = rec && typeof rec.stage === 'string' && stages.indexOf(rec.stage) >= 0 ? rec.stage : fallbackStage
+    const stage = stageOf(point)
     const fill = colorOf(stage)
+    const due = dueOf(point.id)
+    const isOpenPoint = openPoint === point.id
 
-    const g = svgEl('g', { class: 'kg-point' + (openPoint === point.id ? ' is-open' : ''), tabindex: '0', role: 'treeitem' })
+    const g = svgEl('g', { class: 'kg-point' + (isOpenPoint ? ' is-open' : ''), tabindex: '0', role: 'treeitem' })
     const tip = svgEl('title')
-    tip.textContent = (point.title || point.id) + ' · ' + stage
+    tip.textContent = (point.title || point.id) + ' · ' + stage + (due ? ` · ${due} 该复习` : '')
     g.appendChild(tip)
 
-    if (openPoint === point.id) g.appendChild(svgEl('circle', { class: 'kg-halo', cx: x + CH_SIZE, cy: y, r: 9.5 }))
-    g.appendChild(svgEl('circle', { class: 'kg-dot', cx: x + CH_SIZE, cy: y, r: 5.5, fill, 'data-stage': stage }))
+    const cx = x + CH_SIZE
+    if (isOpenPoint) {
+      /* 选中：菱形外面再套一圈描边（全图只有一个）。 */
+      g.appendChild(svgEl('rect', {
+        class: 'kg-halo',
+        x: cx - 9,
+        y: y - 9,
+        width: 18,
+        height: 18,
+        transform: `rotate(45 ${cx} ${y})`,
+      }))
+    }
+    /* 档位点是菱形：方角转 45°，不写圆角。 */
+    g.appendChild(svgEl('rect', {
+      class: 'kg-dot',
+      x: cx - 5.5,
+      y: y - 5.5,
+      width: 11,
+      height: 11,
+      transform: `rotate(45 ${cx} ${y})`,
+      fill,
+      'data-stage': stage,
+    }))
 
-    const name = svgEl('text', { class: 'kg-name', x: x + 20, y: y - 2 })
+    const code = svgEl('text', { class: 'kg-code', x: x + CODE_X, y: y + 4 })
+    code.textContent = clip(point.id, CODE_MAX)
+    g.appendChild(code)
+
+    const name = svgEl('text', { class: 'kg-name', x: x + NAME_X, y: y - 1 })
     name.textContent = clip(point.title || point.id, NAME_MAX)
     g.appendChild(name)
 
-    const tag = svgEl('text', { class: 'kg-stage', x: x + 20, y: y + 12 })
+    const tag = svgEl('text', { class: 'kg-stage', x: x + STAGE_X, y: y + 4 })
     tag.textContent = stage
     g.appendChild(tag)
+
+    if (due) {
+      const at = svgEl('text', { class: 'kg-due', x: x + DUE_X, y: y + 4 })
+      at.textContent = '↻ ' + due.slice(5)
+      g.appendChild(at)
+    }
 
     const pick = () => {
       if (onPick) onPick(point.id)
@@ -378,31 +622,34 @@ export function renderGraph(host, options) {
 
     const row = svgEl('g', { class: 'kg-unit-row' })
 
-    /* 按钮宽度得先量出来，才知道这条底色该多宽。 */
-    let bx = x + 24 + Math.round(textWidth(clip(point.title || point.id, NAME_MAX)))
-    let right = bx
+    /* 栏位定死，所以按钮从 x+BTN_X 起排，不必先量名字。 */
+    let right = x + (onOpen ? BTN_X : STAGE_X + 74)
     const buttons = []
     if (onOpen) {
+      let bx = x + BTN_X
       for (const [kind, label, target] of [
         ['video', '看课', String(point.video || '')],
         ['practice', '做题', String(point.practice || '')],
       ]) {
         const btn = pill(label, target ? '' : 'is-empty', () => onOpen(kind, point))
         buttons.push({ btn, at: bx })
-        right = bx + btn.w
-        bx += btn.w + 6
+        bx += btn.w + BTN_GAP
+        right = bx - BTN_GAP
       }
     }
 
-    /* 一个单元垫一条浅底：两个模块都展开的时候，光靠圆点和文字分不出谁是谁。 */
+    /* 一个单元垫一条槽：两个模块都展开的时候，光靠菱形和文字分不出谁是谁。 */
     row.appendChild(svgEl('rect', {
       class: 'kg-unit-bg',
-      x: x - 8,
+      x: x - 12,
       y: y - UNIT_H / 2,
-      width: Math.max(130, right - x + 18),
-      height: UNIT_H - 4,
-      rx: 8,
+      width: right - x + 24,
+      height: UNIT_H,
     }))
+    /* 选中的那条左边立一道青柱：当前项一眼可见。 */
+    if (isOpenPoint) {
+      row.appendChild(svgEl('rect', { class: 'kg-row-mark', x: x - 12, y: y - UNIT_H / 2, width: 3, height: UNIT_H }))
+    }
     row.appendChild(g)
     for (const { btn, at } of buttons) {
       btn.node.setAttribute('transform', `translate(${at} ${y - BTN_H / 2})`)
@@ -421,16 +668,16 @@ export function renderGraph(host, options) {
   /* ── 工具箱：不受拖动缩放影响，钉在右上角 ─────────────────────────────── */
 
   const tools = svgEl('g', { class: 'kg-tools' })
-  let tx = vw - 12
+  let tx = vw - 16
   for (const item of [
     { label: '全部收起', keep: false },
     { label: '复位视图', keep: true },
   ]) {
-    const w = Math.round(textWidth(item.label) + 20)
+    const w = Math.round(textWidth(item.label) + 22)
     tx -= w
-    const btn = svgEl('g', { class: 'kg-tool', tabindex: '0', transform: `translate(${tx} 12)` })
-    btn.appendChild(svgEl('rect', { class: 'kg-tool-bg', width: w, height: 22, rx: 11 }))
-    const label = svgEl('text', { class: 'kg-tool-text', x: w / 2, y: 15, 'text-anchor': 'middle' })
+    const btn = svgEl('g', { class: 'kg-tool', tabindex: '0', transform: `translate(${tx} 14)` })
+    btn.appendChild(svgEl('rect', { class: 'kg-tool-bg', width: w, height: 26 }))
+    const label = svgEl('text', { class: 'kg-tool-text', x: w / 2, y: 17, 'text-anchor': 'middle' })
     label.textContent = item.label
     btn.appendChild(label)
 
@@ -456,6 +703,8 @@ export function renderGraph(host, options) {
     tx -= 8
   }
   svg.appendChild(tools)
+  hud.push(tools)
+  applyView()
 
   /* ── 拖和缩放 ─────────────────────────────────────────────────────────── */
 

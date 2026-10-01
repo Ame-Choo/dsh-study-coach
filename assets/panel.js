@@ -1208,6 +1208,11 @@ function mountGraph() {
     stages: STAGES,
     colorOf: (stage) => STAGE_COLOR[stage] || STAGE_COLOR[STAGES[0]],
     openPoint: ui.openPoint,
+    // 板块右上的完成度和索引板的总进度都走服务端算好的那一份（lib/map.js 的口径），
+    // 面板不再自己拿档位平均一遍——两处口径不一样，学生迟早会发现数字对不上。
+    progress: state.progress || null,
+    // 该复习的日期得跟「今天」比。写死面板算的本地日期，别把判断丢给图谱那边。
+    today: today(),
     onPick: (pointId) => {
       ui.openPoint = ui.openPoint === pointId ? null : pointId
       // 图上的圆点点开之后，下面列表得能看见它——把祖先撑开
@@ -1693,14 +1698,32 @@ function mapCard() {
     })
     .join('')
 
+  /* 简报条：一行大写拉丁 + 四个数 + 一条六档色带 + 一个档位图例。
+     图在下面自己会讲话，这里只负责让「一共多大、读到哪儿」一眼看得见。 */
+  const overall = Math.round(Number((state.progress && state.progress.overall) || 0))
+  const legend = STAGES.map((st) => `<span class="lg"><i class="lg-dot" style="background:${STAGE_COLOR[st]}"></i>${st}</span>`).join('')
+
   return `<section class="card">
     <div class="card-head">
       <h2>知识地图</h2>
       <span class="badge ${map.status === 'confirmed' ? 'confirmed' : ''}">${map.status === 'confirmed' ? '已定稿' : '草稿'}</span>
       ${map.status === 'confirmed' ? '' : '<button class="ghost" data-act="map-confirm">确认定稿</button>'}
     </div>
-    <div class="bar">${bar}</div>
-    <p class="dim">共 ${s.total} 个知识点，已接触 ${s.touched} 个，平均把握 ${Math.round((s.avgConfidence || 0) * 100)}%。图谱分三层：大类、模块、最小单元，逐层展开；画布可拖动与缩放。每个单元设「看课」「做题」两个入口。下方列表按大类折叠，逐层展开后显示掌握度。</p>
+    <div class="map-brief">
+      <div class="map-brief-head">
+        <span class="map-kicker">KNOWLEDGE MAP</span>
+        <span class="map-overall">${overall}%<em>总体进度</em></span>
+      </div>
+      <div class="map-stats">
+        <span class="map-stat"><b>${modules.length}</b>模块</span>
+        <span class="map-stat"><b>${s.total}</b>单元</span>
+        <span class="map-stat"><b>${s.touched}</b>已接触</span>
+        <span class="map-stat"><b>${Math.round((s.avgConfidence || 0) * 100)}%</b>平均把握</span>
+      </div>
+      <div class="bar">${bar}</div>
+      <div class="map-legend">${legend}</div>
+      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；画布可拖动与缩放，左上角那块索引板钉着不跟走。每个单元设「看课」「做题」两个入口。下方列表按大类折叠，展开后显示掌握度。</p>
+    </div>
     <div class="graph-host" id="graph-host"></div>
     ${groupedBlocks(modules)}
   </section>`

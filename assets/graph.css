@@ -1,146 +1,245 @@
-/* 知识图谱的皮。几何全在 graph.js 里，这里只管长相和交互反馈。
-   颜色一律写成 var(--x, 兜底值)，style.css 慢一步也不会花屏。
-   兜底值取的是 design.md 的浅色那套。 */
+/**
+ * 知识图谱的皮：把 graph.js 画出来的东西铺成一张「关卡面」。
+ *
+ * 三条规矩（都写在 design.md 里）：
+ *   · 圆角一律 0，层次只靠「面」与细规——不用模糊阴影、不用渐变、不用辉光。
+ *   · 信号青（--accent）只给「当前选中」和「进度」，别拿去描静态的框。
+ *   · 色值一律走 var(--x)；兜底值必须与 style.css 的 :root 逐字相同（test/mirrors.test.js 认这条）。
+ *     `url(#kg-grid)` / `url(#kg-hatch)` 是 SVG 内部引用，颜色仍由对应 class 上。
+ */
+
+/* ── 画布与底纹 ─────────────────────────────────────────────────────────── */
 
 .kg-svg {
   display: block;
   width: 100%;
-  height: auto;
   background: var(--card, #141618);
   border: 1px solid var(--line, rgba(255, 255, 255, .22));
-  border-radius: var(--radius, 0px);
-  overflow: hidden;
+  font-family: var(--font);
   cursor: grab;
   touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .kg-svg.is-panning {
   cursor: grabbing;
 }
 
-.kg-empty {
-  padding: 22px 0;
-  text-align: center;
-  color: var(--dim, #999999);
-  font-size: 13px;
+/* 蓝图网格：极淡，给平面一点深度，不参与信息。 */
+.kg-grid {
+  opacity: .5;
 }
 
-/* ── 连线 ────────────────────────────────────────────────────────────── */
+.kg-grid-line {
+  fill: none;
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+  opacity: .32;
+}
+
+/* ── 分区底板 / 索引轨 ──────────────────────────────────────────────────── */
+
+.kg-band {
+  fill: var(--bg, #1b1b1b);
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
+
+.kg-band-hatch {
+  opacity: .45;
+}
+
+.kg-hatch-line {
+  fill: var(--warn, #f1c644);
+}
+
+.kg-rail {
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+}
+
+.kg-tick {
+  fill: var(--line-2, rgba(255, 255, 255, .38));
+}
+
+/* 两位索引字：拉丁 + 等宽数字，像图纸上的编号。 */
+.kg-ord {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm, 13px);
+  fill: var(--dim, #999999);
+  letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 正交连线 ───────────────────────────────────────────────────────────── */
 
 .kg-link {
   fill: none;
   stroke: var(--line, rgba(255, 255, 255, .22));
-  stroke-width: 1.4;
+  stroke-width: 1.2;
 }
 
 .kg-link-unit {
   stroke-dasharray: 3 4;
-  stroke-width: 1.1;
-  opacity: .8;
+  stroke-width: 1;
+  opacity: .85;
 }
 
-/* ── 大类 / 模块 ─────────────────────────────────────────────────────── */
+/* ── 板块（大类 / 模块） ────────────────────────────────────────────────── */
+
+.kg-box {
+  fill: var(--card-2, #1f2224);
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
+
+.kg-group .kg-box {
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+}
+
+/* 角包：只钉左上那一小块。展开时转成信号青——这是「状态」，不是装饰。 */
+.kg-corner {
+  fill: none;
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+}
+
+.kg-group[aria-expanded="true"] .kg-corner,
+.kg-mod[aria-expanded="true"] .kg-corner {
+  stroke: var(--accent, #18d1ff);
+}
 
 .kg-group,
 .kg-mod {
   cursor: pointer;
 }
 
-.kg-box {
-  fill: var(--card, #141618);
-  stroke: var(--line, rgba(255, 255, 255, .22));
-  stroke-width: 1.2;
-  transition: stroke .12s ease, fill .12s ease;
-}
-
-.kg-group .kg-box {
-  fill: var(--card-2, #1f2224);
-  stroke-width: 1.5;
-}
-
 .kg-group:hover .kg-box,
-.kg-mod:hover .kg-box,
 .kg-group:focus .kg-box,
+.kg-mod:hover .kg-box,
 .kg-mod:focus .kg-box {
   stroke: var(--accent, #18d1ff);
 }
 
-.kg-group:focus,
-.kg-mod:focus,
-.kg-point:focus,
-.kg-btn:focus,
-.kg-tool:focus {
-  outline: none;
-}
-
 .kg-title {
-  fill: var(--ink, #ffffff);
-  font-size: 13px;
+  font-size: var(--fs-sm, 13px);
   font-weight: 600;
-  pointer-events: none;
+  fill: var(--ink, #ffffff);
 }
 
 .kg-mod .kg-title {
-  font-size: 13px;
   font-weight: 500;
+  fill: var(--text, #d2d2d2);
 }
 
 .kg-sub {
+  font-size: var(--fs-micro, 11.5px);
   fill: var(--dim, #999999);
-  font-size: 11.5px;
-  pointer-events: none;
 }
 
-/* ── 最小单元（一节网课） ────────────────────────────────────────────── */
+.kg-note {
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--faint, #6e7276);
+}
+
+/* 编号列：Rajdhani + 字距，汉字不碰这两样。 */
+.kg-code {
+  font-family: var(--font-display);
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--faint, #6e7276);
+  letter-spacing: .06em;
+}
+
+.kg-pct {
+  font-family: var(--font-display);
+  font-size: var(--fs-label, 12px);
+  fill: var(--accent, #18d1ff);
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 一点进展都没有的别用青色（青色是「有东西」的意思）。 */
+.kg-pct.is-zero {
+  fill: var(--faint, #6e7276);
+}
+
+.kg-gauge,
+.kg-mark {
+  fill: var(--line, rgba(255, 255, 255, .22));
+}
+
+.kg-gauge-fill,
+.kg-mark-fill {
+  fill: var(--accent, #18d1ff);
+}
+
+/* ── 单元行 ─────────────────────────────────────────────────────────────── */
+
+.kg-unit-bg {
+  fill: var(--input, #101214);
+  stroke: var(--line, rgba(255, 255, 255, .22));
+  stroke-width: 1;
+}
 
 .kg-point {
   cursor: pointer;
 }
 
+.kg-unit-row:hover .kg-unit-bg,
+.kg-point:focus .kg-unit-bg,
+.kg-point.is-open .kg-unit-bg {
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+}
+
+/* 选中那条左边立一道青柱：当前项一眼可见。 */
+.kg-row-mark {
+  fill: var(--accent, #18d1ff);
+}
+
+/* 档位是菱形（graph.js 里转 45°），描边用画布底色把它从行里抠出来。 */
 .kg-dot {
-  stroke: var(--card, #141618);
+  stroke: var(--input, #101214);
   stroke-width: 1.6;
-  transition: r .12s ease;
+}
+
+.kg-point:hover .kg-dot {
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
 }
 
 .kg-halo {
   fill: none;
   stroke: var(--accent, #18d1ff);
   stroke-width: 1.8;
-  pointer-events: none;
-}
-
-.kg-point:hover .kg-dot,
-.kg-point:focus .kg-dot {
-  r: 7.2;
-  stroke: var(--ink, #ffffff);
-}
-
-.kg-point:hover .kg-name,
-.kg-point:focus .kg-name {
-  fill: var(--ink, #ffffff);
-}
-
-.kg-point.is-open .kg-name {
-  font-weight: 600;
 }
 
 .kg-name {
+  font-size: var(--fs-sm, 13px);
   fill: var(--text, #d2d2d2);
-  font-size: 13px;
-  pointer-events: none;
-  transition: fill .12s ease;
+}
+
+.kg-point.is-open .kg-name {
+  fill: var(--ink, #ffffff);
+  font-weight: 600;
+}
+
+.kg-point:hover .kg-name {
+  fill: var(--ink, #ffffff);
 }
 
 .kg-stage {
+  font-size: var(--fs-micro, 11.5px);
   fill: var(--dim, #999999);
-  font-size: 11.5px;
-  pointer-events: none;
 }
 
-/* ── 单元上的「看课」「做题」 ─────────────────────────────────────────── */
+/* 该复习了：斜纹与这一行都用 --warn，不进信号青那一族。 */
+.kg-due {
+  font-family: var(--font-display);
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--warn, #f1c644);
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 按钮（看课 / 做题） ────────────────────────────────────────────────── */
 
 .kg-btn {
   cursor: pointer;
@@ -148,20 +247,19 @@
 
 .kg-btn-bg {
   fill: var(--card, #141618);
-  stroke: var(--accent, #18d1ff);
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
   stroke-width: 1;
-  transition: fill .12s ease;
-}
-
-.kg-btn-text {
-  fill: var(--accent, #18d1ff);
-  font-size: 11.5px;
-  pointer-events: none;
 }
 
 .kg-btn:hover .kg-btn-bg,
 .kg-btn:focus .kg-btn-bg {
   fill: var(--accent, #18d1ff);
+  stroke: var(--accent, #18d1ff);
+}
+
+.kg-btn-text {
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--text, #d2d2d2);
 }
 
 .kg-btn:hover .kg-btn-text,
@@ -169,7 +267,7 @@
   fill: var(--on-accent, #000000);
 }
 
-/* 没挂那节课 / 没配那套题：灰着，点了会给对话留言 */
+/* 没材料那颗：灰着，但还点得动（点了会给教练留言）。 */
 .kg-btn.is-empty .kg-btn-bg {
   stroke: var(--line, rgba(255, 255, 255, .22));
 }
@@ -181,6 +279,7 @@
 .kg-btn.is-empty:hover .kg-btn-bg,
 .kg-btn.is-empty:focus .kg-btn-bg {
   fill: var(--card-2, #1f2224);
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
 }
 
 .kg-btn.is-empty:hover .kg-btn-text,
@@ -188,7 +287,56 @@
   fill: var(--text, #d2d2d2);
 }
 
-/* ── 右上角工具（不跟着画布拖） ──────────────────────────────────────── */
+/* ── 索引板（HUD，不跟着拖） ────────────────────────────────────────────── */
+
+/* 不吃指针事件：在板上按下去照样能拖画布。 */
+.kg-plate {
+  pointer-events: none;
+}
+
+.kg-plate-bg {
+  fill: var(--card, #141618);
+  stroke: var(--line-2, rgba(255, 255, 255, .38));
+  stroke-width: 1;
+}
+
+.kg-plate-eyebrow {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  fill: var(--faint, #6e7276);
+  letter-spacing: .18em;
+}
+
+.kg-plate-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm, 13px);
+  fill: var(--text, #d2d2d2);
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kg-plate-pct {
+  font-family: var(--font-display);
+  font-size: 17px;
+  fill: var(--accent, #18d1ff);
+  letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kg-plate-bar {
+  fill: var(--line, rgba(255, 255, 255, .22));
+}
+
+.kg-plate-bar-fill {
+  fill: var(--accent, #18d1ff);
+}
+
+.kg-plate-note {
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--faint, #6e7276);
+}
+
+/* ── 工具箱（右上角，也不跟着拖） ───────────────────────────────────────── */
 
 .kg-tool {
   cursor: pointer;
@@ -198,13 +346,6 @@
   fill: var(--card, #141618);
   stroke: var(--line, rgba(255, 255, 255, .22));
   stroke-width: 1;
-  transition: stroke .12s ease;
-}
-
-.kg-tool-text {
-  fill: var(--dim, #999999);
-  font-size: 11.5px;
-  pointer-events: none;
 }
 
 .kg-tool:hover .kg-tool-bg,
@@ -212,23 +353,26 @@
   stroke: var(--accent, #18d1ff);
 }
 
+.kg-tool-text {
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--dim, #999999);
+}
+
 .kg-tool:hover .kg-tool-text,
 .kg-tool:focus .kg-tool-text {
   fill: var(--text, #d2d2d2);
 }
 
-/* ── 兜底文案 ────────────────────────────────────────────────────────── */
+/* ── 空态 ───────────────────────────────────────────────────────────────── */
 
-.kg-hint {
-  fill: var(--dim, #999999);
-  font-size: 11.5px;
-  pointer-events: none;
+.kg-empty {
+  padding: 22px 0;
+  color: var(--dim, #999999);
+  font-size: var(--fs-sm, 13px);
+  text-align: center;
 }
 
-/* ── 最小单元那条浅底 ────────────────────────────────────────────────── */
-/* 几个模块一起展开时用来分区，不然一眼分不出谁是谁 */
-.kg-unit-bg {
-  fill: var(--card, #141618);
-  stroke: var(--line, rgba(255, 255, 255, .22));
-  stroke-width: 1;
+.kg-hint {
+  font-size: var(--fs-micro, 11.5px);
+  fill: var(--faint, #6e7276);
 }

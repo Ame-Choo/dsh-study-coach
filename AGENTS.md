@@ -110,5 +110,23 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - 三个页面外壳（`panel.html` / `read.html` / `practice.html`）各自挂一次 katex 的 `<link>` 与
   `<script>`（UMD → `window.katex`，随包发在 `assets/vendor/katex/`）。装不上不致命，只是公式退回源码。
 
+## 知识图谱是「关卡面」那版（`assets/graph.js` + `assets/graph.css`）
+
+- **一屏只许三处信号青**：选中、进度、当前动作。其余一律 `--line` / `--dim` / `--faint`。
+  圆角 0、零模糊硬偏移；这套语言跟 `lib/review.js` 那张复盘图是一家（那边是静态版，这边是可交互版）。
+- **加装饰要另起 class**。`test/graph.test.js` 按数量断言：`.kg-box` 必须**正好等于大类数**、
+  `.kg-halo` 全图 ≤ 1、`.kg-dot` 按可见单元数（菱形档位点）——底板、图例、刻线都别复用它们
+  （`.kg-band` / `.kg-rail` / `.kg-tick` / `.kg-ord` / `.kg-gauge` / `.kg-mark` / `.kg-corner` 是这一类）。
+- **HUD 要反向补变换**：`.kg-view` 是 `translate(t) scale(k)`，索引板 `.kg-plate` 与工具箱 `.kg-tools`
+  在 `applyView()` 里补 `translate(-t/k) scale(1/k)`，拖动缩放时它们才钉在视口上（`hud` 数组在文件里）。
+- **栏位宽度是定死的**（`STAGE_X` / `DUE_X` / `BTN_X`）：单元行里的按钮、行槽、行标一律 `x + 常量` 起排。
+  写绝对坐标会让它们整片跑到模块列去（踩过一次，样张上才看出来）。
+- 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
+- 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
+  —— 所以它好测，别往里加 requestAnimationFrame。
+- 视觉验收别拿正在跑的 DSH 折腾：离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` +
+  `.graphcheck-server.mjs`（19392），asset 全走 `process.cwd()`（手写绝对路径容易踩工作区那个括号）。
+
+
 
 

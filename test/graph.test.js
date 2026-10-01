@@ -696,9 +696,13 @@ test('工具按钮：全部收起清空展开，复位视图把 transform 复位
   svg.dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 7 })
   svg.dispatch('pointermove', { clientX: 60, clientY: 30 })
   assert.equal(viewTransform(host), 'translate(50 20) scale(1)')
+  // 索引板与工具箱是钉在视口上的：拖动时反向补一次，不然它们会跟着画布跑掉
+  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), 'translate(-50 -20) scale(1)')
+  assert.equal(byClass(host, 'kg-tools')[0].getAttribute('transform'), 'translate(-50 -20) scale(1)')
 
   clickTool(host, '复位视图')
   assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
+  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), 'translate(0 0) scale(1)')
 })
 
 test('滚轮缩放夹在 0.4x–2.4x，并 preventDefault', () => {
