@@ -111,7 +111,7 @@ DSH 里装了插件市场（`dshmarket`）的话，打开搜 `study-coach` 点�
 ```bash
 cd ~/.dsh/profiles/desktop        # 或者你的 profile 名
 pnpm add dsh-study-coach          # 从 npm 装（0.1.0 已发布）
-pnpm add github:<你>/dsh-study-coach   # 走 GitHub，没发 npm 也行
+pnpm add github:<你>/dsh-study-coach   # 走 GitHub（不经过 npm，也可以）
 ```
 
 然后把包名加进 profile `package.json` 的 `dsh.profile.bundles` 数组：
