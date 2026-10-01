@@ -44,24 +44,61 @@ git push -u origin main
 
 ---
 
-## 2. 打话题标签 —— 这一步决定进不进市场
+## 2. 打话题标签 + 提 PR 进列表 —— 这一步决定进不进市场
 
-DSH 插件市场（`dshmarket`）的目录来自 **`awesome-dsh-plugin`**，它每天用 GitHub Actions 爬 **GitHub topic** 建目录：
+DSH 插件市场（`dshmarket`）的目录来自 **`awesome-dsh-plugin`**。**光打 GitHub topic 进不去**：那份列表的数据在
+它仓库的 `data/plugins/<owner>__<repo>.yml` 里，一个插件一个文件，**只有 PR 合并了才会出现在列表里**
+（两个 README 由脚本生成，别手工编辑，改了也会被打回）。topic 是**另一个硬要求**，不打照样被打回。两条都要办。
 
-| topic | |
-| --- | --- |
-| `dsh-plugin` | 必打 |
-| `deepseek-harness` | 建议打 |
+评审规则全文：[contributing.md](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)。
 
-仓库网页 → 右上 `About` 齿轮 → `Topics` 填进去。或者命令行：
+### 2a. 打 topic
+
+仓库网页 → 右上 `About` 齿轮 → `Topics` 填 `dsh-plugin`（必打）+ `deepseek-harness`（建议打）。或者命令行：
 
 ```bash
 gh api -X PUT repos/<你>/dsh-study-coach/topics \
   -f 'names[]=dsh-plugin' -f 'names[]=deepseek-harness'
 ```
 
-爬虫是**每天跑一次**的，所以打完标签不会立刻出现，等一天。目录 JSON 在
-`https://awesome-dsh-plugin.com/plugins.json`，可以先去那儿 `Ctrl+F` 搜 `study-coach` 确认进去了。
+### 2b. 提 PR
+
+fork `awesome-dsh-plugin`，新建**一个**文件 `data/plugins/Ame-Choo__dsh-study-coach.yml`（文件名是
+`<owner>__<repo>`，不是 `<repo>`）：
+
+```yaml
+url: https://github.com/Ame-Choo/dsh-study-coach
+name: Ame-Choo/dsh-study-coach
+category: tools
+description:
+  en: 'Study coach for DeepSeek Harness: turns a course into a knowledge map of subject, module and unit, records mastery per unit in six stages, plans daily tasks against a materials index, keeps a wrong-answer book and spaced-repetition cards, and serves its own web panel.'
+  zh: 'DSH 的学习教练：把一门课拆成知识地图（大类 / 模块 / 最小单元），逐单元记六档掌握度，按资料索引排每日任务，带错题本与记忆卡，并自带一个网页面板。'
+```
+
+`description.en` 是唯一必填，末尾要有句号；`zh` 写不了可以留空，维护者会补。**描述里带 `: `（冒号加空格）
+必须加引号**，不加 YAML 会把它当成嵌套键。描述会被拿去跟源码逐句核对——**别写对不上的数字（「N 个工具」之类），
+别写营销词**，夸大是主要打回原因。分类挑最接近的即可（本包是「给 agent 加一套学习管理工具 + 自带面板」，
+所以 `tools`；挑歪了维护者直接改，不会打回）。
+
+其余规矩：一个 PR 最多 3 条；**仓库满 1 天才收**（CI 自动查，跟插件质量无关，只挡「PR 前几分钟才建号」的）；
+要有真实可用代码、在维护中。
+
+CI 依次查：条目数 → 从你仓库的 `package.json` 读 `dsh.bundle`（**只声明 `dsh.client` 会在这里失败**，本包有
+`dsh.bundle.patch`，过）→ 仓库年龄 → `awesome-lint` 与站点构建。挂了把修复推到同一个分支即可，不用重开 PR。
+合并后等下一次构建，去 `https://awesome-dsh-plugin.com/plugins.json` 里 `Ctrl+F` 搜 `study-coach` 确认。
+
+### 2c. 截图（可选，推荐）
+
+市场详情页会像 App Store 那样展示截图，声明放在**你自己的仓库**里——`package.json` 旁边一个
+`screenshots.json`（本仓库已经有了，就是 `docs/` 那四张）：
+
+```jsonc
+// screenshots.json（按展示顺序）
+["docs/map.png", "docs/today.png", "docs/atlas.png", "docs/library.png"]
+```
+
+1-8 张，路径相对该文件、**不能跳出插件目录**（不能以 `/` 开头、不能含 `..`）；绝对 URL 也只收 GitHub 托管的
+https。之后换截图推自己的仓库即可，不用再来提 PR。不声明也不影响收录，市场会退回从 README 抽图。
 
 市场还会从 `package.json` 读两样东西来判断兼不兼容，别写错：
 
@@ -153,13 +190,17 @@ npm publish
    `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；测试夹具里那两个假的也换了
    （`test/panel.test.js` 测「cwd 里带括号」、`test/md.test.js` 测 Windows 路径不被 markdown 吃掉）。
 
-**还差你一步（我做不了：没装 `gh`，也没有 GitHub token）**：
+**还差你一步（我做不了：没有 GitHub token、没有 npm 凭据，也没装 `gh`）**：
 
-1. **topic 只能手动打**：仓库页 About 齿轮里填 `dsh-plugin`（必打）+ `deepseek-harness`。
+1. **topic 只能手动打**：仓库页 About 齿轮里填 `dsh-plugin`（必打）+ `deepseek-harness`（见 2a）。
    API 也能打（`PUT /repos/{owner}/{repo}/topics`），但要带 token。
-2. **仓库描述**（About 里那句）：现在是空的，随手写一句。
-3. **发 npm**：本机 `npm whoami` 回 `ENEEDAUTH`，得你先 `npm login`，然后 `npm publish`
-   （`npm pack --dry-run` 已经确认包里干净）。发完 `npm view dsh-study-coach version` 应该能看到 `0.1.0`。
+2. **仓库描述**（About 里那句）：现在是空的，随手写一句——那是仓库自己的简介，跟 2b 那条目描述是两回事。
+3. **发 npm**：本机 `npm whoami` 回 `ENEEDAUTH`（`C:\Users\zongy\.npmrc` 根本不存在），得你先 `npm login`，
+   然后 `npm publish`（`npm pack --dry-run` 已经确认包里干净）。发完 `npm view dsh-study-coach version`
+   应该能看到 `0.1.0`；市场的下载量排序会自动接上，条目里不用加任何字段（手写 `npm:` 键会被校验拒掉）。
+4. **提条目 PR**（见 2b）：条目内容已经写好，放在工作区根上的 `Ame-Choo__dsh-study-coach.yml`，复制进 fork 即可。
+   ⚠️ **仓库是 2026-10-01T17:52Z 建的，满 1 天要等到 2026-10-03 01:52（+08:00）之后**——早于这个时间提，
+   CI 的仓库年龄那一关直接挡下来。
 
 ---
 
@@ -173,7 +214,9 @@ npm publish
 - [ ] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` **不再是 `OWNER` 占位**（`npm run setup-repo` 跑过一次）
 - [ ] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
 - [ ] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致
-- [ ] GitHub 仓库打了 `dsh-plugin` 话题
+- [ ] GitHub 仓库打了 `dsh-plugin` 话题（+ 建议 `deepseek-harness`）
+- [ ] 仓库根有 `screenshots.json`，里面每张图在 `docs/` 里真实存在、路径没跳出插件目录
+- [ ] awesome 列表的条目 PR 提了（`data/plugins/Ame-Choo__dsh-study-coach.yml`，**仓库满 1 天之后**才提）
 - [ ] 推到 GitHub 之后 Actions 那条 CI 是绿的（它是「别人克隆下来能不能跑」的唯一证据）
 - [ ] `git status` 干净，没把 junction 的 `node_modules` 提交进去
 
