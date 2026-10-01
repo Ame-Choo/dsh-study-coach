@@ -69,11 +69,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/dsh-study-coach.git"
+    "url": "git+https://github.com/Ame-Choo/dsh-study-coach.git"
   },
-  "homepage": "https://github.com/OWNER/dsh-study-coach#readme",
+  "homepage": "https://github.com/Ame-Choo/dsh-study-coach#readme",
   "bugs": {
-    "url": "https://github.com/OWNER/dsh-study-coach/issues"
+    "url": "https://github.com/Ame-Choo/dsh-study-coach/issues"
   },
   "publishConfig": {
     "access": "public",
