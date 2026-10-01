@@ -294,7 +294,7 @@ assert.deepEqual(page.posts.at(-1), { path: '/study/api/…', body: { … } }); 
 ## 10. 本地验收
 
 ```powershell
-Set-Location 'F:\dshworkingspace(studyplugin\dsh-study-coach'    # 目录名带左括号，必须加引号
+Set-Location 'D:\code\dsh-study-coach'    # 路径里有空格或括号时必须加引号
 node --test
 node scripts/preview.mjs            # 面板起在 19390（真数据根），改前端不必重启 DSH
 node scripts/check-live.mjs 19387 19388
@@ -332,7 +332,7 @@ node scripts/check-live.mjs 19387 19388
 | --- | --- |
 | 改了 `lib/` 没重启，按钮全 404 | 记住 `assets/*` 与 `lib/client.js` 现读、其它 `lib/*` 要重启；面板会用体检卡把这条喊出来 |
 | `node --test test/` 挂 | 只写 `node --test` |
-| 目录名 `F:\dshworkingspace(studyplugin` 只有一个左括号 | PowerShell 里一律加引号；写文件路径时别顺手补个 `)`，会落到隔壁目录 |
+| 目录名里带左括号（比如 `xxx(studyplugin`） | PowerShell 里一律给路径加引号；写文件路径时别顺手补个 `)`，会落到隔壁目录 |
 | 面板主按钮上的字看不见 | 别把 `--dsw-alias-bg-base` 当文字色（壁纸插件下它是透明的）；`--dsw-alias-*` 一律带字面兜底 |
 | `var(--x, 兜底)` 与 `:root` 不一致 | `test/mirrors.test.js` 会红；改完 CSS 顺手核对 |
 | `new Date('2026-10-01')` 差一天 | 面板里日期一律自己拼字符串 / 用 `weekdayOf()`，别让 UTC 偏移把它挪走 |

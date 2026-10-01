@@ -118,14 +118,50 @@ npm publish
 
 ---
 
+## 首次上线 GitHub：本机已经查过的 + 还要你拍板的
+
+以下都是 2026-10-02 在 Windows + node v24.21.0 上实测出来的，别照抄结论、照抄**怎么查**。
+
+**仓库里已经有的**：`.github/workflows/ci.yml`（push main / PR / 手动；`ubuntu-latest`；node `22` 与 `24`；
+`npm install --no-audit --no-fund` 之后 `node --test`）、`.gitattributes`（`* text=auto eol=lf` + 二进制白名单）、
+`.gitignore`、MIT `LICENSE`、这份 `PUBLISHING.md`、`npm run setup-repo`、keywords 里的 `dsh-plugin`。
+
+**已经查过的**：
+
+| 查了什么 | 怎么查的 | 结果 |
+| --- | --- | --- |
+| 仓库自不自洽 | `git bundle create x.bundle --all` → 在别处 `git clone x.bundle` | 127 个 tracked、HEAD 对得上；**`npm install` 后 334 pass / 0 fail**（不装依赖直接跑是 315 pass / 4 fail，原因只是缺宿主的 `@deepseek-ai/dsh-tools`，不是代码坏了） |
+| npm 上名字占没占 | `npm view dsh-study-coach version` | 404，没被占 |
+| 包里装了什么 | `npm pack --dry-run` | 81 个文件 / 815.8 kB（解包 1.8 MB），只有源码 + 文档 + 字体 |
+| peer 区间对不对 | `npm view @deepseek-ai/dsh-tools versions` 等 | 线上有 `dsh-tools 0.2.0-rc.1/rc.2` 与 `cordis 4.0.4`，本机装的是 `0.2.0-rc.2` / `4.0.4`，两个区间都满足 |
+
+**要你拍板的（我不替你决定）**：
+
+1. **git 身份是占位的**：`user.name = dsh-study-coach`、`user.email = noreply@example.com`，现有 commit
+   全挂在它名下，推上去没有头像、也关联不到你的账号。给我 GitHub 用户名 + 邮箱
+   （`<id>+<用户名>@users.noreply.github.com` 也行）我就设上；旧 commit 要不要一起重写
+   （`git rebase -r --root --exec 'git commit --amend --no-edit --reset-author'`）你说一声。
+2. **`package.json` 里的 `OWNER`**：`repository` / `homepage` / `bugs` 还是占位，配好 remote 后
+   `npm run setup-repo` 一次填掉——需要你的 GitHub 用户名（或仓库全名）。
+3. **topic 只能手动打**：`dsh-plugin`（必打）+ `deepseek-harness`。本机没装 `gh`，仓库网页 About 齿轮里填最快。
+4. **公开还是私有**：要进 `dshmarket` 目录**必须公开**，爬虫只看得见公开仓库。
+5. **首屏还缺**：README 顶上没有截图、没有徽章；也没有 `CHANGELOG.md`。要不要我加一张面板截图 + 几颗徽章？
+6. **本机路径已清过一遍**：`DEV.md` / `README.md` / `AGENTS.md` 里那几处
+   `F:\dshworkingspace(studyplugin…` 与 `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；
+   只剩 `test/panel.test.js` 两处夹具字符串还故意带着那个括号目录名——那条用例测的就是「cwd 里带括号」。
+
+---
+
 ## 发布前自查
 
+- [ ] git 身份不是占位（`git log -1 --format='%an <%ae>'`），否则 GitHub 上没人认领这些提交
 - [ ] `node --test` 全绿，`skipped` 是 0
 - [ ] `npm pack --dry-run` 的文件清单干净（没有 `node_modules` / `test` / `scratch`）
-- [ ] `package.json` 里 `name` / `version` / `license` / `repository` / `keywords`（含 `dsh-plugin`）都对
+- [ ] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` **不再是 `OWNER` 占位**（`npm run setup-repo` 跑过一次）
 - [ ] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
 - [ ] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致
 - [ ] GitHub 仓库打了 `dsh-plugin` 话题
+- [ ] 推到 GitHub 之后 Actions 那条 CI 是绿的（它是「别人克隆下来能不能跑」的唯一证据）
 - [ ] `git status` 干净，没把 junction 的 `node_modules` 提交进去
 
 ---

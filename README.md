@@ -985,7 +985,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - 数学认四种写法：行内 `$…$`、`\(…\)`，独立成行 `$$…$$`、`\[…\]`（`INLINE_MATH_RE` 里 `$` 前后不许贴数字，`\$` 不算钱）。
 - 有 KaTeX 就 `renderToString(tex, { displayMode, throwOnError: false, strict: 'ignore', trust: false })`；**没装上或排不出来就退回一段等宽 `<code class="md-math">` 源码，绝不把 `$` 原样吐出来**（装不上也看得懂）。
 - `inline()` 的顺序是**安全边界**：① 代码段 → ② 数学 → ③ `extras` → ④ `escapeHtml` → ⑤ 链接 → ⑥ 粗/斜/删除线 → ⑦ 回填插槽（`\u0000N\u0000` 占位）。**数学必须赶在转义之前抠出来**，`\frac` 的反斜杠才是给 KaTeX 的；`extras` 的产物进插槽、不再过转义（它自己负责转义）。
-- **反斜杠保护**：markdown 会把 `\`+标点当转义吃掉，而真实消息里 Windows 路径是常态（实测线上 11 条消息里就有 `C:\Users\zongy\.dsh\study-coach\pages\…`）——所以抠完数学才转义，`\.` 不会被吞掉（截图里那条路径原样出来了）。
+- **反斜杠保护**：markdown 会把 `\`+标点当转义吃掉，而真实消息里 Windows 路径是常态（实测线上 11 条消息里就有 `C:\Users\<你>\.dsh\study-coach\pages\…`）——所以抠完数学才转义，`\.` 不会被吞掉（截图里那条路径原样出来了）。
 - `extras` 是给调用方的钩子：面板的 `[表情: 描述]` 走它（`MEME_EXTRA`），`chatText()` 内部就是 `renderMarkdown(text, { extras: [MEME_EXTRA] })` —— 这样「表情包出图」与「markdown 排版」不会互相踩。
 
 **接线**：三个页面外壳（`assets/panel.html` / `read.html` / `practice.html`）各加一行 katex 的 `<link>` 与 `<script>`（UMD，装成 `window.katex`）；`assets/panel.js` 加 `import { inline as mdInline, renderMarkdown } from './md.js'`，`chatText()` 改走 `renderMarkdown`，错题本那三行（错步 / 错因 / 订正）走 `mdInlineText()`（行内，不套 `<p>`）。`.chat-text` 的 `white-space` 从 `pre-wrap` 改成 `normal`——**md.js 吐的 HTML 块之间带换行，`pre-wrap` 会把它画成空行**，段落里的单换行由 md.js 自己转 `<br>`。气泡里的块级样式（`.chat-text .md-*`）收在 `assets/style.css`，标题在气泡里不放大、外边距收窄；`.md-math` / `.md-block-math` / `.katex` 是三个页面共用的，也放在 `style.css` 里。KaTeX 的 `throwOnError:false` 会用**它自己的红**（内联 `#cc0000`）标认不出的公式，深色底上跟这套配色打架 → 一条 `.katex-error { color: var(--bad) !important; }` 压回去（压内联样式只能用 `!important`）。

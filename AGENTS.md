@@ -118,7 +118,7 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - 数学只有一条路：`renderMath(tex, display)`。KaTeX 不在场（或排不出来）就退回
   `<code class="md-math">` 源码，**绝不把 `$` 原样吐给用户**。`throwOnError: false` 会用它自带的
   内联红标错，`.katex-error` 那一条才需要 `!important`。
-- **反斜杠是雷区**：真实消息里 Windows 路径是常态（`C:\Users\zongy\.dsh\…`），markdown 的
+- **反斜杠是雷区**：真实消息里 Windows 路径是常态（`C:\Users\<你>\.dsh\…`），markdown 的
   转义规则会把 `\.` 吃掉 —— 所以抠数学必须赶在转义之前，别再加一条会动 `\` 的规则。
 - 加一种新写法，`startsBlock()` 与 `renderMarkdown()` 主循环**两处都要改**（判据不一致会死循环）。
 - 样式：气泡里的块级样式（`.chat-text .md-*`）收在 `assets/style.css`，标题在气泡里不放大；
