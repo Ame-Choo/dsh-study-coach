@@ -192,6 +192,10 @@ pnpm add link:/绝对路径/dsh-study-coach
 
 ## 开发
 
+> 要动代码，先翻 **[`DEV.md`](DEV.md)**：它是给下一个改这个仓库的人（大概率是个 agent）写的地图——
+> 请求链路、数据落盘、加一条 API / 加一个工具 / 加一个面板子页面各要动哪几处、测试 harness 怎么用、
+> 本地怎么验收、怎么发版、以及一页踩过的坑。下面这一节只留最小上手。
+
 ```bash
 git clone <仓库地址>
 cd dsh-study-coach
