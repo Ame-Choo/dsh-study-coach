@@ -153,13 +153,15 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - 任务行是 `li.task-item` 三栏网格，第一栏两位序号 `.task-ord`（全页连续，不是每门课重来），
   左侧 2px 信号条**只给第一条没做完的** `is-next` 上 `--accent`——一屏一条青的账要继续算。
   侧栏模式有单独的 `grid-template-areas`，改网格记得两边一起改。
-- **复盘图常驻主页与今日任务两页**：`loadReview()` 的触发条件是 `page === 'today' || page === 'home'`；
+- **复盘图只在「今日任务」这一页**：`loadReview()` 的触发条件是 `page === 'today'`（一度是 `|| page === 'home'`，
+  用户看过之后说「主页的今日任务和今日复盘删了吧」，收回来了——**主页是路口，活儿在各自那一页**）。
   它只要求 `svg` 是字符串（`data` 可以是 `null`），`reviewCard()` 因此有空态分支——**这一天什么都没动过
   也要出卡**，写清「怎么让它有内容」，但别放「下载 SVG」。
-- **今日任务卡也常驻主页**（用户后来要的）：`homePage()` 的 `.cards` 依次是 `today` / `review` / `guide`。
-  `tasksCard()` 不依赖「当前页是 today」——`load()` 里 agenda 与 `/study/api/state` 本来就不分页拉，
-  勾选走文档级 `change` 委托，所以在主页上照样勾得动。断言「主页不是操作台」那条因此改口：
-  `data-act="task-toggle"` 在主页是**该在**的，档案弹层与目标库表单仍不该铺在主页。
+- **主页的 `.cards` 只有一张**：`fold('guide', '教练的指引', guideCard())`。别再往主页挂任务卡或复盘图
+  （`test/panel.test.js` 那条「今日任务与复盘图都不在主页：主页只留路口，活儿在各自那一页」钉着：
+  主页不许出现 `data-card="today"` / `data-card="review"` / `data-act="task-toggle"`，也不许去打 `/api/review?date=`）。
+  `tasksCard()` 本身不依赖「当前页是 today」（`load()` 里 agenda 与 `/study/api/state` 不分页拉），
+  所以哪天又要挂回去，功能上不会坏——但那是产品决定，别自作主张。
 - `test/panel.test.js` 的 harness 用 `review` 选项喂图（`review: null` 才走得到空态分支）；
   断言别拿 `/api/review` 当条件——探活也会打这个路径，要写 `/api/review?date=`。
 

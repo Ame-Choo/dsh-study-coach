@@ -554,9 +554,8 @@ async function load() {
     library = await loadLibrary()
     mistakes = await loadMistakes()
     student = await loadStudent()
-    // 复盘图常驻在「主页」和「今日任务」两页——它是这一屏最值钱的一张图，别让人换页去找。
-    // 其余页不拉，省一趟请求和 9 KB。
-    review = page === 'today' || page === 'home' ? await loadReview() : null
+    // 复盘图只有「今日任务」这一页要（主页不放它——用户说主页那两张卡删掉）。其余页不拉，省一趟请求和 9 KB。
+    review = page === 'today' ? await loadReview() : null
     // 书架只有「资料」这一页要。
     shelf = page === 'materials' || page === 'atlas' ? await loadShelf() : null
     // 工具栏目只有「工具」这一页要。
@@ -1158,7 +1157,7 @@ function homePage() {
       .join('')}
   </section>
 
-  <div class="cards">${fold('today', '今日任务', tasksCard())}${fold('review', '今日复盘图', reviewCard())}${fold('guide', '教练的指引', guideCard())}</div>`
+  <div class="cards">${fold('guide', '教练的指引', guideCard())}</div>`
 }
 
 /** 顶栏：名字 + 页面导航 + 今天做完几条 + 地图状态 + 换配色 + 两种模式来回切。 */
