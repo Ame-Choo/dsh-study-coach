@@ -1,6 +1,7 @@
 # dsh-study-coach
 
 [![CI](https://github.com/Ame-Choo/dsh-study-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/Ame-Choo/dsh-study-coach/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-study-coach)](https://www.npmjs.com/package/dsh-study-coach)
 ![node](https://img.shields.io/badge/node-%E2%89%A522.13.0-3c873a)
 ![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.0--rc.1-18d1ff)
 ![license](https://img.shields.io/badge/license-MIT-blue)
@@ -93,6 +94,8 @@
 
 先决条件：DSH `>= 0.2.0-rc.1`，Node `>= 22.13.0`。
 
+已经发在 npm 上：`dsh-study-coach@0.1.0` —— <https://www.npmjs.com/package/dsh-study-coach>。前三种装法最后都是从这儿取包。
+
 ### 一、插件市场（最省事）
 
 DSH 里装了插件市场（`dshmarket`）的话，打开搜 `study-coach` 点安装。
@@ -107,7 +110,7 @@ DSH 里装了插件市场（`dshmarket`）的话，打开搜 `study-coach` 点�
 
 ```bash
 cd ~/.dsh/profiles/desktop        # 或者你的 profile 名
-pnpm add dsh-study-coach          # 已发 npm 时
+pnpm add dsh-study-coach          # 从 npm 装（0.1.0 已发布）
 pnpm add github:<你>/dsh-study-coach   # 走 GitHub，没发 npm 也行
 ```
 

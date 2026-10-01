@@ -1,6 +1,6 @@
 # 发布流程
 
-从「本地一个目录」到「别人能一键装」，四步。做完第 3 步就会出现在 DSH 插件市场里。
+从「本地一个目录」到「别人能一键装」，四步。**进不进市场由第 2 步决定**（条目 PR 合并才进列表，光打话题标签不算）；第 3 步发 npm 是让市场能显示下载量、装的时候走预构建包。
 
 ---
 
@@ -122,11 +122,50 @@ https。之后换截图推自己的仓库即可，不用再来提 PR。不声明
 ## 3. 发 npm
 
 ```bash
-npm login
+npm login          # 或者跳过，直接用带 Bypass 2FA 的 granular token（见下）
 npm publish
 ```
 
 `publishConfig` 里已经写死 `access: public` + `registry.npmjs.org`，不用再加参数。
+
+### 2FA：`npm publish` 的第一道关（2026-10-02 实测）
+
+账号开了 2FA 的话（本机这个号就是），`npm login` 写进 `.npmrc` 的那个会话 token **发不了包**：
+
+```
+E403 Two-factor authentication or granular access token with bypass 2fa enabled is required to publish packages.
+```
+
+两条路，选一条：
+
+- **`npm publish --otp=123456`** —— 认证器 App（Google Authenticator / Microsoft Authenticator 之类）里那 6 位，30 秒一换。
+- **建一个 granular token**（一劳永逸，之后 `npm publish` 不用再输码）：npmjs.com → 右上头像 → Access Tokens → Generate New Token → Granular Access Token，字段这么填：
+
+  | 字段 | 填什么 |
+  | --- | --- |
+  | Token name | 随便，比如 `publish-dsh-study-coach` |
+  | Expiration | 7 days（够发一次，过期再建一个） |
+  | Packages and scopes | **All packages** + **Read and write** |
+  | Organizations | 不动（No access） |
+  | **Bypass 2FA** | **打开**（不开就还是上面那个 E403） |
+
+  拿到的 `npm_...` 写进 `C:\Users\<你>\.npmrc` 一行：
+
+  ```
+  //registry.npmjs.org/:_authToken=npm_xxxxxxxx
+  ```
+
+  写完 `npm whoami` 能回你的用户名就说明对了。
+
+**权限别选错那一档。** 下拉里是 `Read only` / `Read and write` / **`Read and write (stage only)`** 三档，选了第三档只会拿到：
+
+```
+E403 Cannot publish "dsh-study-coach": this token can only publish to a staging area,
+and "dsh-study-coach" does not exist yet. Create it first with a direct-capable token,
+then use `npm stage publish`.
+```
+
+暂存发布是给 CI 用的，要维护者 2FA 批准，而且**还不存在的包名走不了暂存**——第一个版本必须用能直接发布的 token 建出来。另外 npm 已宣布 **2027-01 起 bypass-2FA token 不再允许直接发布**，到时要换成 trusted publishing（GitHub Actions OIDC）或 stage-only + 网页批准。
 
 发之前本地先真装一遍验证：
 
@@ -159,11 +198,13 @@ git push --follow-tags
 npm publish
 ```
 
+`.npmrc` 里留着那个带 Bypass 2FA 的 token 的话，`npm publish` 不会再问你要验证码；token 过期了就照 §3 再建一个。
+
 市场那边有 `updates.json` 会标出新版本，不用自己推。
 
 ---
 
-## 首次上线 GitHub：本机已经查过的 + 还要你拍板的
+## 首次上线 GitHub：当时的体检记录（2026-10-02，四件都办完了）
 
 以下都是 2026-10-02 在 Windows + node v24.21.0 上实测出来的，别照抄结论、照抄**怎么查**。
 
@@ -198,15 +239,16 @@ npm publish
    `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；测试夹具里那两个假的也换了
    （`test/panel.test.js` 测「cwd 里带括号」、`test/md.test.js` 测 Windows 路径不被 markdown 吃掉）。
 
-**还差你一步（GitHub 那边用本机 git 凭据里已有的授权办了，npm 我进不去）**：
+**最后这几件也都办完了（2026-10-02）**：
 
 1. ~~topic~~ → 已打：`dsh-plugin`（必打）+ `deepseek-harness` + `dsh`。要自己改就在仓库页 About 齿轮里改，
    或 `PUT /repos/{owner}/{repo}/topics`（带 token）。
 2. ~~仓库描述~~ → 已写好（About 里那句：「DSH 的学习教练插件：把一门课拆成知识地图……」）。
-3. **发 npm（只剩这一件要你本人来）**：本机没有任何 npm 凭据（`npm whoami` 回 `ENEEDAUTH`，
-   `C:\Users\zongy\.npmrc` 不存在），得你先 `npm login`，然后 `npm publish`（`npm pack --dry-run` 已经确认
-   包里干净）。发完 `npm view dsh-study-coach version` 应该能看到 `0.1.0`；市场的下载量排序会自动接上，
-   条目里不用加任何字段（手写 `npm:` 键会被校验拒掉）。没发 npm 也能收录——条目指向仓库，照样装得上。
+3. ~~发 npm~~ → **已发布 `dsh-study-coach@0.1.0`**，注册表时间 `2026-10-01T18:57:54Z`，
+   shasum `974387e3ab15850b85ec272d9784137d97351b0d`（与本地那个 `dsh-study-coach-0.1.0.tgz` 逐字节相同，
+   即线上跑的就是本地测过 340 条用例的那份包）。`npm view dsh-study-coach version` 回 `0.1.0`，
+   `repository.url` 指回本仓库，市场那边下载量排序会自动接上；条目里不用加任何字段
+   （手写 `npm:` 键会被校验拒掉）。发的时候被 2FA 挡了两回，全过程与 token 该怎么建都记在 §3。
 4. ~~提条目 PR~~ → **已提：[awesome-dsh-plugin#6341](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6341)**
    （分支 `Ame-Choo:add-study-coach`，就一个文件 `data/plugins/Ame-Choo__dsh-study-coach.yml`）。
    仓库是 2026-10-01T17:52Z 建的，**年龄那一关要到 2026-10-03 01:52（+08:00）才够**——早提是故意的，
@@ -216,21 +258,23 @@ npm publish
 
 ## 发布前自查
 
-- [ ] git 身份不是占位（`git log -1 --format='%an <%ae>'`），否则 GitHub 上没人认领这些提交
-- [ ] `node --test` 全绿，`skipped` 是 0
-- [ ] `npm pack --dry-run` 的文件清单干净（没有 `node_modules` / `test` / `scratch`）
-- [ ] README 顶上那几颗徽章的仓库名对得上（CI 徽章指向 `Ame-Choo/dsh-study-coach`），`docs/` 那几张图在包里
-- [ ] `CHANGELOG.md` 里给这次要发的版本补一条（`npm version patch` 之前）
-- [ ] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` **不再是 `OWNER` 占位**（`npm run setup-repo` 跑过一次）
-- [ ] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
-- [ ] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致
+（下面这些勾是 **0.1.0 这一版**的状态，2026-10-02；以后每次发版照着重过一遍。）
+
+- [x] git 身份不是占位（`git log -1 --format='%an <%ae>'` → `Ame-Choo <ray060619@gmail.com>`）
+- [x] `node --test` 全绿，`skipped` 是 0（本机 340 / pass 340 / fail 0 / skipped 0）
+- [x] `npm pack --dry-run` 的文件清单干净（88 个文件 / 1.2 MB，没有 `node_modules` / `test` / `scratch`）
+- [x] README 顶上那几颗徽章的仓库名对得上（CI 徽章指向 `Ame-Choo/dsh-study-coach`，另加了 npm 版本徽章），`docs/` 那几张图在包里
+- [x] `CHANGELOG.md` 里有 `## [0.1.0] - 2026-10-02`
+- [x] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` 指着本仓库（`npm run setup-repo` 跑过一次）
+- [x] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
+- [x] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致
 - [x] GitHub 仓库打了 `dsh-plugin` 话题（+ `deepseek-harness`、`dsh`）
 - [x] 仓库根有 `screenshots.json`，里面每张图在 `docs/` 里真实存在、路径没跳出插件目录
 - [x] awesome 列表的条目 PR 提了（[#6341](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/6341)；
       年龄那一关 ETA 2026-10-03 01:52+08:00，会自己转绿）
-- [ ] npm 发布了（`npm view dsh-study-coach version`，这步只有你本人能做）
-- [ ] 推到 GitHub 之后 Actions 那条 CI 是绿的（它是「别人克隆下来能不能跑」的唯一证据）
-- [ ] `git status` 干净，没把 junction 的 `node_modules` 提交进去
+- [x] npm 发布了（`npm view dsh-study-coach version` → `0.1.0`，2026-10-01T18:57:54Z）
+- [x] 推到 GitHub 之后 Actions 那条 CI 是绿的（`9b2b795` success；它是「别人克隆下来能不能跑」的唯一证据）
+- [x] `git status` 干净，没把 junction 的 `node_modules` 提交进去
 
 ---
 
