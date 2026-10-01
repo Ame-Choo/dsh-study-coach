@@ -106,7 +106,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_goal` | 改学习目标 |
 | `study_map` | 写知识地图：`set` 整份替换 / `append` 追加模块 / `confirm` 定稿。三层结构（大类 `group` → 模块 → 最小单元，最小单元就是一节网课），每个最小单元要挂 `video`（那一节网课的路径）和 `practice`（配套练习的路径） |
 | `study_analysis` | 把一份材料通读的结论写下来：教学定位、跟别的材料怎么配、每章页码范围 / 例题 / 习题 / 难度 / 教学作用。做题页的页码题号就从这儿出 |
-| `study_record` | 记一条掌握度证据，推进状态。带 `mistake` 就是「这次错了，顺带把错题记下来」（`origin` 必填，标成「已订正」必须同时有 `cause` 和 `fix`）；带 `mistakeId` 则只改那条错题的状态，不新增证据、不动档位 |
+| `study_record` | 记一条掌握度证据，推进状态。往「能独立做 / 熟练稳定 / 能讲明白」推的时候该单元必须先有够数的 `quiz` / `photo` 证据，否则直接拒（见下节「硬闸门」）。带 `mistake` 就是「这次错了，顺带把错题记下来」（`origin` 必填，标成「已订正」必须同时有 `cause` 和 `fix`）；带 `mistakeId` 则只改那条错题的状态，不新增证据、不动档位 |
 | `study_mistakes` | 读错题本：错在哪一步、错因、订正、该哪天复做、现在到哪一档。可按 `status` / `pointId` 筛 |
 | `study_plan` | 排每日任务：`add` / `toggle` / `update` / `remove` |
 | `study_material` | 加/删材料。`kind` 六选一：`book` 教辅 / `video` 网课 / `notes` 讲义 / `past` 真题 / **`ai` AI 出题** / `other`。写错的类别会被拒（以前照单全收，材料会从所有分组里悄悄漏掉） |
@@ -134,6 +134,12 @@ pnpm add link:/绝对路径/dsh-study-coach
 - `required` 要么不写、要么写 `true`。写 `false` 会抛 `parameters.X.required must be true when present`。这意味着一部分必填只能靠描述和 `execute` 里的中文报错拦（比如 `study_map` 只在 `action=set` 时必填 `modules`，无法用 schema 表达）。
 
 「一次只推进一档」这条也是工具自己实现的：`study_record` 里填跳了会被压回上一档，返回的 `summary` 里写「跳档」。
+
+压档之后还有一道**硬闸门**：往「能独立做 / 熟练稳定 / 能讲明白」推的时候，该单元底下必须先有够数的「真做过」证据（`kind` 是 `quiz` 或 `photo`），不够就直接抛错，写清楚现在有几条、还差几条。`STAGE_NEEDS = { 能独立做: 1, 熟练稳定: 2, 能讲明白: 3 }`、`WORK_KINDS = ['quiz', 'photo']` 都在 `lib/store.js`。
+
+这道门刻意只装在**工具层**，没装进 `recordEvidence()`：`study_record` 是教练记档位的唯一入口，而面板上学生自己点的那颗自评按钮走 `POST /study/api/mastery`，那是他自己的说法，本来就该让它记下来——档案要留下的是「他认为自己到什么程度了」，不是「他证明了什么程度」。两笔账分开，判卷的时候才分得清。
+
+闸门跑在**压过之后的**档位上，所以跳档落地到一个设门的档时照样挡得住（`M1.2` 在「能跟做」上直接填「熟练稳定」，压成「能独立做」，那道门过不去）。「能跟做」及以下不设门——那几档本来就只是「见过 / 跟着走过」，允许自评。
 
 配套还有一份随包技能文档 `skills/study-coach/SKILL.md`（工作法：怎么问目标、怎么把材料变成地图、六档怎么判、任务怎么排、哪些事不许做）。预设里 `skill-filesystem` 那一行用 `customSkillDirs` 指向包内 `skills/`，由 agent 按需加载。
 

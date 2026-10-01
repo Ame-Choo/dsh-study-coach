@@ -169,6 +169,59 @@ test('study_map：空地图定稿要被拦', async () => {
   }
 })
 
+test('升档硬闸门：自评换不来「能独立做」，得先有一条真做过的证据', async () => {
+  const f = fresh()
+  try {
+    await f.call('study_map', { action: 'set', modules: MODULES })
+
+    // 一路推到「能跟做」（这两档不设门，本来就允许自评）
+    await f.call('study_record', { pointId: 'M1.1', kind: 'self', stage: '见过' })
+    await f.call('study_record', { pointId: 'M1.1', kind: 'self', stage: '能跟做' })
+
+    // 自评说「我独立做出来了」——不算
+    await assert.rejects(
+      () => f.call('study_record', { pointId: 'M1.1', kind: 'self', stage: '能独立做' }),
+      /得先有 1 条真做过的证据/,
+    )
+    // 上课听懂了、复习过一遍，也不算
+    await assert.rejects(
+      () => f.call('study_record', { pointId: 'M1.1', kind: 'lesson', stage: '能独立做' }),
+      /只有 0 条/,
+    )
+    // 被拒之后档位和证据都不该动
+    assert.equal(f.store.read('mastery').points['M1.1'].stage, '能跟做')
+    assert.equal(f.store.read('mastery').points['M1.1'].evidence.length, 2)
+
+    // 真做题了：这一条自己也算数
+    let r = await f.call('study_record', { pointId: 'M1.1', kind: 'quiz', stage: '能独立做', note: '第九组第 3 题' })
+    assert.equal(r.stage, '能独立做')
+
+    // 「熟练稳定」要两条：现在只有这一条
+    await assert.rejects(
+      () => f.call('study_record', { pointId: 'M1.1', kind: 'self', stage: '熟练稳定' }),
+      /得先有 2 条真做过的证据/,
+    )
+    // 作业照片也算「做过」，凑够两条就放行
+    r = await f.call('study_record', { pointId: 'M1.1', kind: 'photo', stage: '熟练稳定', note: '作业第 3 题' })
+    assert.equal(r.stage, '熟练稳定')
+
+    // 从没接触过直奔「熟练稳定」：先被压回「见过」，那一档不设门，照样放行
+    r = await f.call('study_record', { pointId: 'M1.2', kind: 'self', stage: '熟练稳定' })
+    assert.equal(r.stage, '见过')
+    assert.match(r.summary, /跳档/)
+
+    // 压回的那一档如果正好是设门的档，照样得先有真做过的证据：
+    // M1.2 到了「能跟做」再自评直奔「熟练稳定」，压成「能独立做」——那道门过不去
+    await f.call('study_record', { pointId: 'M1.2', kind: 'self', stage: '能跟做' })
+    await assert.rejects(
+      () => f.call('study_record', { pointId: 'M1.2', kind: 'self', stage: '熟练稳定' }),
+      /升到「能独立做」得先有 1 条真做过的证据/,
+    )
+  } finally {
+    f.done()
+  }
+})
+
 test('study_record：推进档位、累积证据、拦未知知识点', async () => {
   const f = fresh()
   try {
