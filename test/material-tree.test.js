@@ -19,11 +19,16 @@ import { agentTree, bookTree, fileKind, folderTree, materialTree, mediaKindOf, m
 
 /** 造一棵假的目录清单：`list('/root')` → 里面有什么。 */
 function fakeList(shape) {
-  const key = (p) => String(p).replace(/[\\/]+$/, '')
-  return (dir) => {
-    const kids = shape[key(dir)] || []
-    return kids.map((k) => ({ name: k.name, dir: Boolean(k.dir), path: join(dir, k.name) }))
+  // 夹具里的根写的是 Windows 路径（`F:\课件`），而 `join()` 按当前平台拼子路径：
+  // 在 Linux 上拼出来是 `F:\课件/02.模块…`。两边都归一成 `/` 再查表，
+  // 同一份夹具在哪个平台上都对得上（这份清单本来就是假的，不落盘）。
+  const key = (p) => String(p).replace(/\\/g, '/').replace(/\/+$/, '')
+  const kidsOf = (dir) => {
+    const want = key(dir)
+    for (const [k, v] of Object.entries(shape)) if (key(k) === want) return v
+    return []
   }
+  return (dir) => kidsOf(dir).map((k) => ({ name: k.name, dir: Boolean(k.dir), path: join(dir, k.name) }))
 }
 
 /** 一份假目录：`{ '/root': [ {name, dir} ] }`，直接喂给 `fakeList`。 */

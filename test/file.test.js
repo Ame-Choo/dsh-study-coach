@@ -90,13 +90,17 @@ test('拿 .. 往材料目录外面钻也不行', async () => {
 
 test('材料登记的是个不存在的路径，也别炸', async () => {
   const { store, handler } = fixture()
+  // 路径按当前平台拼：写成 `Z:\没有这个目录` 的话，Linux 上 resolve() 之后前缀对不上，
+  // 会落到 404 那一支——那测的就不是「材料没了」，而是「路径写法不对」。
+  const goneDir = join('Z:', '没有这个目录')
+  const goneFile = join(goneDir, 'a.mp4')
   store.update('profile', (p) => {
-    p.materials = [{ id: 'mat-x', kind: 'other', title: '早就删了', path: 'Z:\\没有这个目录', note: '' }]
+    p.materials = [{ id: 'mat-x', kind: 'other', title: '早就删了', path: goneDir, note: '' }]
     return p
   })
   const server = await startPanelServer(handler, { port: 0 })
   try {
-    const res = await fetch(`${server.url}/file?path=${encodeURIComponent('Z:\\没有这个目录\\a.mp4')}`)
+    const res = await fetch(`${server.url}/file?path=${encodeURIComponent(goneFile)}`)
     // 410 而不是 404：面板的探活就是拿 404 判「服务端还是旧代码」的，
     // 移动硬盘没插时回 404 会让它举着红条喊「重启 DSH」
     assert.equal(res.status, 410)

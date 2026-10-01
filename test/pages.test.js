@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 
 import { Store } from '../lib/store.js'
 import { buildTools } from '../lib/tools.js'
@@ -87,7 +87,7 @@ test('pagesDirFor：同一份 PDF 每次落到同一个目录，不同 PDF 不�
   const c = pagesDirFor(root, 'F:\\示例资料\\线性代数讲义\\1.2 行列式的性质.pdf')
   assert.equal(a, b, '同一个路径必须算出一模一样的目录')
   assert.notEqual(a, c, '两份不同的 PDF 不能共用目录')
-  assert.ok(a.startsWith(root + '\\'), `目录要落在 scratch 里，实际 ${a}`)
+  assert.ok(a.startsWith(root + sep), `目录要落在 scratch 里，实际 ${a}`)
   assert.ok(a.includes('1.1 行列式的定义'), `目录名要带得动文件名，实际 ${a}`)
 })
 
@@ -233,25 +233,33 @@ test('页码写进 marks 之后：报告里数得出来，做题页一跳就到�
 
 test('findPython：认 DSH 装的那份 python，找不到就退回命令名', () => {
   const before = process.env.DSH_STUDY_PYTHON
+  // 自己造一个假家目录，把「DSH 自带的那份 python」放进去——CI 上没有 DSH 安装，
+  // 拿真家目录去断言等于在赌 runner 的环境。
+  const home = mkdtempSync(join(tmpdir(), 'study-python-'))
   try {
-    // 得是个真存在的文件，否则它会跳过去继续找 —— 这正是我们要的「别把不存在的路径当答案」。
+    const dir = join(home, '.dsh', 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'python')
+    mkdirSync(dir, { recursive: true })
+    const bundled = join(dir, 'python.exe')
+    writeFileSync(bundled, '')
+
+    // 得是个真存在的文件才认，这正是「别把不存在的路径当答案」。
     process.env.DSH_STUDY_PYTHON = process.execPath
-    assert.equal(findPython(homedir()), process.execPath, '显式设的路径优先')
-    process.env.DSH_STUDY_PYTHON = 'D:\\py\\不存在.exe'
-    assert.equal(
-      findPython(homedir()),
-      join(homedir(), '.dsh', 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'python', 'python.exe'),
-      '设了个不存在的路径就往回退给 DSH 自带的那份',
-    )
+    assert.equal(findPython(home), process.execPath, '显式设的路径优先')
     delete process.env.DSH_STUDY_PYTHON
+    assert.equal(findPython(home), bundled, '没设就用 DSH 自带的那份')
+
+    process.env.DSH_STUDY_PYTHON = 'D:\\py\\不存在.exe'
+    assert.equal(findPython(home), bundled, '设了个不存在的路径就往回退给 DSH 自带的那份')
+
     assert.ok(/python(\.exe)?$/i.test(findPython('D:\\没有这个用户')), '退回应是命令名')
   } finally {
     if (before === undefined) delete process.env.DSH_STUDY_PYTHON
     else process.env.DSH_STUDY_PYTHON = before
+    rmSync(home, { recursive: true, force: true })
   }
 })
 
-test('renderPages：文件不在、页码越界都给 ok:false 加一句人话', () => {
+test('renderPages：文件不在、页码越界都给 ok:false 加一句人话', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'study-render-'))
   try {
     const gone = renderPages(join(dir, 'nope.pdf'), { outDir: join(dir, 'out'), from: 1, to: 1 })
@@ -261,7 +269,12 @@ test('renderPages：文件不在、页码越界都给 ok:false 加一句人话',
     const pdf = join(dir, 'one.pdf')
     tinyPdf(pdf, 1)
     const over = renderPages(pdf, { outDir: join(dir, 'out'), from: 9, to: 9, python: findPython(homedir()) })
-    if (/No module named/i.test(over.error || '')) return
+    // 「本机 python 里没 pymupdf」和「python 压根跑不起来」都是环境问题，不是这条用例要测的；
+    // 越界那句人话（「页码越界：这份一共 N 页」）不会提到 python，所以这条判据不会误吞。
+    if (/pymupdf|No module named|ENOENT|spawn/i.test(over.error || '')) {
+      t.skip(`本机的 python 渲不了 PDF：${over.error}`)
+      return
+    }
     assert.equal(over.ok, false, '越界必须失败')
     assert.match(over.error, /页码越界/, `越界要说清是越界，实际 ${over.error}`)
 

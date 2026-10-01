@@ -81,6 +81,8 @@ test('材料可以加可以删', () => {
     assert.equal(r.code, 200)
     assert.equal(r.body.material.kind, 'ai')
     assert.equal(r.body.material.path, '')
+    // 两次 add 撞在同一毫秒里也不能撞 id —— 撞了 remove 会把两份一起删掉。
+    assert.notEqual(r.body.material.id, id, '同一毫秒里连加两份，id 也得各是各的')
 
     r = f.handle({ method: 'POST', pathname: '/study/api/materials/remove', body: { id } })
     assert.equal(r.body.materials.length, 1)
