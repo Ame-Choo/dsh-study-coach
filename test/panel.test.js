@@ -132,6 +132,10 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         ? { ok: true, date: agenda.date, all: true, profiles: agenda.profiles }
         : { ok: true, state: fixture }
     }
+    // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
+    // 测试进程就永远退不出去。要测接通的样子，得自己给 available:true 和一份 messages。
+    if (path.includes('/api/chat/sessions')) body = { ok: true, available: false, sessions: [] }
+    else if (path.includes('/api/chat')) body = { ok: true, available: false, messages: [], sessions: [] }
     return { ok: true, status: 200, json: async () => body }
   }
   await import(`${PANEL}?v=${Math.random().toString(36).slice(2)}`)
@@ -573,4 +577,10 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   const asked = await boot(fixture(), { innerWidth: 1400, search: '?mode=sidebar' })
   assert.equal(asked.documentElement.dataset.mode, 'sidebar')
   assert.match(asked.html(), /data-act="card-toggle"/)
+
+  // 侧栏一屏只放得下一张卡：进哪一页就把那一页的主卡摊开
+  const coach = await boot(fixture(), { innerWidth: 400, path: '/study/coach' })
+  assert.match(coach.html(), /class="card open" data-card="chat"/)
+  const libNarrow = await boot(fixture(), { innerWidth: 400, path: '/study/library' })
+  assert.match(libNarrow.html(), /class="card open" data-card="library"/)
 })

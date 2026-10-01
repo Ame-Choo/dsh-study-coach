@@ -26,6 +26,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { Library } from './lib/library.js'
 import { createRouter } from './lib/routes.js'
 import { createBridge } from './lib/bridge.js'
+import { createChat } from './lib/chat.js'
 import { createHandler } from './lib/handler.js'
 import { DEFAULT_PORT, startPanelServer } from './lib/panel-server.js'
 import { registerTools } from './lib/tools.js'
@@ -57,7 +58,14 @@ export function apply(ctx) {
     resolve: () => (typeof ctx.get === 'function' ? ctx.get('sessionController') : null),
   })
 
-  const router = createRouter(store, { bridge })
+  /**
+   * 反方向：把对话读回面板。和 bridge 共用同一个服务、同一套「缺了也能跑」的规矩。
+   */
+  const chat = createChat({
+    resolve: () => (typeof ctx.get === 'function' ? ctx.get('sessionController') : null),
+  })
+
+  const router = createRouter(store, { bridge, chat })
   const handler = createHandler(store, router, { assetsDir: ASSETS })
 
   /**

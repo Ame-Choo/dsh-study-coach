@@ -57,6 +57,12 @@ let summary = null
 let agenda = null
 /* 学习目标清单 + 回收站（回收站只有 /study/api/library 这条接口给） */
 let library = null
+/* 对话那份快照：{ available, sessionId, messages, sessions, error } */
+let chat = null
+/* 「对话」页开着时的轮询句柄；离开这一页就停 */
+let chatTimer = null
+/* 上一份快照的指纹，用来判断要不要重画消息列表 */
+let chatStamp = ''
 const ui = {
   openPoint: null,
   openGroups: new Set(),
@@ -83,6 +89,10 @@ const ui = {
   open: new Set(['today']),
   /* 材料卡里那段长说明摊开了没有（默认压三行，不然一页全是字） */
   matMore: false,
+  /* 「对话」页正看着哪个会话；空串 = 服务端替我挑最近那个 */
+  chatSession: '',
+  /* 正在发的话（发出后先乐观占位，等服务端日志追上再换成真的） */
+  chatSending: false,
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -322,6 +332,8 @@ async function load() {
     if (!capabilities) capabilities = await probeCapabilities()
     agenda = await loadAgenda()
     library = await loadLibrary()
+    // 对话只有那一页要看，别每回开机都多打一次接口
+    if (page === 'coach') await loadChat({ withSessions: true })
     applyMode()
     app.className = ''
     render()
@@ -362,6 +374,37 @@ async function loadLibrary() {
   }
 }
 
+/**
+ * 读一份对话快照。
+ *
+ * 走插件自己的 `/study/api/chat`，那一头拿的是 DSH 的 sessionController，
+ * 所以画的就是真正的对话，不是另抄一份。服务端是旧代码（没有这条路由）时
+ * 回 404，这里收成 `available:false`，卡片退回「留言」那套。
+ */
+async function loadChat({ sessionId = ui.chatSession, withSessions = false } = {}) {
+  const query = '?max=60' + (sessionId ? '&sessionId=' + encodeURIComponent(sessionId) : '') + (withSessions ? '&sessions=1' : '')
+  try {
+    const out = await api('/study/api/chat' + query)
+    chat = {
+      available: out.available !== false,
+      sessionId: out.sessionId || '',
+      messages: Array.isArray(out.messages) ? out.messages : [],
+      sessions: Array.isArray(out.sessions) ? out.sessions : (chat && chat.sessions) || [],
+      error: out.error || '',
+    }
+  } catch (error) {
+    chat = { available: false, sessionId: '', messages: [], sessions: (chat && chat.sessions) || [], error: error.message }
+  }
+  return chat
+}
+
+/** 消息列表的指纹。轮询时先比这个，没变就不动 DOM（免得把正在打的字、滚到一半的位置冲掉）。 */
+function chatFingerprint(snapshot) {
+  if (!snapshot) return ''
+  const last = snapshot.messages.length ? snapshot.messages[snapshot.messages.length - 1].seq : 0
+  return `${snapshot.sessionId}|${snapshot.messages.length}|${last}`
+}
+
 /* ── 页面 ─────────────────────────────────────────────────────────────────
  * 一页一件事。主页面不干活，只回答「我现在什么情况、下一步点哪儿」；改地图、勾任务、
  * 换目标这些都在各自子页面里。地址就是真地址（/study/today 这样），服务端把这几条
@@ -390,6 +433,7 @@ let page = resolvePage()
 function go(id, path) {
   if (id !== page) {
     page = id
+    openFirstCard(id)
     render()
     try {
       window.scrollTo(0, 0)
@@ -432,8 +476,8 @@ const PAGE_CARDS = {
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
   },
   coach: {
-    main: [['inbox', '给教练留言', inboxCard]],
-    aside: [['guide', '教练的指引', guideCard]],
+    main: [['chat', '与教练对话', chatCard]],
+    aside: [['inbox', '留言', inboxCard], ['guide', '教练的指引', guideCard]],
   },
 }
 
@@ -449,12 +493,87 @@ function render() {
     ${archiveModal()}
   `
   mountGraph()
+  syncChatPolling()
+}
+
+/* ── 对话轮询 ─────────────────────────────────────────────────────────────
+ * 「对话」页要跟着 DSH 那边的进度走，所以开着的时候定时拉一份新快照。
+ * 离开这一页、或者标签页被切到后台，就把定时器停掉——不看的时候不该占着。
+ * 只在指纹变了的时候重画消息列表，正在输的字和滚到一半的位置都不动。
+ */
+function stopChatPolling() {
+  if (chatTimer) {
+    clearInterval(chatTimer)
+    chatTimer = null
+  }
+}
+
+function chatHidden() {
+  try {
+    return document.visibilityState === 'hidden'
+  } catch {
+    return false
+  }
+}
+
+function syncChatPolling() {
+  // 通道没接通就别空转定时器——那会让页面永远有个活动的 interval 停不下来。
+  // 接通之前靠卡片上那颗「重新连接」手动再试一次。
+  if (page !== 'coach' || chatHidden() || !chat || !chat.available) {
+    stopChatPolling()
+    return
+  }
+  if (chatTimer) return
+  chatTimer = setInterval(() => {
+    void refreshChat()
+  }, 2500)
+}
+
+async function refreshChat() {
+  if (page !== 'coach' || chatHidden()) {
+    stopChatPolling()
+    return
+  }
+  const before = chatStamp
+  await loadChat()
+  if (!chatStamp || chatStamp !== before) paintChat()
+}
+
+/** 只换消息列表那一块，不整页重画。 */
+function paintChat() {
+  const host = document.getElementById('chat-log')
+  const snapshot = chat || { messages: [] }
+  chatStamp = chatFingerprint(snapshot)
+  if (!host) {
+    render()
+    return
+  }
+  const stick = host.scrollHeight - host.scrollTop - host.clientHeight < 60
+  host.innerHTML = chatLog(snapshot)
+  if (stick) host.scrollTop = host.scrollHeight
 }
 
 /** 当前这一页的卡片；侧栏模式一律折成一条一条。 */
+/**
+ * 侧栏模式一屏只放得下一张卡，所以进哪一页就把那一页的主卡摊开。
+ * 只在换页时做一次——放进 render 里会让折叠按钮按不动。
+ */
+function openFirstCard(id) {
+  if (!isSidebar()) return
+  const spec = PAGE_CARDS[id] || PAGE_CARDS.today
+  const first = (spec.main || [])[0]
+  if (first) ui.open.add(first[0])
+}
+
 function pageCards() {
   const spec = PAGE_CARDS[page] || PAGE_CARDS.today
-  const draw = (col) => (spec[col] || []).map(([id, label, make]) => fold(id, label, make())).join('')
+  // 卡片工厂返回空串就是「这一页现在不需要它」——比如对话通道通了，留言卡就让位。
+  const draw = (col) =>
+    (spec[col] || [])
+      .map(([id, label, make]) => ({ id, label, html: make() }))
+      .filter((card) => card.html)
+      .map((card) => fold(card.id, card.label, card.html))
+      .join('')
   const aside = draw('aside')
   if (isSidebar()) return `<div class="cards">${draw('main')}${aside}</div>`
   return `<div class="cards${aside ? ' two' : ''}">
@@ -1301,8 +1420,115 @@ function toolsCard() {
   </section>`
 }
 
+/* ── 对话页 ───────────────────────────────────────────────────────────────
+ * 这一页画的是 DSH 里真正的对话：读的是会话日志（lib/chat.js → sessionController），
+ * 发的话直接投进那个会话。所以在这儿看到的就是对话里发生的，不存在两份记录。
+ */
+function chatStatus(snapshot) {
+  if (!snapshot) return '<span class="dim">正在读取…</span>'
+  if (!snapshot.available) return '<span class="dim">未接通</span>'
+  const parts = []
+  if (snapshot.error) parts.push(esc(snapshot.error))
+  else parts.push('已接通')
+  return `<span class="dim">${parts.join(' · ')}</span>`
+}
+
+/** 会话选择。只有多个会话时才出，免得白占一行。 */
+function chatPicker(snapshot) {
+  const list = (snapshot && snapshot.sessions) || []
+  if (list.length < 2) return ''
+  const current = (snapshot && snapshot.sessionId) || ''
+  const options = list
+    .map((s) => {
+      const label = s.title || (s.blank ? '（新会话）' : s.cwd ? s.cwd.split(/[\\/]/).pop() : s.sessionId.slice(0, 8))
+      const mark = s.running ? ' · 进行中' : ''
+      return `<option value="${esc(s.sessionId)}"${s.sessionId === current ? ' selected' : ''}>${esc(label + mark)}</option>`
+    })
+    .join('')
+  return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select></div>`
+}
+
+function clockOf(time) {
+  if (!time) return ''
+  try {
+    return new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 消息列表。工具调用和工具返回单独攒成一段——连着十几条 tool/call 铺开会把正文冲没，
+ * 收成一行「调用了 read、edit（12 步）」正好。
+ */
+function chatLog(snapshot) {
+  const messages = (snapshot && snapshot.messages) || []
+  if (!messages.length) {
+    return `<p class="dim chat-empty">${snapshot && snapshot.error ? '读取失败：' + esc(snapshot.error) : '这个会话还没有内容。在下面说一句，教练会在对话里收到。'}</p>`
+  }
+  const out = []
+  let run = []
+  const flush = () => {
+    if (!run.length) return
+    const names = [...new Set(run.filter((m) => m.role === 'tool' && m.tool && m.tool.name).map((m) => m.tool.name))]
+    const failed = run.some((m) => m.role === 'result' && m.tool && m.tool.failed)
+    const label = names.length ? names.join('、') : '工具'
+    out.push(
+      `<div class="chat-step${failed ? ' bad' : ''}">调用 ${esc(label)}（${run.length} 步）${failed ? ' · 有失败' : ''}</div>`,
+    )
+    run = []
+  }
+  for (const m of messages) {
+    if (m.role === 'tool' || m.role === 'result') {
+      run.push(m)
+      continue
+    }
+    flush()
+    const time = clockOf(m.time)
+    const meta = time ? `<span class="chat-time">${esc(time)}</span>` : ''
+    if (m.role === 'user') {
+      out.push(`<div class="chat-msg user"><div class="chat-text">${esc(m.text)}</div>${meta}</div>`)
+      continue
+    }
+    const used = Array.isArray(m.tools) && m.tools.length ? `<div class="chat-used">用了 ${esc([...new Set(m.tools)].join('、'))}</div>` : ''
+    out.push(
+      `<div class="chat-msg bot"><div class="chat-text">${esc(m.text || '（这一步没有正文）')}</div>${used}${meta}</div>`,
+    )
+  }
+  flush()
+  const tail = snapshot && snapshot.error ? `<div class="chat-step bad">${esc(snapshot.error)}</div>` : ''
+  return out.join('') + tail
+}
+
+function chatCard() {
+  const snapshot = chat
+  if (!snapshot || !snapshot.available) {
+    return `<section class="card">
+      <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}</div>
+      <p class="dim">未接通对话通道（服务端可能是旧版本，或会话服务不可用）。可用右下角的「留言」先写下来，教练下次开口时会读到。</p>
+      ${snapshot && snapshot.error ? `<p class="dim">原因：${esc(snapshot.error)}</p>` : ''}
+      <div class="row"><button class="mini" data-act="chat-reload">重新连接</button>
+      <span class="dim">重启 DSH 之后点这里，不用刷新整页。</span></div>
+    </section>`
+  }
+  return `<section class="card">
+    <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}</div>
+    ${chatPicker(snapshot)}
+    <div class="chat-log" id="chat-log">${chatLog(snapshot)}</div>
+    <form data-form="chat" class="form chat-form">
+      <label>说点什么<textarea name="text" rows="2" placeholder="例如：这节的含参讨论没跟上 / 换个教材 / 今天只剩 30 分钟"></textarea></label>
+      <div class="row">
+        <button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${ui.chatSending ? '发送中…' : '发送'}</button>
+        <span class="dim">发送后进入对话，回复会自己出现在上面。</span>
+      </div>
+    </form>
+  </section>`
+}
+
 /** 把话带回对话里。递到了教练立刻被叫起来；递不到就先存着，等他开口。 */
 function inboxCard() {
+  // 对话读得通就用不着留言了：那一页能直接说话。留言只在通道没接通时兜底。
+  if (chat && chat.available) return ''
   const items = (state.inbox && state.inbox.items) || []
   const recent = items.slice(-3).reverse()
   return `<section class="card">
@@ -1431,6 +1657,10 @@ document.addEventListener('click', async (event) => {
       ui.openModules.clear()
       toast('已切换')
       await load()
+    } else if (act === 'chat-reload') {
+      await loadChat({ withSessions: true })
+      paintChat()
+      toast('已刷新')
     } else if (act === 'lib-rename') {
       ui.renameId = el.dataset.id
       ui.pendingDropProfile = null
@@ -1465,7 +1695,14 @@ document.addEventListener('click', async (event) => {
 
 document.addEventListener('change', async (event) => {
   const el = event.target
-  if (!el.dataset || el.dataset.act !== 'task-toggle') return
+  if (!el.dataset) return
+  if (el.dataset.act === 'chat-session') {
+    ui.chatSession = el.value
+    await loadChat({ sessionId: el.value, withSessions: true })
+    paintChat()
+    return
+  }
+  if (el.dataset.act !== 'task-toggle') return
   try {
     await api('/study/api/task/toggle', {
       date: today(),
@@ -1486,7 +1723,33 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault()
   const data = new FormData(form)
   try {
-    if (kind === 'inbox') {
+    if (kind === 'chat') {
+      const text = String(data.get('text') || '').trim()
+      if (!text) {
+        toast('内容为空', true)
+        return
+      }
+      ui.chatSending = true
+      form.querySelector('button[type="submit"]').disabled = true
+      try {
+        const out = await api('/study/api/chat/send', {
+          text,
+          sessionId: (chat && chat.sessionId) || ui.chatSession || '',
+        })
+        if (!out.ok) {
+          toast('没递进去：' + (out.pushError || '通道未通'), true)
+        } else {
+          form.reset()
+          toast('已发送')
+        }
+      } finally {
+        ui.chatSending = false
+      }
+      // 等日志追上：立刻拉一次，过一秒再拉一次，别让人盯着空白等
+      await loadChat()
+      paintChat()
+      setTimeout(() => void refreshChat(), 1200)
+    } else if (kind === 'inbox') {
       const text = String(data.get('text') || '').trim()
       if (!text) {
         toast('内容为空', true)
@@ -1587,7 +1850,15 @@ window.addEventListener('popstate', () => {
   const next = resolvePage()
   if (next === page) return
   page = next
+  openFirstCard(next)
   render()
 })
 
+/* 切回这个标签页时补一次快照：后台期间轮询是停的。 */
+document.addEventListener('visibilitychange', () => {
+  if (chatHidden()) stopChatPolling()
+  else syncChatPolling()
+})
+
+openFirstCard(page)
 load()

@@ -378,4 +378,31 @@ node --test
 
 工具那边也跟着通了：`study_plan` 收 `profileId`，返回里带 `profileId`——**给别的科目排任务不用先 `study_library select` 切过去**。
 
+### 四、分页面 + 面板里直接看对话
+
+面板原来是一张长纸，什么都堆在上面。现在拆成**一个主页面 + 五个子页面**，顶栏是文字导航：
+
+| 路径 | 页 | 干什么 |
+| --- | --- | --- |
+| `/study` | 主页 | 一屏说清「现在什么水平、今天还剩什么、下一步点哪儿」，只放入口不放编辑表单 |
+| `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
+| `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿 |
+| `/study/ability` | 能力 | 大盘数字、各大类、薄弱环节、待复习、最近七天 |
+| `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
+| `/study/coach` | 对话 | 直接看 DSH 里的对话、直接发消息 |
+
+- 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。
+- 导航走 **`pushState` 前端切页**，不往服务端整页跳——因为服务端路由是 DSH 启动时加载的，改完 `lib/` 没重启时子页面会回 JSON 404，整页跳过去人看到的是一屏报错。前端切页让旧服务端也能用，地址栏仍是真地址。
+- 默认配色改成**浅色**（暖骨白 + 鼠尾草绿），`html[data-theme="dark"]` 是暖暗版；`?theme=` / 顶栏那个按钮切换。
+
+对话那条线（`lib/chat.js`）：
+
+- `sessionController` 是 DSH 的**可选**服务，和 `lib/bridge.js` 一样**不写进 `inject`**，拿不到就 `available:false`，面板自动退回「留言」那套，绝不白屏。
+- `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单，取第一个不带头会话的顶层会话当默认）、`history({sessionId, maxMessages})`（`sessionController.page()` 拿历史记录，翻成面板要的 `{id, role, text, time, tools, steps}`；折叠掉纯工具轮，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。
+- HTTP 三条：`GET /study/api/chat/sessions`、`GET /study/api/chat?sessionId=&max=&sessions=1`、`POST /study/api/chat/send {text, sessionId?, mode?}`（`mode` 只收 `queue` / `steer`，复用 `lib/bridge.js` 的投递通道）。
+- 面板侧：开着对话页时**每 4 秒拉一次快照**，标签页切到后台、或者离开这一页就把定时器停掉；只有指纹变了才重画消息列表，正在输的字和滚到一半的位置都不动。**通道通了，右下角那张「给教练留言」卡自动让位**（`inboxCard()` 返回空串，`pageCards()` 把空卡滤掉）。
+- 侧栏模式下一屏只放得下一张卡，所以**换页时自动把那一页的主卡摊开**（`openFirstCard()` 只在换页和首次加载时调一次，放进 `render()` 里会让折叠按钮按不动）。
+
+三条路由同样是**服务端代码 → 必须重启 DSH 才生效**。没重启时对话页会直接说「服务端还没重启」，而不是装作坏了。
+
 
