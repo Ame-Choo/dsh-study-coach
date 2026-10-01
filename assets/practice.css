@@ -1,0 +1,77 @@
+/* 做题页。通用变量、card、button、toast、stage-btn 都在 style.css 里，这里只管这页自己的东西。 */
+
+/* 挤在侧栏里的时候：留白收紧、页码按钮换行排 */
+html[data-mode="sidebar"] #app { max-width: 100%; padding: 10px 10px 40px; }
+html[data-mode="sidebar"] .card { padding: 10px 12px; margin-bottom: 8px; }
+html[data-mode="sidebar"] .pg-btn { font-size: 12px; }
+
+.pr-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 6px 2px 14px;
+}
+.back {
+  font-size: 12px; color: var(--dim); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; flex: none;
+}
+.back:hover { color: var(--accent); border-color: var(--accent); }
+.crumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); flex: 1; min-width: 0; }
+.crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb i { font-style: normal; opacity: .45; flex: none; }
+.pr-stage {
+  font-size: 12px; padding: 2px 10px; border-radius: 999px; flex: none;
+  color: var(--c); border: 1px solid var(--c);
+}
+
+.card h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; }
+
+/* 链接也做成按钮样 */
+.btn {
+  display: inline-block; font-size: 13px; text-decoration: none; cursor: pointer;
+  color: var(--text); background: var(--card-2); border: 1px solid var(--line);
+  border-radius: 7px; padding: 4px 12px;
+}
+.btn:hover { border-color: var(--line-2); }
+.btn.ghost { background: transparent; color: var(--dim); cursor: default; }
+.btn.ghost:hover { border-color: var(--line); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.btn.alt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 260px; }
+.btn .sub { font-size: 11px; color: var(--dim); }
+
+/* 练什么，你定：三块并排，窄屏自动竖过来 */
+.pick { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.pick-block { display: flex; flex-direction: column; gap: 6px; }
+.pick-block b { font-size: 13px; }
+.pick-block p { margin: 0; font-size: 12px; }
+.pick-block .btn { align-self: flex-start; margin-top: 2px; }
+.pick-block textarea { width: 100%; font: inherit; }
+.pick-block .two { display: flex; gap: 8px; }
+.pick-block .two input:first-child { flex: 1; min-width: 0; }
+.pick-block .two input:last-child { width: 74px; flex: none; }
+
+.why { margin: 0 0 10px; font-size: 13px; color: var(--dim); }
+.quick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.quick .src { color: var(--dim); }
+
+/* 教辅里对应哪儿：一章一行 */
+.ch-row { border-top: 1px solid var(--line); padding: 9px 0 3px; }
+.ch-row:first-of-type { border-top: none; padding-top: 2px; }
+.ch-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ch-no { font-size: 12px; color: var(--dim); flex: none; }
+.ch-title { font-size: 13px; font-weight: 600; }
+.ch-topics { font-size: 13px; color: var(--dim); margin-top: 3px; }
+.ch-meta { font-size: 12px; color: var(--accent); margin-top: 3px; }
+.ch-role { font-size: 12px; color: var(--dim); margin-top: 3px; }
+
+/* 「某知识点 → 第 6 页」：拆过页的章节才有的页码按钮 */
+.pg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
+.pg-btn {
+  display: inline-flex; align-items: baseline; gap: 6px; text-decoration: none;
+  font-size: 12px; color: var(--text); background: var(--card-2);
+  border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px;
+}
+.pg-btn:hover { border-color: var(--accent); }
+.pg-btn b { color: var(--accent); font-weight: 600; }
+.pg.none { font-size: 12px; color: var(--dim); }
+
+.note-row { display: flex; gap: 8px; margin-top: 10px; }
+.note-row input { flex: 1; }

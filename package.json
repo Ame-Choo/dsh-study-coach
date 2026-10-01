@@ -1,0 +1,71 @@
+{
+  "name": "dsh-study-coach",
+  "version": "0.1.0",
+  "description": "DSH 学习教练插件：把一门课拆成知识地图，逐单元记掌握度、排每日任务，并给学生一个看得见进度的网页面板。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "assets",
+    "skills",
+    "cordis.patch.yml",
+    "README.md",
+    "PUBLISHING.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.1"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "dsh": ">=0.2.0-rc.1"
+  },
+  "scripts": {
+    "test": "node --test",
+    "preview": "node scripts/preview.mjs",
+    "check": "node scripts/check-live.mjs",
+    "setup-repo": "node scripts/setup-repo.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "deepseek-harness",
+    "cordis",
+    "study",
+    "study-coach",
+    "learning",
+    "education",
+    "tutor",
+    "knowledge-graph",
+    "spaced-repetition",
+    "学习",
+    "学习教练",
+    "知识地图"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/dsh-study-coach.git"
+  },
+  "homepage": "https://github.com/OWNER/dsh-study-coach#readme",
+  "bugs": {
+    "url": "https://github.com/OWNER/dsh-study-coach/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

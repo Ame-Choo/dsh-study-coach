@@ -1,0 +1,10 @@
+# 统一用 LF，别让 Windows 的 CRLF 混进仓库
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.tgz binary
+*.pdf binary

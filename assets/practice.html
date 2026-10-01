@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>做题 · 学习教练</title>
+<link rel="stylesheet" href="/study/assets/style.css">
+<link rel="stylesheet" href="/study/assets/practice.css">
+<script>
+/* 做题页也跟着面板的模式与配色走：挤在侧栏里就排窄一点，晚上别突然白一下。 */
+(function () {
+  try {
+    var asked = new URLSearchParams(location.search).get('mode')
+    var saved = asked === 'sidebar' || asked === 'browser' ? asked : localStorage.getItem('study-coach:mode')
+    var mode = saved === 'sidebar' || saved === 'browser'
+      ? saved
+      : ((window.self !== window.top || window.innerWidth < 680) ? 'sidebar' : 'browser')
+    document.documentElement.dataset.mode = mode
+    var t = new URLSearchParams(location.search).get('theme')
+    if (t !== 'light' && t !== 'dark') t = localStorage.getItem('study-coach:theme')
+    document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark'
+  } catch (e) {
+    document.documentElement.dataset.mode = 'browser'
+    document.documentElement.dataset.theme = 'dark'
+  }
+})()
+</script>
+</head>
+<body>
+<div id="app" class="loading">正在读这一节…</div>
+<div id="toast" class="toast"></div>
+<script type="module" src="/study/assets/practice.js"></script>
+</body>
+</html>

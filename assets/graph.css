@@ -1,0 +1,233 @@
+/* 知识图谱的皮。几何全在 graph.js 里，这里只管长相和交互反馈。
+   颜色一律写成 var(--x, 兜底值)，style.css 慢一步也不会花屏。 */
+
+.kg-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--input, #12141a);
+  border: 1px solid var(--line, #2c313a);
+  border-radius: var(--radius, 10px);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.kg-svg.is-panning {
+  cursor: grabbing;
+}
+
+.kg-empty {
+  padding: 22px 0;
+  text-align: center;
+  color: var(--dim, #8b93a1);
+  font-size: 13px;
+}
+
+/* ── 连线 ────────────────────────────────────────────────────────────── */
+
+.kg-link {
+  fill: none;
+  stroke: var(--line, #2c313a);
+  stroke-width: 1.4;
+}
+
+.kg-link-unit {
+  stroke-dasharray: 3 4;
+  stroke-width: 1.1;
+  opacity: .8;
+}
+
+/* ── 大类 / 模块 ─────────────────────────────────────────────────────── */
+
+.kg-group,
+.kg-mod {
+  cursor: pointer;
+}
+
+.kg-box {
+  fill: var(--card, #1b1e24);
+  stroke: var(--line, #2c313a);
+  stroke-width: 1.2;
+  transition: stroke .12s ease, fill .12s ease;
+}
+
+.kg-group .kg-box {
+  fill: var(--card-2, #22262e);
+  stroke-width: 1.5;
+}
+
+.kg-group:hover .kg-box,
+.kg-mod:hover .kg-box,
+.kg-group:focus .kg-box,
+.kg-mod:focus .kg-box {
+  stroke: var(--accent, #4d9de0);
+}
+
+.kg-group:focus,
+.kg-mod:focus,
+.kg-point:focus,
+.kg-btn:focus,
+.kg-tool:focus {
+  outline: none;
+}
+
+.kg-title {
+  fill: var(--text, #e6e8ec);
+  font-size: 12.5px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.kg-mod .kg-title {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.kg-sub {
+  fill: var(--dim, #8b93a1);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* ── 最小单元（一节网课） ────────────────────────────────────────────── */
+
+.kg-point {
+  cursor: pointer;
+}
+
+.kg-dot {
+  stroke: var(--card, #1b1e24);
+  stroke-width: 1.6;
+  transition: r .12s ease;
+}
+
+.kg-halo {
+  fill: none;
+  stroke: var(--accent, #4d9de0);
+  stroke-width: 1.8;
+  pointer-events: none;
+}
+
+.kg-point:hover .kg-dot,
+.kg-point:focus .kg-dot {
+  r: 7.2;
+  stroke: var(--text, #e6e8ec);
+}
+
+.kg-point:hover .kg-name,
+.kg-point:focus .kg-name {
+  fill: var(--text, #e6e8ec);
+}
+
+.kg-point.is-open .kg-name {
+  font-weight: 600;
+}
+
+.kg-name {
+  fill: var(--text, #e6e8ec);
+  font-size: 12px;
+  pointer-events: none;
+  transition: fill .12s ease;
+}
+
+.kg-stage {
+  fill: var(--dim, #8b93a1);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* ── 单元上的「看课」「做题」 ─────────────────────────────────────────── */
+
+.kg-btn {
+  cursor: pointer;
+}
+
+.kg-btn-bg {
+  fill: var(--card, #1b1e24);
+  stroke: var(--accent, #4d9de0);
+  stroke-width: 1;
+  transition: fill .12s ease;
+}
+
+.kg-btn-text {
+  fill: var(--accent, #4d9de0);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.kg-btn:hover .kg-btn-bg,
+.kg-btn:focus .kg-btn-bg {
+  fill: var(--accent, #4d9de0);
+}
+
+.kg-btn:hover .kg-btn-text,
+.kg-btn:focus .kg-btn-text {
+  fill: var(--bg, #14161a);
+}
+
+/* 没挂那节课 / 没配那套题：灰着，点了会给对话留言 */
+.kg-btn.is-empty .kg-btn-bg {
+  stroke: var(--line, #2c313a);
+}
+
+.kg-btn.is-empty .kg-btn-text {
+  fill: var(--dim, #8b93a1);
+}
+
+.kg-btn.is-empty:hover .kg-btn-bg,
+.kg-btn.is-empty:focus .kg-btn-bg {
+  fill: var(--line, #2c313a);
+}
+
+.kg-btn.is-empty:hover .kg-btn-text,
+.kg-btn.is-empty:focus .kg-btn-text {
+  fill: var(--text, #e6e8ec);
+}
+
+/* ── 右上角工具（不跟着画布拖） ──────────────────────────────────────── */
+
+.kg-tool {
+  cursor: pointer;
+}
+
+.kg-tool-bg {
+  fill: var(--card, #1b1e24);
+  stroke: var(--line, #2c313a);
+  stroke-width: 1;
+  transition: stroke .12s ease;
+}
+
+.kg-tool-text {
+  fill: var(--dim, #8b93a1);
+  font-size: 11.5px;
+  pointer-events: none;
+}
+
+.kg-tool:hover .kg-tool-bg,
+.kg-tool:focus .kg-tool-bg {
+  stroke: var(--accent, #4d9de0);
+}
+
+.kg-tool:hover .kg-tool-text,
+.kg-tool:focus .kg-tool-text {
+  fill: var(--text, #e6e8ec);
+}
+
+/* ── 兜底文案 ────────────────────────────────────────────────────────── */
+
+.kg-hint {
+  fill: var(--dim, #8b93a1);
+  font-size: 11.5px;
+  pointer-events: none;
+}
+
+/* ── 最小单元那条浅底 ────────────────────────────────────────────────── */
+/* 几个模块一起展开时用来分区，不然一眼分不出谁是谁 */
+.kg-unit-bg {
+  fill: var(--card, #1b1e24);
+  stroke: var(--line, #2c313a);
+  stroke-width: 1;
+}

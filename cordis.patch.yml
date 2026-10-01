@@ -1,0 +1,9 @@
+# dsh-study-coach bundle patch: host plugin (web panel at /study + study tools).
+# name must be the real package name — cordis imports the package by name.
+#
+# 这里**不放**「学习教练」预设的声明。预设由插件自己调 host 的 agentPresets.register 登记
+# （见 lib/preset.js）：那种声明要写 `name: '@deepseek-ai/dsh-agent-preset'`，而 profile 的
+# node_modules 里解析不到这个包，交给 loader 会直接报错。
+- insert:
+    - id: study-coach
+      name: dsh-study-coach

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # peerDependencies 里是 @deepseek-ai/* 的宿主包，测试要 import 它们。
+      # 拉不到就直接跳过（测试自己会 skip），不让 CI 因为这个红。
+      - name: Install host peer dependencies
+        continue-on-error: true
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        run: node --test
