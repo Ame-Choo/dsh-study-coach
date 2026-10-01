@@ -9,6 +9,11 @@
  *   GET  /study/assets/*   → 面板的 js / css
  *   *    /study/api/*      → 学习档案读写（见 lib/routes.js）
  *
+ * 面板服务本身也能开关：设置页 /study/settings 与 GET|POST /study/api/panel 走的是
+ * lib/panel-server.js 的 createPanelControl。端口与「加载时自动启动」落在档案库根下的
+ * settings.json（见 lib/settings.js）——那是「这台机器上这个插件怎么跑」，跟学习档案无关。
+ * 同源那条 /study 一直在，独立端口那条才是可以关掉的那个（内嵌浏览器要它）。
+ *
  * 注册 21 个模型面向的工具，清单以 lib/tools.js 里 buildTools() 返回的那个数组为唯一依据：
  *   study_report / study_goal / study_map / study_record / study_mistakes / study_plan /
  *   study_material / study_analysis / study_book / study_archive / study_ability /
@@ -29,8 +34,9 @@ import { createRouter } from './lib/routes.js'
 import { createBridge } from './lib/bridge.js'
 import { createChat } from './lib/chat.js'
 import { createHandler } from './lib/handler.js'
-import { DEFAULT_PORT, startPanelServer } from './lib/panel-server.js'
+import { DEFAULT_PORT, createPanelControl } from './lib/panel-server.js'
 import { PAGES_DIR, UPLOADS_DIR, dataRoot } from './lib/paths.js'
+import { patchSettings, readSettings } from './lib/settings.js'
 import { registerTools } from './lib/tools.js'
 import { registerPreset } from './lib/preset.js'
 
@@ -74,14 +80,66 @@ export function apply(ctx) {
     resolve: () => (typeof ctx.get === 'function' ? ctx.get('sessionController') : null),
   })
 
-  const router = createRouter(store, { bridge, chat, pagesRoot: PAGES_ROOT })
+  /* 这台机器上这个插件怎么跑（端口 / 自启）。跟学习档案无关，所以不归 Library 管。 */
+  let panelSettings = readSettings(DATA_ROOT)
+
+  /**
+   * 面板服务控制器。以前这里是直接把 startPanelServer() 写在 effect 里——够用，
+   * 因为那时不打算让人事后动它。既然设置页要给出「启动 / 停止 / 重启」和实时状态，
+   * 就得有这么个能问能开的对象（幂等与并发合流都在它里面）。
+   *
+   * handler 用一层转发：router 又要拿到这个控制器（设置接口走它），先有鸡还是先有蛋。
+   * 转发在真正被调用时早就赋好值了。
+   */
+  let panelHandler = null
+  const panelControl = createPanelControl({
+    handler: (req, res) => panelHandler(req, res),
+    port: panelSettings.panel.port,
+  })
+
+  const router = createRouter(store, {
+    bridge,
+    chat,
+    pagesRoot: PAGES_ROOT,
+    /**
+     * 设置页与客户端那半边都打 /study/api/panel，落地就在这儿。
+     * save 是同步抛错的那种：值不合法要回 400 并说清哪一项，不能静默存下去。
+     */
+    panel: {
+      info: () => panelControl.info(),
+      start: (port) => panelControl.start(port),
+      stop: () => panelControl.stop(),
+      restart: (port) => panelControl.restart(port),
+      settings: () => panelSettings,
+      save: (patch) => {
+        panelSettings = patchSettings(DATA_ROOT, patch)
+        return panelSettings
+      },
+    },
+  })
   const handler = createHandler(store, router, { assetsDir: ASSETS, pagesRoot: PAGES_ROOT, uploadRoot: UPLOAD_ROOT })
+  panelHandler = handler
 
   /**
    * 面板在哪儿的两条地址。工具拿它告诉用户该开哪个。
-   * path 是同源那份，url 是独立端口那份（起来之后才有值）。
+   * path 是同源那份；url / port 是独立端口那份，用 getter 现问，因为随时可能被关掉或换端口。
    */
-  const panel = { path: '/study', url: null, port: null, defaultPort: DEFAULT_PORT, error: null }
+  const panel = {
+    path: '/study',
+    defaultPort: DEFAULT_PORT,
+    get url() {
+      return panelControl.info().url
+    },
+    get port() {
+      return panelControl.info().port
+    },
+    get running() {
+      return panelControl.info().running
+    },
+    get error() {
+      return panelControl.info().error
+    },
+  }
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -90,24 +148,10 @@ export function apply(ctx) {
   }), 'dsh-study-coach: /study 面板与接口（同源）')
 
   ctx.effect(() => {
-    const state = { stopped: false, server: null }
-    startPanelServer(handler)
-      .then((server) => {
-        if (state.stopped) {
-          void server.close()
-          return
-        }
-        state.server = server
-        panel.url = server.url
-        panel.port = server.port
-      })
-      .catch((error) => {
-        panel.error = String((error && error.message) ?? error)
-      })
+    /* 关掉自启就不起：内嵌浏览器要用的时候，人去设置页点「启动」。 */
+    if (panelSettings.panel.autoStart) void panelControl.start()
     return () => {
-      state.stopped = true
-      const server = state.server
-      if (server) void server.close()
+      void panelControl.stop()
     }
   }, 'dsh-study-coach: 面板独立端口')
 

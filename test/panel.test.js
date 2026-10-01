@@ -105,6 +105,7 @@ const PROBE_PATHS = [
   '/study/api/materials',
   '/study/api/toolbox',
   '/study/api/memory',
+  '/study/api/panel',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -313,6 +314,22 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     if (path.includes('/api/student')) {
       body = { ok: true, ...STUDENT }
       if (options && options.method === 'POST') body = { ok: true, ...STUDENT, action: 'remove', total: STUDENT.total - 1 }
+    }
+    // 设置页：面板服务状态 + 那两格设置。POST 一律当成存下了。
+    if (path.includes('/api/panel')) {
+      body = {
+        ok: true,
+        supported: true,
+        running: true,
+        port: 19388,
+        url: 'http://127.0.0.1:19388/study',
+        preferred: 19388,
+        hintUrl: 'http://127.0.0.1:19388/study',
+        error: '',
+        settings: { version: 1, panel: { autoStart: true, port: 19388 } },
+        note: '',
+      }
+      if (options && options.method === 'POST') body = { ...body, saved: true }
     }
     // 资料页那几条。顺序要紧：/api/material? 是 /api/materials 的子串，得放在后面判。
     if (path.includes('/api/materials/build')) body = { ok: true, started: true, pid: 4242, total: 20 }
@@ -721,9 +738,11 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
   const stale = await boot(fixture(), { stale: true })
   assert.match(stale.html(), /件挡路的/)
   assert.match(stale.html(), /class="hd-sec bad"/)
-  assert.match(stale.html(), /服务端还是旧代码，11 处点下去会 404/)
+  // 处数会随能力项加减，别钉死数字；要钉的是「哪一样没了」都得点出来
+  assert.match(stale.html(), /服务端还是旧代码，\d+ 处点下去会 404/)
   assert.match(stale.html(), /学生画像——能力页的画像卡/)
   assert.match(stale.html(), /记忆卡——工具页的记忆卡/)
+  assert.match(stale.html(), /面板服务开关——设置页里的启动 \/ 停止 \/ 重启/)
   assert.match(stale.html(), /重启 DSH/)
 
   // 挡路那条不给「去看」按钮：这个学生自己点不回去，只能重启
@@ -1176,4 +1195,43 @@ test('记忆卡：正面朝上不给答案；背完自己翻下一张，排期�
   await page.clickAct({ act: 'card-del', id: 'c-3' })
   assert.equal(page.posts.at(-1).path, '/study/api/memory')
   assert.deepEqual(page.posts.at(-1).body, { action: 'remove', id: 'c-3' })
+})
+
+test('设置页：面板服务的状态、三颗开关按钮、各页跳转入口', async () => {
+  const page = await boot(fixture(), { path: '/study/settings' })
+
+  // 两次：一条是开机的能力探针，一条是这一页自己要的面板状态
+  assert.equal(page.calls.filter((g) => g === '/study/api/panel').length, 2)
+
+  // 状态：同源那份一直在，独立端口那份是跑着的那个地址
+  assert.match(page.html(), /class="card" data-card="panel"/)
+  assert.match(page.html(), /class="badge confirmed">运行中</)
+  assert.match(page.html(), /href="\/study" target="_blank" rel="noopener">\/study</)
+  assert.match(page.html(), /127\.0\.0\.1:19388\/study/)
+  assert.match(page.html(), /首选端口<input name="port" type="number" min="1024" max="65535" value="19388"/)
+
+  // 三颗按钮：跑着的时候「启动」是灰的，另两颗能点
+  assert.match(page.html(), /data-act="panel-start" disabled>/)
+  assert.match(page.html(), /data-act="panel-stop"[^>]*>停止</)
+  assert.match(page.html(), /data-act="panel-restart"[^>]*>重启</)
+
+  // 跳转入口：每一页两行地址（同源一个相对路径、内嵌一个带端口的完整地址）
+  assert.match(page.html(), /class="card" data-card="entries"/)
+  for (const [label, path] of [['主页', '/study'], ['今天', '/study/today'], ['设置', '/study/settings']]) {
+    assert.match(page.html(), new RegExp(`<b>${label}</b>`))
+    assert.match(page.html(), new RegExp(`href="${path}" target="_blank" rel="noopener">同源<`))
+  }
+  assert.match(page.html(), /href="http:\/\/127\.0\.0\.1:19388\/study\/today" target="_blank" rel="noopener">内嵌</)
+
+  // 重启：打的是 action，服务端回什么就照着画什么
+  await page.clickAct({ act: 'panel-restart' })
+  assert.equal(page.posts.at(-1).path, '/study/api/panel')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'restart' })
+  assert.match(page.boxes.get('toast').textContent, /重启好了/)
+
+  // 存设置：端口和自启一起交上去，数字要转成数，别把 "19390" 当字符串发过去
+  await page.submitForm({ form: 'panel' }, { port: '19390', autoStart: 'false' })
+  assert.equal(page.posts.at(-1).path, '/study/api/panel')
+  assert.deepEqual(page.posts.at(-1).body, { port: 19390, autoStart: false })
+  assert.match(page.boxes.get('toast').textContent, /存下了/)
 })

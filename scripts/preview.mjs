@@ -22,8 +22,9 @@ import { fileURLToPath } from 'node:url'
 import { Library } from '../lib/library.js'
 import { createRouter } from '../lib/routes.js'
 import { createHandler } from '../lib/handler.js'
-import { startPanelServer } from '../lib/panel-server.js'
+import { createPanelControl } from '../lib/panel-server.js'
 import { dataRoot, pagesRootOf, uploadRootOf } from '../lib/paths.js'
+import { patchSettings, readSettings } from '../lib/settings.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ASSETS = join(HERE, '..', 'assets')
@@ -79,7 +80,34 @@ function demoChat() {
 const library = new Library(root)
 library.ensure()
 
-const deps = process.env.DSH_STUDY_PREVIEW_CHAT ? { chat: demoChat() } : {}
+/**
+ * 预览也接上真的面板服务控制器：设置页那几个按钮（启动 / 停止 / 重启）在 DSH 里
+ * 长什么样、点了什么反应，在这里就是什么反应。注意这里有一处不一样——预览的这台
+ * 服务器**就是**你在看的那一页，所以点「停止」会把它自己关掉，页面随即打不开。
+ * 这不是 bug，是真话：设置页管的就是这个服务。
+ */
+let panelSettings = readSettings(root)
+let panelHandler = null
+const panelControl = createPanelControl({
+  handler: (req, res) => panelHandler(req, res),
+  port: Number(process.env.DSH_STUDY_PREVIEW_PORT || panelSettings.panel.port),
+})
+
+const deps = {
+  ...(process.env.DSH_STUDY_PREVIEW_CHAT ? { chat: demoChat() } : {}),
+  panel: {
+    info: () => panelControl.info(),
+    start: (next) => panelControl.start(next),
+    stop: () => panelControl.stop(),
+    restart: (next) => panelControl.restart(next),
+    settings: () => panelSettings,
+    save: (patch) => {
+      panelSettings = patchSettings(root, patch)
+      return panelSettings
+    },
+  },
+}
+
 // 显式把页图 / 上传目录传进去，别走 handler 的兜底——这样预览跟 DSH 里那份
 // 一定是同一套目录算法（都在 lib/paths.js 里），改了一边不会只对一边生效。
 const handler = createHandler(library, createRouter(library, deps), {
@@ -87,7 +115,9 @@ const handler = createHandler(library, createRouter(library, deps), {
   pagesRoot: pagesRootOf(library),
   uploadRoot: uploadRootOf(library),
 })
-const server = await startPanelServer(handler, { port })
+panelHandler = handler
+
+const server = await panelControl.start(port)
 
 console.log('[study-coach] 预览地址 ' + server.url)
 console.log('[study-coach] 数据目录 ' + root)
@@ -95,7 +125,7 @@ if (deps.chat) console.log('[study-coach] 对话通道：示例数据（不是�
 console.log('[study-coach] 跟 DSH 里那份是同一处，两边别同时写；按 Ctrl+C 关掉')
 
 const stop = () => {
-  void server.close().then(() => process.exit(0))
+  void panelControl.stop().then(() => process.exit(0))
 }
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
