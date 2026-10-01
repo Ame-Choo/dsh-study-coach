@@ -9,9 +9,11 @@
  *   GET  /study/assets/*   → 面板的 js / css
  *   *    /study/api/*      → 学习档案读写（见 lib/routes.js）
  *
- * 注册 15 个模型面向的工具（study_report / study_goal / study_map / study_analysis /
- * study_record / study_plan / study_material / study_tool_level / study_archive /
- * study_ability / study_library / study_files / study_pages / study_guide / study_inbox），
+ * 注册 21 个模型面向的工具，清单以 lib/tools.js 里 buildTools() 返回的那个数组为唯一依据：
+ *   study_report / study_goal / study_map / study_record / study_mistakes / study_plan /
+ *   study_material / study_analysis / study_book / study_archive / study_ability /
+ *   study_student / study_library / study_files / study_pages / study_tool_level /
+ *   study_focus / study_todo / study_card / study_guide / study_inbox，
  * 让教练在对话里就能读写档案、给面板留话、收面板上的留言。
  *
  * 再把「学习教练」agent 预设登记进 host 的 agentPresets 注册表（见 lib/preset.js），
