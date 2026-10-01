@@ -148,19 +148,23 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   （`scale = Math.min(box.width / vw, box.height / vh)`），再加 `preserveAspectRatio="xMinYMin meet"`。
   漏了这步，缩放就会「把东西带乱飘」——测试「滚轮缩放钉在指针底下」盯着（换算助手要拆 `atX` / `atY`，
   一个函数管两轴必错）。
-- **画布不跟鼠标拖**（用户要求关掉）：`assets/graph.js` 里**没有**平移那套 pointer 监听，也别加回去；
-  `.kg-band-hit` 的 click 因此不需要 `panned` 让路（那个状态已经删了）。`test/graph.test.js` 用
-  「按下再挪，`viewTransform` 一动不动」钉着。
-  `assets/graph.css` 里 `.kg-svg` 的 `cursor: default` 别再改回 `grab`，也别加 `touch-action: none`。
-- **拖过的那一下不算点**（用户后来追了一句「不是让你改成不可动的吗」——平移拆了，可按住板块挪一下
-  再松手照样会发一枚 click 把板块折叠掉，看着还是像自己动）：`pressAt` + `watchDrag(svg)` 记按下位置，
+- **画布能拖着挪**（用户 m21561 把这条要回来了；中间有一版「不可动的」被否，别再照那版写）：
+  `assets/graph.js` 末尾那节——`pointerdown` 记起点，`pointermove` **挪过 `PAN_SLOP = 4px`** 才
+  `svg.classList.add('is-panning')` + `setPointerCapture`，之后 `state.view.tx/ty = 起点 + 位移 / scaleOf()`；
+  `pointerup` / `pointercancel` 收干净，没算成拖就 `pointerleave` 清掉起点。三条硬规矩：
+  ① **位移要除以 CSS 拉伸比**（`scaleOf()` = `min(w/vw, h/vh)`，跟滚轮缩放同一个换算），拿像素当 viewBox 单位拖快了就飘；
+  ② **按在 `.kg-tools` 上的不算拖**（那是点按钮，`inTools()` 放行），HUD 挂在 `<svg>` 上、天生不跟着走；
+  ③ 拖太远被 `PAN_MAX` 收住，`复位视图` 是后路。
+  `assets/graph.css` 里 `.kg-svg { cursor: grab }`、`.kg-svg.is-panning, .kg-svg.is-panning * { cursor: grabbing }`。
+- **拖过的那一下不算点**：`pressAt` + `watchDrag(svg)` 记按下位置，
   `draggedFromPress(event)` 只在 **同一个 `event.target`**、≤1500ms、位移 >4px 时返回 true；五个 click
   处理器（`.kg-btn` / `.kg-band-hit` / 模块大类 `g` / 单元 `g` / `.kg-tool`）开头 `if (draggedFromPress(event)) return`。
-  写测试时 `pointerdown` 与 `click` 要派发在**同一个节点**上，不然按 `event.target` 比下来不成立。
+  写测试时 `pointerdown` 与 `click` 要派发在**同一个节点**上，不然按 `event.target` 比下来不成立；
+  **展开一次会整幅重画（新 `svg`）**，拖拽用例里每一步都要从当前 DOM 重新取节点。
 - **普通滚轮不缩放**：`svg` 的 `wheel` 头一句 `if (!event.ctrlKey && !event.metaKey) return`（也**不要**
   `preventDefault`，页面得照旧滚）；**Ctrl／⌘ + 滚轮**才缩放。`test/graph.test.js` 所有 `wheel` 派发都要带
   `ctrlKey: true`，另有一条钉「光滚轮不动画面、不 preventDefault」。`.kg-tool` 的
-  `复位视图` / `全部收起` 与 Ctrl 滚轮是全部交互。
+  `复位视图` / `全部收起` 与 Ctrl 滚轮、拖着画布是全部交互。
 - **单元上那两颗按钮永远活着**（用户要求：「看课的话自动指向特定文件，做题的话就直接跳转 AI 教练让他布置」）：
   `assets/graph.js` 里就是 `for (const [kind, label] of [['video','看课'],['practice','做题']]) pill(label, '', () => onOpen(kind, point))`
   ——点下去要做什么由 `assets/panel.js` 的 `openMaterial(kind, point)` 分派，**别在这里判 `point.video` 有没有**

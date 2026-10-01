@@ -2064,7 +2064,7 @@ function mapCard() {
       </div>
       <div class="bar">${bar}</div>
       <div class="map-legend">${legend}</div>
-      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；画布本身拖不动，要缩放按住 Ctrl 滚轮（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下面「掌握度」那一节是整体饼图和各大类的细账。</p>
+      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；画布能按住拖着挪，要缩放按住 Ctrl 滚轮（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下面「掌握度」那一节是整体饼图和各大类的细账。</p>
     </div>
     <div class="graph-host" id="graph-host"></div>
   </section>`

@@ -159,8 +159,8 @@ function pill(label, extraClass, onClick) {
 /*
  * 手抖不算点。
  *
- * 画布本身早就不跟着鼠标拖了（见 renderGraph 末尾），可「在板块/单元上按住挪一下
- * 再松手」照样会发一枚 click，把那一块折叠掉——布局一收，看起来就像地图自己动了。
+ * 画布本身能拖着挪了（见 renderGraph 末尾的平移），可「在板块/单元上按住挪一下
+ * 再松手」会同时收到一枚 click，把那一块折叠掉——拖完画布顺手收了一块，看着就像地图自己动了。
  * 所以：画布上记下按下的位置，松手时（同一处）挪过 4px 就让这一枚 click 失效。
  * 只在「按下的元素就是点中的元素」时才算数——按在这儿松手在那儿，本来就点不到东西；
  * 键盘派发的 click 前面没有 pointerdown，也不受影响。
@@ -876,11 +876,77 @@ export function renderGraph(host, options) {
   applyView()
   watchDrag(svg)
 
-  /* ── 缩放 ─────────────────────────────────────────────────────────────
-     画布**不跟着鼠标动**（用户说「知识地图的拖动可以关掉」，后来的原话是「改成不可动的」）：
-     早先拖一下就整幅 `translate` 走位，手指擦过板块还会误触，索性把平移整条路去掉。
-     滚轮也不接管了——普通滚轮照旧滚页面，**要缩放按住 Ctrl/⌘** 才吃。`复位视图` / `全部收起`
-     这两个按钮是唯一会改视图的入口。别再往这里加回 pointerdown/move 平移。 */
+  /* ── 平移（拖着画布挪） + 缩放 ─────────────────────────────────────────
+     平移是用户 m21561 要回来的（更早那版「不可动的」把这条路整条拆了，现在装回去，
+     但只认**真的挪过 4px** 才算拖：
+
+       · 按在 `.kg-tools` 那两颗按钮上的不算拖（那是点按钮，别把点击吞了）；
+       · 挪过 `PAN_SLOP` 才 `is-panning` + 捕获指针；手没挪的那一下照旧是点击——
+         `draggedFromPress()` 正是靠这条把「拖过之后松手发出来的那枚 click」吃掉，
+         所以拖过板块不会顺手把板块折起来；
+       · 指针坐标是屏幕像素，`state.view.tx/ty` 是 viewBox 单位，要除以 CSS 拉伸比
+         （`xMinYMin meet` 下就是 `min(w/vw, h/vh)`，跟滚轮缩放同一个换算），不然拖快了会飘；
+       · HUD（工具箱 / 索引板 / 提示句）挂在 `<svg>` 上、不在 `.kg-view` 里，天然不跟着走；
+       · 拖得太远就 `PAN_MAX` 收住，别把图拖出视口找不回来——`复位视图` 仍然是那条后路。
+     普通滚轮照旧滚页面，**要缩放按住 Ctrl/⌘**。 */
+
+  const PAN_SLOP = 4
+  const PAN_MAX = 1
+  let pan = null
+
+  const scaleOf = () => {
+    const box = svg.getBoundingClientRect()
+    return Math.min(box.width / vw, box.height / vh) || 1
+  }
+  const inTools = (node) => Boolean(node && node.closest && node.closest('.kg-tools'))
+
+  svg.addEventListener('pointerdown', (event) => {
+    if (event.button != null && event.button !== 0) return
+    if (inTools(event.target)) return
+    pan = {
+      id: event.pointerId,
+      x: event.clientX || 0,
+      y: event.clientY || 0,
+      tx: state.view.tx,
+      ty: state.view.ty,
+      moved: false,
+    }
+  })
+
+  svg.addEventListener('pointermove', (event) => {
+    if (!pan) return
+    if (pan.id != null && event.pointerId != null && event.pointerId !== pan.id) return
+    const dx = (event.clientX || 0) - pan.x
+    const dy = (event.clientY || 0) - pan.y
+    if (!pan.moved) {
+      if (Math.hypot(dx, dy) <= PAN_SLOP) return
+      pan.moved = true
+      svg.classList.add('is-panning')
+      if (event.pointerId != null && svg.setPointerCapture) {
+        try { svg.setPointerCapture(event.pointerId) } catch { /* 个别实现不认，认了更好 */ }
+      }
+    }
+    event.preventDefault()
+    const scale = scaleOf()
+    /* 放大的时候能挪的范围也得跟着放大（k = 2 时右边界在 2vw 处），否则放大之后看不到右边。
+       缩小时内容比视口还窄，留一屏的余量就够。 */
+    const slack = Math.max(1, state.view.k)
+    const limitX = vw * PAN_MAX * slack
+    const limitY = vh * PAN_MAX * slack
+    state.view.tx = Math.max(-limitX, Math.min(limitX, pan.tx + dx / scale))
+    state.view.ty = Math.max(-limitY, Math.min(limitY, pan.ty + dy / scale))
+    applyView()
+  })
+
+  const endPan = () => {
+    if (!pan) return
+    pan = null
+    svg.classList.remove('is-panning')
+  }
+  svg.addEventListener('pointerup', endPan)
+  svg.addEventListener('pointercancel', endPan)
+  /* 还没算成拖就走了：把这次按下清掉，免得下一次 move 拿旧起点乱跳。 */
+  svg.addEventListener('pointerleave', () => { if (pan && !pan.moved) endPan() })
 
   svg.addEventListener('wheel', (event) => {
     if (!event.ctrlKey && !event.metaKey) return

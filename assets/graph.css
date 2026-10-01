@@ -16,7 +16,13 @@
   background: var(--card, #141618);
   border: 1px solid var(--line, rgba(255, 255, 255, .22));
   font-family: var(--font);
-  cursor: default;
+  /* 能拖着挪：给一只手；拖起来的那一下换成握住的（`.is-panning` 见下）。 */
+  cursor: grab;
+}
+
+.kg-svg.is-panning,
+.kg-svg.is-panning * {
+  cursor: grabbing;
 }
 
 /* 蓝图网格：极淡，给平面一点深度，不参与信息。 */
