@@ -73,6 +73,23 @@ test('人设交代了先读档案、面板只读、地图要学生过目', () =>
   assert.match(persona.config.suffix, /\{\{cwd\}\}/)
 })
 
+test('人设点名了那份 skill，而且名字跟 SKILL.md 的 frontmatter 对得上', () => {
+  // 这条是拿空会话探针试出来的：persona 原来一个字都没提 skill，新开的会话
+  // 只能靠 skill 目录里那行 description 自己认领，认不着就只剩六行 persona +
+  // 工具描述可用——第 2 节怎么拆页、第 5 节的升档硬闸门、第 6 节一节好课的骨架
+  // 全丢。所以 persona 必须点名，而且点名的名字必须是 skill 真名。
+  const persona = buildPreset().plugins.find((r) => r.id === 'persona')
+  const prefix = persona.config.prefix
+  assert.match(prefix, /study-coach/, 'persona 没点名那份 skill')
+  assert.match(prefix, /加载 skill|加载.*skill/i, 'persona 要明说「去加载」，不能只提个名字')
+
+  const dirs = (flatten(buildPreset().plugins).find((r) => r.id === 'skill-filesystem').config || {})
+    .customSkillDirs
+  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(dirs[0], 'study-coach', 'SKILL.md'), 'utf8'))
+  const name = /^name:\s*(\S+)\s*$/m.exec(front[1])[1]
+  assert.ok(prefix.includes(name), `persona 点名的 skill 名跟 frontmatter 的 name（${name}）对不上`)
+})
+
 test('没有 agentPresets 服务时安静跳过，不抛', () => {
   const cleanups = []
   const ctx = {
