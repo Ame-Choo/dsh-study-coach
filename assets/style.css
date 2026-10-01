@@ -228,7 +228,7 @@ html[data-theme="dark"] .pill.hot { color: var(--hl-text); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 40px;
-  font-size: 14px; font-weight: 500; text-decoration: none; cursor: pointer;
+  font-size: var(--fs-body); font-weight: 500; text-decoration: none; cursor: pointer;
   color: var(--text); background: var(--card);
   border: 1px solid var(--line-2); border-radius: var(--radius-sm);
   padding: 0 16px;
@@ -862,7 +862,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   padding: 2px 7px;
   border: 1px solid var(--line-2);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--fs-label);
   font-weight: 600;
   text-align: center;
   text-decoration: none;

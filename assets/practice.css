@@ -4,7 +4,7 @@
 /* 挤在侧栏里的时候：留白收紧、页码按钮换行排 */
 /* 这一页是单栏长文，版心收在 900——style.css 那条 1160 是给面板两栏用的。 */
 html[data-mode="browser"] #app { max-width: 900px; }
-html[data-mode="sidebar"] #app { max-width: 100%; padding: var(--sp-3) var(--sp-3) 40px; }
+html[data-mode="sidebar"] #app { padding: var(--sp-3) var(--sp-3) 40px; }
 html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-2); }
 html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
 
@@ -36,19 +36,17 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
   background: var(--accent); flex: none;
 }
 
-/* 链接也做成按钮样：白底细边、8px 圆角、40px 高，跟面板的 .btn 一致 */
-.btn {
-  display: inline-flex; align-items: center; min-height: 40px; font-size: var(--fs-sm); font-weight: 500;
-  text-decoration: none; cursor: pointer;
-  color: var(--text); background: var(--card); border: 1px solid var(--line-2);
-  border-radius: var(--radius-sm); padding: 7px 13px;
-}
-.btn:hover { border-color: var(--accent); color: var(--ink); }
-.btn.ghost { background: transparent; border-color: transparent; color: var(--dim); cursor: default; }
-.btn.ghost:hover { border-color: transparent; }
+/* 链接也做成按钮样。
+   底子——白底细边、8px 圆角、40px 高、字色字重、去掉下划线——全在 style.css 的 .btn 里，
+   这一页只补真正的差别：字号小一档（13 而不是 14），内边距收窄一点。
+   以前这里把底子又抄了一遍，看着像「这一页另有一套按钮」，改一边忘一边就漂。 */
+.btn { font-size: var(--fs-sm); padding: 7px 13px; }
+/* 没网课那种不能点的：光标别装成可点 */
+.btn.ghost { cursor: default; }
 .btn[disabled] { opacity: .5; cursor: default; }
 .btn.alt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 260px; }
-.btn .sub { font-size: var(--fs-micro); color: var(--dim); font-weight: 400; }
+/* 副标题那行：面板里是 inherit + opacity，这一页压成灰的、字重也降下来 */
+.btn .sub { color: var(--dim); font-weight: 400; }
 
 /* 练什么，你定：四块。
    这里刻意用「两列」而不是 auto-fit：版心 900 时 minmax(240px,1fr) 会排成 3 列，
@@ -87,14 +85,15 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
   border: 1px solid var(--accent); border-radius: var(--radius-pill); padding: 0 7px;
 }
 
-/* 「某知识点 → 第 6 页」：拆过页的章节才有的页码按钮 */
+/* 「某知识点 → 第 6 页」：拆过页的章节才有的页码按钮。
+   圆角、去掉下划线、hover 那一下跟面板那份一样，在 style.css 的 .pg-btn 里；
+   这一页只改长相：底浅一点、字黑一点、边淡一点、留白宽一点。 */
 .pg { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 .pg-btn {
-  display: inline-flex; align-items: baseline; gap: 6px; text-decoration: none;
+  display: inline-flex; align-items: baseline; gap: 6px;
   font-size: var(--fs-label); color: var(--text); background: var(--card-2);
-  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
+  border: 1px solid var(--line); padding: 4px 10px;
 }
-.pg-btn:hover { border-color: var(--accent); }
 .pg-btn b { color: var(--accent); font-weight: 600; }
 .pg.none { font-size: var(--fs-label); color: var(--dim); }
 
@@ -109,7 +108,6 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
 .hit-head > * { min-width: 0; }
 .hit .pg { margin-top: var(--sp-2); gap: 6px; }
 .hit .pg-btn { padding: 3px 9px; }
-.pg-btn.off { color: var(--dim); border-style: dashed; }
 
 .note-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
 .note-row input { flex: 1; }
