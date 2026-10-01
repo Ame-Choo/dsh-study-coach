@@ -15,7 +15,7 @@ html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-
 .rd-head .cardish { flex: 1; min-width: 0; }
 .back {
   font-size: var(--fs-label); color: var(--dim); text-decoration: none;
-  border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; flex: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 4px 10px; flex: none;
 }
 .back:hover { color: var(--accent); border-color: var(--accent); }
 .crumb { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--dim); flex: 1; min-width: 0; }
@@ -33,7 +33,7 @@ html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-
   margin: 0 0 var(--sp-3); display: flex; align-items: center; gap: var(--sp-2);
 }
 .card h2::before {
-  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  content: ""; width: 3px; height: 14px; border-radius: var(--radius-sm);
   background: var(--accent); flex: none;
 }
 .btn { font-size: var(--fs-sm); padding: 7px 13px; }
@@ -65,7 +65,7 @@ html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-
 .md-p b { color: var(--ink); font-weight: 600; }
 .md-p code, .md-list code, .md-table code, .md-quote code {
   font-family: var(--font-mono); font-size: .92em;
-  background: var(--input); border-radius: 4px; padding: 1px 5px;
+  background: var(--input); border-radius: var(--radius-sm); padding: 1px 5px;
 }
 .md-doc a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
 .md-doc a:hover { border-bottom-color: var(--accent); }
@@ -81,7 +81,7 @@ html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-
   padding-top: var(--sp-3); border-top: 1px solid var(--line);
 }
 .rd-doc h2::before {
-  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  content: ""; width: 3px; height: 14px; border-radius: var(--radius-sm);
   background: var(--accent); flex: none;
 }
 .rd-doc h3 { font-size: var(--fs-body); }

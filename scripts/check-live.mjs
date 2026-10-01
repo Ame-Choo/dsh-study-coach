@@ -106,6 +106,20 @@ for (const port of ports) {
     bad += 1
     console.log('  静态资源：read.js 取不到（旧代码里没有这一页）')
   }
+  // 皮肤那套：样式表也是现读磁盘的，能直接看出浏览器手里是哪一版
+  try {
+    const css = await (await fetch(base + '/study/assets/style.css')).text()
+    const want = ['方舟层', '--font-display', 'rajdhani-400.woff2', '#18d1ff']
+    const gone = want.filter((needle) => !css.includes(needle))
+    if (gone.length) bad += 1
+    console.log(
+      `  静态资源：style.css ${css.length} 字节，` +
+        (gone.length ? `缺 ${gone.join(' / ')}（旧皮肤，刷新一下就好）` : '记号齐全（罗德岛终端那一版）'),
+    )
+  } catch {
+    bad += 1
+    console.log('  静态资源：style.css 取不到')
+  }
 }
 
 console.log(bad ? `\n有 ${bad} 处还是旧的 —— 重启一次 DSH` : '\n全是新的')

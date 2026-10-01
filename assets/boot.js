@@ -62,14 +62,14 @@
     return framed() || narrow ? 'sidebar' : 'browser'
   }
 
-  /** 亮色是默认，暗色是同色系的暖暗版，晚上看不刺眼。 */
+  /** 默认是暗色（罗德岛终端那一版），亮色是同一套造型的纸白版，留给嫌暗的人。 */
   function resolveTheme() {
     var want = asked('theme')
     if (want === 'light' || want === 'dark') {
       save(THEME_KEY, want)
       return want
     }
-    return read(THEME_KEY) === 'dark' ? 'dark' : 'light'
+    return read(THEME_KEY) === 'light' ? 'light' : 'dark'
   }
 
   var boot = {

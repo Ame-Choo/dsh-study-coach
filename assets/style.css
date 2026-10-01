@@ -1,53 +1,81 @@
 /* ══ 学习教练 · 面板样式 ═══════════════════════════════════════════════════
-   Sage Garden：暖骨白面 + 近黑墨字 + 低饱和鼠尾草/橄榄点缀。
-   两套配色走同一个变量表：:root = 浅色（默认），html[data-theme="dark"] 覆盖成暖暗版。
+   罗德岛终端：近黑冷灰打底、白字，一条信号青只指「当前项 / 动作 / 进度」，
+   黄只留给警示与斜纹。方角、细规、切角、大写索引字——造型上的事情都在文件末尾
+   那一节「方舟层」里，配色与字体在这里定。
+   两套配色走同一个变量表：:root = 深色（默认），html[data-theme="light"] 覆盖成浅色一档。
    版式两种模式：browser 是「两栏各摞各的」，sidebar 是「折起来只看一行」。
-   层次靠面与描边的明度差，不靠阴影；不留艳色、不留渐变堆砌。
+   层次靠 1px 细边、角包与面与面的明度差，不靠阴影；不留艳色、不留渐变堆砌。
    ═════════════════════════════════════════════════════════════════════════ */
 
+/* ── 显示字体：Rajdhani（SIL OFL 1.1，许可全文见 assets/fonts/OFL.txt）。
+      只带拉丁子集，汉字照旧落回系统字族——这三个文件里一个汉字都没有。 ────── */
+@font-face {
+  font-family: "Rajdhani";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/rajdhani-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Rajdhani";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/rajdhani-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Rajdhani";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/rajdhani-700.woff2") format("woff2");
+}
+
 :root {
-  /* 配色 —— 浅色（默认）。「纸墨」：暖纸打底、炭墨写字、一条细边分组、
-     一个绿点只用来指「该点这儿」。完整说明见 design.md，改这里要一起改那边。 */
-  --bg: #F7F6F3;            /* 画面布，暖白 */
-  --card: #FFFFFF;          /* 卡片 / 抬升面 */
-  --card-2: #F1F1EF;        /* 卡内柔和区块：列表行、计时面、药丸底 */
-  --line: #E9E9E7;          /* 默认边框与分隔线 */
-  --line-2: #D9D8D4;        /* 次级边框：输入框、药丸、可点的页码 */
-  --input: #FFFFFF;
+  /* 配色 —— 深色（默认）「罗德岛终端」。值是照官方站生产 CSS 那套来的：近黑面板、
+     纯白正文、一条信号青只指「当前项 / 动作 / 进度」，酸绿只给成功与警示斜纹。
+     容易犯的错：青去描静态卡片的边、给中文加字距、把胶囊当标签——都别做。 */
+  --bg: #1b1b1b;                    /* 画面布：官方站就是 #1b1b1b */
+  --card: #141618;                  /* 卡片 / 抬升面：比画面布更深一点，冷调 */
+  --card-2: #1f2224;                /* 卡内区块：列表行、计时面、标签底 */
+  --line: rgba(255, 255, 255, .22); /* 默认细规与分隔线 */
+  --line-2: rgba(255, 255, 255, .38); /* 强调细规：卡片外沿、输入框、浮层 */
+  --input: #101214;
 
-  /* 文字四级：正文 → 最高强调 → 次级 → 最弱。正文与次级那一档差要一眼看得出。 */
-  --text: #37352F;
-  --ink: #191919;
-  --dim: #6F6E69;
-  --faint: #9B9A97;
+  /* 文字四级：正文 → 最高强调 → 次级 → 最弱。前三档取自官方站。 */
+  --text: #d2d2d2;
+  --ink: #ffffff;
+  --dim: #999999;
+  --faint: #6e7276;
 
-  /* 动作色：深松绿。只给动作、当前项、进度条，不铺底 */
-  --accent: #2F6B4F;
-  --accent-hover: #275840;
-  --accent-soft: #E7F0EA;
-  --on-accent: #FFFFFF;
+  /* 信号青：只给动作、当前项、进度条。官方站主按钮就是这个值配纯黑文字。 */
+  --accent: #18d1ff;
+  --accent-hover: #4cd9ff;
+  --accent-soft: rgba(24, 209, 255, .12);
+  --on-accent: #000000;
 
-  --ok: #2F7D4F;
-  --bad: #B04A42;
-  --bad-text: #8E3F38;
-  --danger-bg: #F9EDEB;
-  --warn: #8A6D1F;
-  --hl: #EDEFE7;
-  --hl-text: #3F5847;
-  --toast-bg: #FFFFFF;
-  --scrim: rgba(25, 25, 25, .38);
+  --ok: #c8eb21;                    /* 酸绿：成功、已掌握 */
+  --bad: #e33b3b;
+  --bad-text: #ff8f8f;
+  --danger-bg: rgba(227, 59, 59, .14);
+  --warn: #f1c644;                  /* 琥珀：待办、斜纹 */
+  --hl: rgba(24, 209, 255, .14);
+  --hl-text: #a8e9ff;
+  --toast-bg: #181818;
+  --scrim: rgba(0, 0, 0, .72);
 
-  /* 层次靠边框，阴影只给真的浮在上面的东西 */
+  /* 层次靠细规和面与面的明度差。抬升用「零模糊硬偏移」，不用高斯投影——
+     唯一允许的模糊阴影是官方站那种小标签，这里不用。 */
   --shadow: none;
-  --shadow-sm: 0 1px 2px rgba(25, 25, 25, .05);
-  --shadow-pop: 0 8px 24px rgba(25, 25, 25, .10);
-  --shadow-modal: 0 16px 40px rgba(25, 25, 25, .14);
+  --shadow-sm: none;
+  --shadow-pop: .35rem .35rem 0 color-mix(in srgb, var(--accent) 30%, transparent);
+  --shadow-modal: .5rem .5rem 0 rgba(0, 0, 0, .55);
 
-  /* 圆角刻度：小控件 8、卡片 12、浮层 16、药丸 999 */
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
+  /* 圆角刻度：方舟风就一个值——零。胶囊（999px）是别家家族的，不许出现。 */
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-lg: 0px;
+  --radius-pill: 0px;
 
   /* 间距刻度：只用这八个数 */
   --sp-1: 4px;
@@ -59,8 +87,11 @@
   --sp-8: 32px;
   --sp-12: 48px;
 
-  /* 字族与字号刻度 */
+  /* 字族与字号刻度。--font 管正文和汉字；--font-display 管标题、数字、编号。
+     官方那三支（Novecento Sans Wide / Trajan / Bender）都不能随包发，Rajdhani
+     是免费里最接近基建那支八角工业体的；汉字照旧落回系统字族。 */
   --font: system-ui, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-display: "Rajdhani", "Arial Narrow", "Roboto Condensed", system-ui, "Microsoft YaHei", "PingFang SC", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
   --fs-hero: 30px;      /* 页面大标题 / 大数字 */
   --fs-title: 17px;     /* 卡头 h2 */
@@ -72,57 +103,57 @@
   --lh-body: 1.7;
   --lh-title: 1.4;
 
-  /* 六档配色：浅色底上「越靠后越深」，深色底上反过来「越靠后越亮」。
-     档位名会拿它当文字色用，所以每一档都得压在背景上看得清。 */
-  --stage-1: #8B9187;
-  --stage-2: #6E8A72;
-  --stage-3: #527563;
-  --stage-4: #3D604C;
-  --stage-5: #2C4B39;
-  --stage-6: #8A6D1F;
+  /* 六档配色：深底上「越靠后越亮」，倒数第二档进信号青、最后一档进酸绿。
+     档位名会拿它当文字色用，每一档都得压在近黑底上看得清。 */
+  --stage-1: #6e7276;
+  --stage-2: #93a0a6;
+  --stage-3: #b9c2c7;
+  --stage-4: #7fe0ff;
+  --stage-5: #18d1ff;
+  --stage-6: #c8eb21;
 }
 
-html[data-theme="dark"] {
-  /* 配色 —— 同一族的另一档：暖暗，不发蓝不发黑 */
-  --bg: #191919;
-  --card: #202020;
-  --card-2: #2A2A28;
-  --line: #33322F;
-  --line-2: #403F3B;
-  --input: #242422;
+html[data-theme="light"] {
+  /* 配色 —— 浅色那一档：官方站的纸白 token（#f4f6f6）打底，信号青压深到能在白底
+     上读出来。浅底上别用信号青写长正文，中性面要占七成以上。 */
+  --bg: #f4f6f6;
+  --card: #ffffff;
+  --card-2: #eceeed;
+  --line: rgba(0, 0, 0, .16);
+  --line-2: rgba(0, 0, 0, .3);
+  --input: #ffffff;
 
-  --text: #E4E2DD;
-  --ink: #F7F6F3;
-  --dim: #A9A7A2;
-  --faint: #7C7A76;
+  --text: #26302f;
+  --ink: #0b0e0f;
+  --dim: #5f6968;
+  --faint: #8b9493;
 
-  --accent: #7FB394;
-  --accent-hover: #96C4A8;
-  --accent-soft: #26332B;
-  --on-accent: #14201A;
+  --accent: #0b7e9e;
+  --accent-hover: #096a86;
+  --accent-soft: rgba(11, 126, 158, .1);
+  --on-accent: #ffffff;
 
-  --ok: #7FB394;
-  --bad: #D98C82;
-  --bad-text: #F0C6BF;
-  --danger-bg: #2A1F1D;
-  --warn: #C9AE63;
-  --hl: #232B26;
-  --hl-text: #D7E3D8;
-  --toast-bg: #262625;
-  --scrim: rgba(8, 8, 8, .68);
+  --ok: #4e7a0b;
+  --bad: #c0392b;
+  --bad-text: #9e2f23;
+  --danger-bg: rgba(192, 57, 43, .1);
+  --warn: #8a6a0a;
+  --hl: rgba(11, 126, 158, .1);
+  --hl-text: #0b5a73;
+  --toast-bg: #ffffff;
+  --scrim: rgba(11, 14, 15, .42);
 
-  /* 深色下背景已经够暗，阴影几乎无效，全靠边框——所以 --line 要写亮一点 */
   --shadow: none;
   --shadow-sm: none;
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .50);
-  --shadow-modal: 0 16px 40px rgba(0, 0, 0, .60);
+  --shadow-pop: .35rem .35rem 0 color-mix(in srgb, var(--accent) 26%, transparent);
+  --shadow-modal: .5rem .5rem 0 rgba(11, 14, 15, .22);
 
-  --stage-1: #8C938A;
-  --stage-2: #9BB094;
-  --stage-3: #AEC3A8;
-  --stage-4: #C2D2BC;
-  --stage-5: #D6E0D0;
-  --stage-6: #E0C077;
+  --stage-1: #9aa3a4;
+  --stage-2: #77898c;
+  --stage-3: #4e7c88;
+  --stage-4: #1e8aa8;
+  --stage-5: #0b7e9e;
+  --stage-6: #7a6a08;
 }
 
 /* html 上也会带 data-theme，别让老页面写法失配 */
@@ -166,7 +197,7 @@ body {
 .brand::before { content: "◆"; color: var(--accent); font-size: 9px; margin-right: 7px; vertical-align: 2px; }
 .brand:hover { color: var(--accent); }
 
-/* ── 顶栏导航：文字条目，当前页一条鼠尾草下划线 ─────────────────────────
+/* ── 顶栏导航：文字条目，当前页一条信号青下划线 ─────────────────────────
    窄的时候（侧栏）横向滚，别撑爆顶栏。 */
 .nav {
   display: flex; align-items: center; gap: 2px;
@@ -194,7 +225,7 @@ body {
 /* 顶栏里那几颗状态小药丸 */
 .pill {
   font-size: 12px; color: var(--dim); background: var(--card-2);
-  border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 2px 10px;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .pill.hot {
@@ -286,8 +317,8 @@ html[data-theme="dark"] .pill.hot { color: var(--hl-text); }
 .entry-hint { font-size: var(--fs-sm); line-height: 1.6; color: var(--dim); overflow-wrap: anywhere; }
 
 /* ── 卡片 ─────────────────────────────────────────────────────────────── */
-/* 卡片和画布之间已经有「暖白 → 纯白」的明度差 + 一条边线，再加阴影就是脏。
-   所以 box-shadow 默认是 none（--shadow 就是 none），层次全交给边框。 */
+/* 卡片和画布之间已经有「画布 → 卡片」的明度差 + 一条边线，再加阴影就是脏。
+   所以 box-shadow 默认是 none（--shadow 就是 none），层次全交给边框和角包。 */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -326,7 +357,7 @@ html[data-mode="sidebar"] .hd-sec > h3 > em { display: none; }
   display: flex; align-items: center; gap: var(--sp-2);
 }
 .card-head h2::before {
-  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  content: ""; width: 3px; height: 14px; border-radius: var(--radius-sm);
   background: var(--accent); flex: none;
 }
 .card-head .dim { flex: none; }
@@ -401,7 +432,7 @@ input:focus, select:focus, textarea:focus {
 .stage-btn { border-color: var(--line); font-size: 12px; padding: 3px 10px; }
 .stage-btn.on { border-color: var(--c); color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
 
-.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--card-2); margin: 2px 0 8px; }
+.bar { display: flex; height: 8px; border-radius: var(--radius-sm); overflow: hidden; background: var(--card-2); margin: 2px 0 8px; }
 /* 进度条的一段。**别写成 `.seg` 裸选择器**——「两种模式」那个开关按钮也叫
    `.seg`，裸写会让进度条段吃到按钮的内边距、字号，并且被下面那条
    `.seg + .seg` 在每两段之间画一根 1px 竖线（`panel.js` 的能力条、大类条、
@@ -434,8 +465,8 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .check input { width: auto; accent-color: var(--accent); }
 .tasks li.done span { text-decoration: line-through; color: var(--dim); }
 
-.tag { font-size: var(--fs-micro); color: var(--dim); border: 1px solid var(--line); border-radius: 8px; padding: 1px 6px; flex: none; }
-.badge { font-size: 12px; border-radius: 6px; padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); }
+.tag { font-size: var(--fs-micro); color: var(--dim); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 6px; flex: none; }
+.badge { font-size: 12px; border-radius: var(--radius-sm); padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); }
 .badge.confirmed { color: var(--ok); border-color: var(--ok); }
 .path { font-size: 12px; color: var(--dim); word-break: break-all; }
 
@@ -481,7 +512,7 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .gc-caret { flex: none; width: 11px; color: var(--dim); font-size: var(--fs-micro); }
 .gc-name { flex: none; }
 .gc-bar {
-  flex: 1; height: 6px; min-width: 40px; border-radius: 3px;
+  flex: 1; height: 6px; min-width: 40px; border-radius: var(--radius-sm);
   background: var(--card-2); overflow: hidden; align-self: center;
   display: inline-block; width: 90px;
 }
@@ -492,7 +523,7 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 /* ── 任务行后面的按钮 ─────────────────────────────────────────────────── */
 .open-link {
   flex: none; font-size: 12px; color: var(--accent);
-  text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 2px 10px;
+  text-decoration: none; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 2px 10px;
   transition: border-color .13s, background .13s;
 }
 .open-link:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
@@ -501,7 +532,7 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 
 /* 行内小按钮。带 a 是因为书架里那些「打开这份卷」是链接——
    不加这一条，它就会退成浏览器默认的下划线蓝绿字，跟旁边一排 .mini 不是一路。 */
-button.mini, a.mini { font-size: 12px; padding: 2px 9px; border-radius: 8px; flex: none; }
+button.mini, a.mini { font-size: 12px; padding: 2px 9px; border-radius: var(--radius-sm); flex: none; }
 a.mini {
   display: inline-flex; align-items: center; text-decoration: none; cursor: pointer;
   color: var(--text); background: var(--card); border: 1px solid var(--line-2);
@@ -527,7 +558,7 @@ button.mini.danger:hover, a.mini.danger:hover { background: var(--danger-bg); }
 .pace-day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
 .pace-day > i {
   display: block; width: 100%; min-height: 3px; background: var(--card-2);
-  border-radius: 4px 4px 0 0; position: relative; overflow: hidden;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0; position: relative; overflow: hidden;
 }
 .pace-day > i > b { display: block; background: var(--accent); width: 100%; position: absolute; bottom: 0; }
 .pace-day > span { font-size: var(--fs-micro); color: var(--dim); }
@@ -614,7 +645,7 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 
 /* 科目筛选：多门课并学时，一眼只看一门 */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.chip { border-radius: 999px; padding: 3px 11px; font-size: 12px; color: var(--dim); }
+.chip { border-radius: var(--radius-pill); padding: 3px 11px; font-size: 12px; color: var(--dim); }
 .chip:hover { border-color: var(--accent); color: var(--text); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 
@@ -625,7 +656,7 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: var(--radius-sm); border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 
 /* ── 窄屏：一栏到底 ───────────────────────────────────────────────────── */
@@ -672,7 +703,7 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: var(--sp-2) var(--sp-3);
-  border-radius: 12px;
+  border-radius: var(--radius);
   font-size: var(--fs-sm);
   line-height: 1.65;
 }
@@ -682,13 +713,13 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
   background: var(--accent-soft);
   color: var(--ink);
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: var(--radius-sm);
 }
 .chat-msg.bot .chat-text {
   background: var(--card-2);
   color: var(--text);
   border: 1px solid var(--line);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: var(--radius-sm);
 }
 
 .chat-time, .chat-used { font-size: var(--fs-micro); color: var(--dim); }
@@ -699,7 +730,7 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
   color: var(--dim);
   background: var(--card-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 2px 10px;
 }
 .chat-step.bad { color: var(--bad-text); background: var(--danger-bg); border-color: var(--bad); }
@@ -781,7 +812,7 @@ html[data-mode="browser"] .chat-page .card {
   scroll-behavior: smooth;
 }
 .float .chat-msg { max-width: 92%; }
-.float .chat-text { font-size: var(--fs-label); padding: 7px 10px; border-radius: 10px; }
+.float .chat-text { font-size: var(--fs-label); padding: 7px 10px; border-radius: var(--radius); }
 .float-off { padding: 14px; }
 .float-form {
   display: flex;
@@ -810,7 +841,7 @@ html[data-mode="browser"] .chat-page .card {
 .mistakes .list.tight li > .stage-tag {
   margin-left: 0;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid currentColor;
   line-height: 1.6;
 }
@@ -851,7 +882,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .shelf-row .stage-tag {
   margin-left: 0;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid currentColor;
   line-height: 1.6;
   white-space: nowrap;
@@ -868,7 +899,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   min-width: 30px;
   padding: 2px 7px;
   border: 1px solid var(--line-2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: var(--fs-label);
   font-weight: 600;
   text-align: center;
@@ -927,7 +958,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   font-size: 13px;
   padding: 5px 13px;
   border: 1px solid var(--line-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--card-2);
   color: var(--text);
   cursor: pointer;
@@ -972,7 +1003,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .focus-set input[type="number"] { width: 62px; font: inherit; padding: 4px 6px; }
 .focus-set select { font: inherit; padding: 4px 6px; max-width: 100%; flex: 1 1 auto; min-width: 0; }
 .focus-log li { align-items: flex-start; }
-.focus-log .tag { margin-left: 0; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--dim); line-height: 1.6; }
+.focus-log .tag { margin-left: 0; padding: 1px 7px; border-radius: var(--radius-pill); border: 1px solid var(--line-2); color: var(--dim); line-height: 1.6; }
 
 /* 清单 */
 .todo-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
@@ -992,7 +1023,7 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
   font-size: 12px;
   line-height: 1;
   border: 1px solid var(--line-2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--input);
   color: var(--on-accent);
   cursor: pointer;
@@ -1059,6 +1090,171 @@ html[data-mode="sidebar"] .sub-nav { padding: 7px 9px; }
 html[data-mode="sidebar"] .sub-hint { display: none; }
 html[data-mode="sidebar"] .focus-clock { font-size: 42px; }
 html[data-mode="sidebar"] .mem-form input { flex: 1 1 100%; }
+
+/* ══ 方舟层 ═════════════════════════════════════════════════════════════
+   造型全在这一节：方角、细规、切角、大写索引字、零模糊硬偏移抬升。
+   配色与字体在上面 :root 里就定好了。这里只动长相，不动布局、不动交互。
+
+   三条克制的规矩（照官方站那套反模式写的，别越界）：
+   ① 信号青只给当前项、动作、进度；不给静态面板描边，也不加辉光；
+   ② 一个物件只切一个角，一张图只有一条斜纹；不许每个容器都切一刀；
+   ③ 中文正文与中文标签不加字距——加字距的只有拉丁编号、数字、路径。
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── 1 · 画面：近黑底上一层很淡的青雾 + 一层网点 ─────────────────────── */
+body {
+  background-image:
+    radial-gradient(1100px 540px at 50% -16%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%),
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--line-2) 28%, transparent) 1px, transparent 0);
+  background-size: auto, 24px 24px;
+  background-repeat: no-repeat, repeat;
+}
+::selection { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+/* 键盘走查看得见：一条青边，不要那一圈糊光 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 2 · 索引字：只给拉丁编号、数字、路径上显示字体与字距 ────────────── */
+.hero .eyebrow, .stat-label {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+.stats .stat b, .stats .v, .entry-count, .pill, .gc-pct, .focus-clock,
+.chat-time, .chat-used, .path, .pg-btn, .hd-sec > h3 > .dim {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.gc-pct, .chat-time, .chat-used, .path { letter-spacing: .06em; }
+.card-head h2, .card h2, .modal-head h2, .hero h1, .entry-title, .shelf-head b,
+.mem-front, h3.sub {
+  font-family: var(--font-display);
+}
+
+/* ── 3 · 顶栏：一条斜纹 + 名字左边那道信号条 ─────────────────────────── */
+.top { border-bottom-color: var(--line-2); }
+.top::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 3px;
+  background-image: repeating-linear-gradient(115deg, var(--warn) 0 5px, transparent 5px 12px);
+  opacity: .32;
+  pointer-events: none;
+}
+/* 名字前那个 ◆ 换成一道竖条：官方站章节标题旁边就是这条 */
+.brand {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: .1em;
+}
+.brand::before {
+  content: ""; display: inline-block;
+  width: 3px; height: 14px; margin-right: 9px;
+  background: var(--accent);
+}
+.nav-item.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ── 4 · 抬头：大标题底下拉一条细规出去（官方 hero 那条白线） ────────── */
+.hero h1::after {
+  content: ""; display: block;
+  height: 1px; margin-top: var(--sp-3);
+  background: linear-gradient(90deg, var(--line-2), transparent);
+}
+.hero .lede { color: var(--dim); }
+
+/* ── 5 · 面：卡片 / 列表行 / 统计块。外沿收到强调细规，左上角一个角包 ── */
+.card, .entry, .stats .stat { border-color: var(--line-2); }
+.card { position: relative; }
+.entry { position: relative; }
+.stats .stat { position: relative; }
+/* 只钉一个角。四角都加就成了「复古科技边框」，官方站明说不要 */
+.card::before, .stats .stat::before {
+  content: "";
+  position: absolute; top: -1px; left: -1px;
+  width: 12px; height: 12px;
+  border-top: 1px solid var(--accent);
+  border-left: 1px solid var(--accent);
+  pointer-events: none;
+}
+.stats .stat::before { width: 9px; height: 9px; }
+/* 列表行不进 `.card` 那套：一点淡底 + 一条细规，整行 hover 时右端冒一个角包 */
+.list li { border: 1px solid transparent; }
+.entry:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.entry::after, .list li::after {
+  content: "";
+  position: absolute; right: 0; bottom: 0;
+  width: 10px; height: 10px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none;
+}
+.list li { position: relative; }
+.entry:hover::after, .list li:hover::after { opacity: 1; }
+
+/* ── 6 · 控件：方角按钮 + 主按钮左侧那条信号条（hover 变三角） ────────── */
+.btn, button { font-family: var(--font-display); letter-spacing: .04em; }
+.btn.primary, button.primary { position: relative; }
+.btn.primary:not(.mini), button.primary:not(.mini) { padding-left: 28px; overflow: hidden; }
+.btn.primary:not(.mini)::before, button.primary:not(.mini)::before {
+  content: "";
+  position: absolute; left: 10px; top: 22%;
+  width: 7px; height: 56%;
+  background: var(--on-accent);
+  clip-path: polygon(0 0, 45% 0, 45% 100%, 0 100%);
+  transition: clip-path .24s cubic-bezier(.22, .8, .2, 1), transform .24s cubic-bezier(.22, .8, .2, 1);
+}
+.btn.primary:not(.mini):hover::before, button.primary:not(.mini):hover::before {
+  clip-path: polygon(0 18%, 100% 50%, 0 82%);
+  transform: translateX(2px);
+}
+/* ghost 按官方站那套：不描边，只留一条底细规 */
+button.ghost, .btn.ghost { border-bottom: 1px solid var(--line-2); }
+button.ghost:hover, .btn.ghost:hover { border-bottom-color: var(--accent); }
+/* 输入框：焦点那条青边就够了，不加光圈 */
+input:focus, select:focus, textarea:focus { box-shadow: none; }
+input, select, textarea { border-color: var(--line-2); }
+
+/* ── 7 · 进度：轨道压暗、填充信号青、分段之间留 1px 的缝 ─────────────── */
+.bar { gap: 1px; background: color-mix(in srgb, var(--line-2) 55%, transparent); }
+.gc-bar { background: color-mix(in srgb, var(--line-2) 55%, transparent); }
+.focus-bar { position: relative; background: color-mix(in srgb, var(--line-2) 45%, transparent); }
+/* 计时条按十格断开，一眼看得出还剩几成 */
+.focus-bar::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), var(--card) calc(10% - 2px) 10%);
+  pointer-events: none;
+}
+.pace-day > i { background: color-mix(in srgb, var(--line-2) 35%, transparent); }
+
+/* ── 8 · 标签、气泡、浮层 ─────────────────────────────────────────────── */
+/* 方角标签：一块淡底 + 一条细规，不描四边 */
+.badge, .tag { background: var(--card-2); }
+.stage-tag { padding: 1px 7px; border: 1px solid var(--line-2); }
+/* 教练说的话左边一条青；学生的话右边一条淡青。用 inset 阴影，不动边框宽度 */
+.chat-msg.bot .chat-text { box-shadow: inset 2px 0 0 var(--accent); }
+.chat-msg.user .chat-text { box-shadow: inset -2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+.chat-step { background: var(--card-2); }
+.toast { border-left: 3px solid var(--accent); }
+.toast.bad { border-left-color: var(--bad); }
+.float { box-shadow: var(--shadow-pop); }
+.float-head { border-bottom-color: var(--line-2); }
+.modal { border-color: var(--line-2); }
+.modal::before {
+  content: ""; display: block;
+  height: 3px; background: var(--accent);
+}
+.modal-head { background: var(--card-2); }
+/* 右下角那颗球换成切了右上角的方块——官方站切角就切一个，永远右上 */
+.fab {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+/* ── 9 · 小图形：档位圆点改成菱形（官方站就是这么做的） ───────────────── */
+.dot { border-radius: 0; transform: rotate(45deg); }
+.hd-sec > h3 { font-family: var(--font-display); letter-spacing: .02em; }
+.judgement { border-left: 3px solid var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

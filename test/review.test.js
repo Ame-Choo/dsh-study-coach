@@ -182,7 +182,7 @@ test('reviewSvg：版式的三条硬校验挡在画之前', () => {
   /* 第 7 种 category 不许像参考实现那样直接崩——按调色板循环取色。 */
   const many = [0, 1, 2, 3, 4, 5].map((i) => branch(i < 3 ? 'left' : 'right', { category: '第' + i + '类' }))
   const svg = reviewSvg({ ...base, branches: many })
-  assert.ok(svg.includes('#607D6B') && svg.includes('#607D6B'), '颜色循环复用了调色板')
+  assert.ok(svg.includes('#18D1FF') && svg.includes('#F1C644'), '六类各自取到调色板里的颜色，轮着来不重样')
 })
 
 test('buildReview：一天超过 6 个单元也只画 6 个，先画有错题的', async () => {

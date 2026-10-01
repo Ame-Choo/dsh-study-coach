@@ -14,7 +14,7 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
 }
 .back {
   font-size: var(--fs-label); color: var(--dim); text-decoration: none;
-  border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; flex: none;
+  border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 4px 10px; flex: none;
 }
 .back:hover { color: var(--accent); border-color: var(--accent); }
 .crumb { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--dim); flex: 1; min-width: 0; }
@@ -32,7 +32,7 @@ html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
   margin: 0 0 var(--sp-3); display: flex; align-items: center; gap: var(--sp-2);
 }
 .card h2::before {
-  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  content: ""; width: 3px; height: 14px; border-radius: var(--radius-sm);
   background: var(--accent); flex: none;
 }
 

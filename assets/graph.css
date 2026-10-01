@@ -6,9 +6,9 @@
   display: block;
   width: 100%;
   height: auto;
-  background: var(--card, #FFFFFF);
-  border: 1px solid var(--line, #E9E9E7);
-  border-radius: var(--radius, 12px);
+  background: var(--card, #141618);
+  border: 1px solid var(--line, rgba(255, 255, 255, .22));
+  border-radius: var(--radius, 0px);
   overflow: hidden;
   cursor: grab;
   touch-action: none;
@@ -23,7 +23,7 @@
 .kg-empty {
   padding: 22px 0;
   text-align: center;
-  color: var(--dim, #6F6E69);
+  color: var(--dim, #999999);
   font-size: 13px;
 }
 
@@ -31,7 +31,7 @@
 
 .kg-link {
   fill: none;
-  stroke: var(--line, #E9E9E7);
+  stroke: var(--line, rgba(255, 255, 255, .22));
   stroke-width: 1.4;
 }
 
@@ -49,14 +49,14 @@
 }
 
 .kg-box {
-  fill: var(--card, #FFFFFF);
-  stroke: var(--line, #E9E9E7);
+  fill: var(--card, #141618);
+  stroke: var(--line, rgba(255, 255, 255, .22));
   stroke-width: 1.2;
   transition: stroke .12s ease, fill .12s ease;
 }
 
 .kg-group .kg-box {
-  fill: var(--card-2, #F1F1EF);
+  fill: var(--card-2, #1f2224);
   stroke-width: 1.5;
 }
 
@@ -64,7 +64,7 @@
 .kg-mod:hover .kg-box,
 .kg-group:focus .kg-box,
 .kg-mod:focus .kg-box {
-  stroke: var(--accent, #2F6B4F);
+  stroke: var(--accent, #18d1ff);
 }
 
 .kg-group:focus,
@@ -76,7 +76,7 @@
 }
 
 .kg-title {
-  fill: var(--ink, #191919);
+  fill: var(--ink, #ffffff);
   font-size: 13px;
   font-weight: 600;
   pointer-events: none;
@@ -88,7 +88,7 @@
 }
 
 .kg-sub {
-  fill: var(--dim, #6F6E69);
+  fill: var(--dim, #999999);
   font-size: 11.5px;
   pointer-events: none;
 }
@@ -100,14 +100,14 @@
 }
 
 .kg-dot {
-  stroke: var(--card, #FFFFFF);
+  stroke: var(--card, #141618);
   stroke-width: 1.6;
   transition: r .12s ease;
 }
 
 .kg-halo {
   fill: none;
-  stroke: var(--accent, #2F6B4F);
+  stroke: var(--accent, #18d1ff);
   stroke-width: 1.8;
   pointer-events: none;
 }
@@ -115,12 +115,12 @@
 .kg-point:hover .kg-dot,
 .kg-point:focus .kg-dot {
   r: 7.2;
-  stroke: var(--ink, #191919);
+  stroke: var(--ink, #ffffff);
 }
 
 .kg-point:hover .kg-name,
 .kg-point:focus .kg-name {
-  fill: var(--ink, #191919);
+  fill: var(--ink, #ffffff);
 }
 
 .kg-point.is-open .kg-name {
@@ -128,14 +128,14 @@
 }
 
 .kg-name {
-  fill: var(--text, #37352F);
+  fill: var(--text, #d2d2d2);
   font-size: 13px;
   pointer-events: none;
   transition: fill .12s ease;
 }
 
 .kg-stage {
-  fill: var(--dim, #6F6E69);
+  fill: var(--dim, #999999);
   font-size: 11.5px;
   pointer-events: none;
 }
@@ -147,45 +147,45 @@
 }
 
 .kg-btn-bg {
-  fill: var(--card, #FFFFFF);
-  stroke: var(--accent, #2F6B4F);
+  fill: var(--card, #141618);
+  stroke: var(--accent, #18d1ff);
   stroke-width: 1;
   transition: fill .12s ease;
 }
 
 .kg-btn-text {
-  fill: var(--accent, #2F6B4F);
+  fill: var(--accent, #18d1ff);
   font-size: 11.5px;
   pointer-events: none;
 }
 
 .kg-btn:hover .kg-btn-bg,
 .kg-btn:focus .kg-btn-bg {
-  fill: var(--accent, #2F6B4F);
+  fill: var(--accent, #18d1ff);
 }
 
 .kg-btn:hover .kg-btn-text,
 .kg-btn:focus .kg-btn-text {
-  fill: var(--on-accent, #FFFFFF);
+  fill: var(--on-accent, #000000);
 }
 
 /* 没挂那节课 / 没配那套题：灰着，点了会给对话留言 */
 .kg-btn.is-empty .kg-btn-bg {
-  stroke: var(--line, #E9E9E7);
+  stroke: var(--line, rgba(255, 255, 255, .22));
 }
 
 .kg-btn.is-empty .kg-btn-text {
-  fill: var(--dim, #6F6E69);
+  fill: var(--dim, #999999);
 }
 
 .kg-btn.is-empty:hover .kg-btn-bg,
 .kg-btn.is-empty:focus .kg-btn-bg {
-  fill: var(--card-2, #F1F1EF);
+  fill: var(--card-2, #1f2224);
 }
 
 .kg-btn.is-empty:hover .kg-btn-text,
 .kg-btn.is-empty:focus .kg-btn-text {
-  fill: var(--text, #37352F);
+  fill: var(--text, #d2d2d2);
 }
 
 /* ── 右上角工具（不跟着画布拖） ──────────────────────────────────────── */
@@ -195,32 +195,32 @@
 }
 
 .kg-tool-bg {
-  fill: var(--card, #FFFFFF);
-  stroke: var(--line, #E9E9E7);
+  fill: var(--card, #141618);
+  stroke: var(--line, rgba(255, 255, 255, .22));
   stroke-width: 1;
   transition: stroke .12s ease;
 }
 
 .kg-tool-text {
-  fill: var(--dim, #6F6E69);
+  fill: var(--dim, #999999);
   font-size: 11.5px;
   pointer-events: none;
 }
 
 .kg-tool:hover .kg-tool-bg,
 .kg-tool:focus .kg-tool-bg {
-  stroke: var(--accent, #2F6B4F);
+  stroke: var(--accent, #18d1ff);
 }
 
 .kg-tool:hover .kg-tool-text,
 .kg-tool:focus .kg-tool-text {
-  fill: var(--text, #37352F);
+  fill: var(--text, #d2d2d2);
 }
 
 /* ── 兜底文案 ────────────────────────────────────────────────────────── */
 
 .kg-hint {
-  fill: var(--dim, #6F6E69);
+  fill: var(--dim, #999999);
   font-size: 11.5px;
   pointer-events: none;
 }
@@ -228,7 +228,7 @@
 /* ── 最小单元那条浅底 ────────────────────────────────────────────────── */
 /* 几个模块一起展开时用来分区，不然一眼分不出谁是谁 */
 .kg-unit-bg {
-  fill: var(--card, #FFFFFF);
-  stroke: var(--line, #E9E9E7);
+  fill: var(--card, #141618);
+  stroke: var(--line, rgba(255, 255, 255, .22));
   stroke-width: 1;
 }
