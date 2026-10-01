@@ -944,8 +944,11 @@ function render() {
   app.className = ''
   app.innerHTML = `
     ${topBar()}
-    ${healthCard()}
-    ${page === 'home' ? homePage() : `${page === 'toolbox' ? toolMenu() : ''}${pageCards()}`}
+    ${page === 'home'
+      // 主页上「今天怎么样 + 下一步点哪儿」先说话，体检卡放它后面——
+      // 一进来先看到一屏「该修的」，人还没读今天是什么情况就先挨一顿批评。
+      ? `${homePage()}${healthCard()}`
+      : `${healthCard()}${page === 'toolbox' ? toolMenu() : ''}${pageCards()}`}
     ${archiveModal()}
     ${floatChat()}
   `

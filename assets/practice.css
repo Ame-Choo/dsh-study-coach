@@ -1,100 +1,115 @@
-/* 做题页。通用变量、card、button、toast、stage-btn 都在 style.css 里，这里只管这页自己的东西。 */
+/* 做题页。通用变量、card、button、toast、stage-btn 都在 style.css 里，这里只管这页自己的东西。
+   字号/间距/圆角一律照 design.md，别在这页另起一套。 */
 
 /* 挤在侧栏里的时候：留白收紧、页码按钮换行排 */
-html[data-mode="sidebar"] #app { max-width: 100%; padding: 10px 10px 40px; }
-html[data-mode="sidebar"] .card { padding: 10px 12px; margin-bottom: 8px; }
-html[data-mode="sidebar"] .pg-btn { font-size: 12px; }
+/* 这一页是单栏长文，版心收在 900——style.css 那条 1160 是给面板两栏用的。 */
+html[data-mode="browser"] #app { max-width: 900px; }
+html[data-mode="sidebar"] #app { max-width: 100%; padding: var(--sp-3) var(--sp-3) 40px; }
+html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-2); }
+html[data-mode="sidebar"] .pg-btn { font-size: var(--fs-label); }
 
 .pr-head {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin: 6px 2px 14px;
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  margin: var(--sp-1) 2px var(--sp-3);
 }
 .back {
-  font-size: 12px; color: var(--dim); text-decoration: none;
-  border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; flex: none;
+  font-size: var(--fs-label); color: var(--dim); text-decoration: none;
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; flex: none;
 }
 .back:hover { color: var(--accent); border-color: var(--accent); }
-.crumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); flex: 1; min-width: 0; }
+.crumb { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--dim); flex: 1; min-width: 0; }
 .crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crumb i { font-style: normal; opacity: .45; flex: none; }
 .pr-stage {
-  font-size: 12px; padding: 2px 10px; border-radius: 999px; flex: none;
+  font-size: var(--fs-label); padding: 2px 10px; border-radius: var(--radius-pill); flex: none;
   color: var(--c); border: 1px solid var(--c);
 }
 
-.card h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; }
-
-/* 链接也做成按钮样 */
-.btn {
-  display: inline-block; font-size: 13px; text-decoration: none; cursor: pointer;
-  color: var(--text); background: var(--card-2); border: 1px solid var(--line);
-  border-radius: 7px; padding: 4px 12px;
+/* 卡头跟面板一致：15px/600 + 一条 accent 竖条（panel.js 那边是 .card-head h2） */
+.card h2 {
+  font-size: 15px; font-weight: 600; color: var(--ink); line-height: var(--lh-title);
+  margin: 0 0 var(--sp-3); display: flex; align-items: center; gap: var(--sp-2);
 }
-.btn:hover { border-color: var(--line-2); }
-.btn.ghost { background: transparent; color: var(--dim); cursor: default; }
-.btn.ghost:hover { border-color: var(--line); }
+.card h2::before {
+  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--accent); flex: none;
+}
+
+/* 链接也做成按钮样：白底细边、8px 圆角，跟 .btn 一致 */
+.btn {
+  display: inline-flex; align-items: center; font-size: var(--fs-sm); font-weight: 500;
+  text-decoration: none; cursor: pointer;
+  color: var(--text); background: var(--card); border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm); padding: 7px 13px;
+}
+.btn:hover { border-color: var(--accent); color: var(--ink); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--dim); cursor: default; }
+.btn.ghost:hover { border-color: transparent; }
 .btn[disabled] { opacity: .5; cursor: default; }
 .btn.alt { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 260px; }
-.btn .sub { font-size: 11px; color: var(--dim); }
+.btn .sub { font-size: var(--fs-micro); color: var(--dim); font-weight: 400; }
 
-/* 练什么，你定：三块并排，窄屏自动竖过来 */
-.pick { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+/* 练什么，你定：四块。
+   这里刻意用「两列」而不是 auto-fit：版心 900 时 minmax(240px,1fr) 会排成 3 列，
+   第四块单独掉到下一行、右边空一大块；两列就正好 2×2。 */
+.pick { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 720px) { .pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .pick-block { display: flex; flex-direction: column; gap: 6px; }
-.pick-block b { font-size: 13px; }
-.pick-block p { margin: 0; font-size: 12px; }
+.pick-block b { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+.pick-block p { margin: 0; font-size: var(--fs-label); }
 .pick-block .btn { align-self: flex-start; margin-top: 2px; }
 .pick-block textarea { width: 100%; font: inherit; }
-.pick-block .two { display: flex; gap: 8px; }
+.pick-block .two { display: flex; gap: var(--sp-2); }
 .pick-block .two input:first-child { flex: 1; min-width: 0; }
 .pick-block .two input:last-child { width: 74px; flex: none; }
 /* 「这题做错了」那一块：输入框要占满，别跟上面几块的窄控件挤在一起 */
 .pick-block.wrong input { width: 100%; font: inherit; }
-.pick-block.wrong { border-left: 2px solid var(--warn, #b8760a); padding-left: 10px; }
+.pick-block.wrong { border-left: 2px solid var(--warn); padding-left: 10px; }
 
-.why { margin: 0 0 10px; font-size: 13px; color: var(--dim); }
-.quick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.why { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--dim); }
+.quick { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .quick .src { color: var(--dim); }
 
-/* 教辅里对应哪儿：一章一行 */
-.ch-row { border-top: 1px solid var(--line); padding: 9px 0 3px; }
+/* 材料里对应哪儿：一章一行 */
+.ch-row { border-top: 1px solid var(--line); padding: 9px 0 var(--sp-1); }
 .ch-row:first-of-type { border-top: none; padding-top: 2px; }
-.ch-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.ch-no { font-size: 12px; color: var(--dim); flex: none; }
-.ch-title { font-size: 13px; font-weight: 600; }
-.ch-topics { font-size: 13px; color: var(--dim); margin-top: 3px; }
-.ch-meta { font-size: 12px; color: var(--accent); margin-top: 3px; }
-.ch-role { font-size: 12px; color: var(--dim); margin-top: 3px; }
+.ch-head { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.ch-no { font-size: var(--fs-label); color: var(--dim); flex: none; }
+.ch-title { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
+.ch-topics { font-size: var(--fs-sm); color: var(--dim); margin-top: 4px; }
+.ch-meta { font-size: var(--fs-label); color: var(--accent); margin-top: 4px; }
+.ch-role { font-size: var(--fs-label); color: var(--dim); margin-top: 4px; }
 /* AI 出的卷子跟教辅混在同一张卡里，靠左边一条 accent 线 + 一颗小标签区分 */
 .ch-row.ai { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); padding-left: 9px; }
 .ch-head .tag {
-  font-size: 11px; line-height: 1.7; flex: none; color: var(--accent);
-  border: 1px solid var(--accent); border-radius: 999px; padding: 0 7px;
+  font-size: var(--fs-micro); line-height: 1.7; flex: none; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: var(--radius-pill); padding: 0 7px;
 }
 
 /* 「某知识点 → 第 6 页」：拆过页的章节才有的页码按钮 */
-.pg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
+.pg { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 .pg-btn {
   display: inline-flex; align-items: baseline; gap: 6px; text-decoration: none;
-  font-size: 12px; color: var(--text); background: var(--card-2);
-  border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px;
+  font-size: var(--fs-label); color: var(--text); background: var(--card-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
 }
 .pg-btn:hover { border-color: var(--accent); }
 .pg-btn b { color: var(--accent); font-weight: 600; }
-.pg.none { font-size: 12px; color: var(--dim); }
+.pg.none { font-size: var(--fs-label); color: var(--dim); }
 
 /* 「按页直达」：一本教辅一段，段里一排页码。课上没拆出来的页做成灰的，别给死链。 */
 .hit {
-  padding: 9px 11px;
+  padding: var(--sp-2) 11px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm, 8px);
-  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  margin-top: var(--sp-2);
 }
-.hit-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hit-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .hit-head > * { min-width: 0; }
-.hit .pg { margin-top: 7px; gap: 6px; }
+.hit .pg { margin-top: var(--sp-2); gap: 6px; }
 .hit .pg-btn { padding: 3px 9px; }
 .pg-btn.off { color: var(--dim); border-style: dashed; }
 .pg-btn.off b { color: inherit; }
 
-.note-row { display: flex; gap: 8px; margin-top: 10px; }
+.note-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
 .note-row input { flex: 1; }
