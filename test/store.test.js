@@ -61,7 +61,7 @@ test('写 goal：合法值落盘，非法值挡回去', () => {
 test('材料可以加可以删', () => {
   const f = fresh()
   try {
-    let r = f.handle({ method: 'POST', pathname: '/study/api/materials', body: { kind: 'textbook', title: '线代讲义' } })
+    let r = f.handle({ method: 'POST', pathname: '/study/api/materials', body: { kind: 'book', title: '线代讲义' } })
     assert.equal(r.code, 200)
     const id = r.body.material.id
     assert.equal(r.body.materials.length, 1)
@@ -69,8 +69,20 @@ test('材料可以加可以删', () => {
     r = f.handle({ method: 'POST', pathname: '/study/api/materials', body: {} })
     assert.equal(r.code, 400)
 
+    // 类别写错要拦下来：以前是照单全收，`textbook` 会落成一份哪个分组都不认的材料。
+    r = f.handle({ method: 'POST', pathname: '/study/api/materials', body: { kind: 'textbook', title: '线代讲义' } })
+    assert.equal(r.code, 400)
+    assert.match(r.body.error.message, /材料类别只能是/)
+    assert.equal(f.store.read('profile').materials.length, 1, '被拒的那条不该落盘')
+
+    // kind=ai 是「AI 出题」，跟教辅平级，允许没有本机文件。
+    r = f.handle({ method: 'POST', pathname: '/study/api/materials', body: { kind: 'ai', title: '随堂小测 · M1.4（2026-10-01）' } })
+    assert.equal(r.code, 200)
+    assert.equal(r.body.material.kind, 'ai')
+    assert.equal(r.body.material.path, '')
+
     r = f.handle({ method: 'POST', pathname: '/study/api/materials/remove', body: { id } })
-    assert.equal(r.body.materials.length, 0)
+    assert.equal(r.body.materials.length, 1)
   } finally {
     f.done()
   }

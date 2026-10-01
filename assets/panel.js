@@ -29,7 +29,9 @@ const STAGE_COLOR = {
   '能讲明白': 'var(--stage-6)',
 }
 
-const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', other: '其他' }
+const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', ai: 'AI 出题', other: '其他' }
+/** 书架上分组的顺序：教辅在前，AI 出的卷子紧随其后（跟教辅平级），剩下按重要性排。 */
+const KIND_ORDER = ['book', 'ai', 'notes', 'past', 'video', 'other']
 const TASK_KIND = { watch: '看课', read: '读教材', practice: '练习', review: '复习', other: '其他' }
 const GUIDE_KIND = { ask: '需在对话中回答', self: '请在下方自评', plan: '查看今日任务', done: '' }
 
@@ -126,6 +128,11 @@ const ui = {
   importLog: '',
   /* 「只看文件夹里有什么」的结果 */
   importPreview: null,
+  /* 让 AI 出题：要哪种卷、对着哪个单元、补一句什么要求 */
+  aiWant: 'quiz',
+  aiPoint: '',
+  aiNote: '',
+  aiBusy: false,
   /* 工具栏目：正看着哪个小工具（二级菜单选中的那个） */
   tool: 'pomodoro',
   /* 清单只看哪一类：open / today / done，空串 = 全看 */
@@ -727,7 +734,7 @@ const PAGE_CARDS = {
   // 资料这一页：主栏是书架，边栏是导入入口。
   materials: {
     main: [['shelf', '书架', shelfCard]],
-    aside: [['import', '导入资料', importCard], ['guide', '教练的指引', guideCard]],
+    aside: [['ai', '让 AI 出题', aiCard], ['import', '导入资料', importCard], ['guide', '教练的指引', guideCard]],
   },
   // 工具这一页：主栏是「二级菜单里选中的那个小工具」，边栏放清单的搭档。
   // 菜单本身不走 PAGE_CARDS——它得横在两栏上面，所以 render() 单独插。
@@ -1774,6 +1781,8 @@ function materialsCard() {
 const PAGE_KIND_LABEL = { 讲解: '讲', 例题: '例', 习题: '练', 目录: '目', 答案: '答', 其他: '他' }
 
 function shelfState(s) {
+  // AI 出的卷子没有本机文件、也没有页图，别按「原件不在了」报错。
+  if (s.kind === 'ai') return { text: 'AI 出的卷', cls: '' }
   if (!s.file) return { text: '原件不在了', cls: 'bad' }
   if (s.rendering) return { text: `正在拆 ${s.rendered}/${s.total || '?'}`, cls: 'hot' }
   if (!s.total) return { text: '还没拆', cls: '' }
@@ -1831,6 +1840,69 @@ function shelfDetail(s) {
   return `${shelfPages(s)}${spans ? `<ul class="list tight">${spans}</ul>` : ''}${toc}`
 }
 
+/** 书架上的一行。教辅是「拆页 + 归类」两份进度，AI 出的卷子没有页码，只有「打开」和「去做」。 */
+function renderShelfRow(s) {
+  const open = shelfOpen === s.materialId
+  const st = shelfState(s)
+  const pct = s.total ? Math.min(100, Math.round((s.rendered / s.total) * 100)) : 0
+  const isAi = s.kind === 'ai'
+  const meta = isAi
+    ? [
+        s.points.length ? `覆盖 ${s.points.join('、')}` : '还没归到单元',
+        s.chapters ? `${s.chapters} 份卷` : '',
+        s.indexed ? `${s.indexed} 题有索引` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : [
+        s.total ? `${s.total} 页` : '',
+        s.scanned ? '扫描件' : '有文字层',
+        s.points.length ? `${s.points.length} 个单元` : '',
+        s.chapters ? `${s.chapters} 章有页码` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+  const acts = isAi
+    ? `<div class="row-acts">
+        ${
+          s.file
+            ? `<a class="mini" href="/study/file?path=${encodeURIComponent(s.path)}" target="_blank" rel="noopener">打开这份卷</a>`
+            : '<span class="dim">正文文件不在了</span>'
+        }
+        ${
+          s.points.length
+            ? s.points
+                .map((p) => `<a class="mini" href="/study/practice?point=${encodeURIComponent(p)}" data-nav="practice">按 ${esc(p)} 做题</a>`)
+                .join('')
+            : ''
+        }
+      </div>`
+    : `<div class="row-acts">
+        <button class="mini" data-act="shelf-toggle" data-id="${esc(s.materialId)}">${open ? '收起归类' : '看页级归类'}</button>
+        ${
+          s.rendering
+            ? '<span class="dim">拆图中，过一会儿刷新看看</span>'
+            : `<button class="mini" data-act="shelf-build" data-id="${esc(s.materialId)}">${
+                !s.rendered ? '拆成页图' : s.rendered < s.total ? '继续拆' : '重新拆一遍'
+              }</button>`
+        }
+      </div>`
+  return `<li class="shelf-row${open ? ' open' : ''}${isAi ? ' ai' : ''}">
+    <div class="shelf-head">
+      <span class="tag">${esc(KIND[s.kind] || '其他')}</span>
+      <div class="mat-main">
+        <b>${esc(s.title)}</b>
+        <div class="dim">${esc(meta)}</div>
+        ${s.path ? `<div class="path">${esc(s.path)}</div>` : ''}
+      </div>
+      <span class="stage-tag ${st.cls}">${esc(st.text)}</span>
+    </div>
+    ${!isAi && s.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}
+    ${acts}
+    ${open && !isAi ? `<div class="shelf-body">${shelfDetail(s)}</div>` : ''}
+  </li>`
+}
+
 function shelfCard() {
   if (!shelf) {
     return `<section class="card">
@@ -1846,50 +1918,26 @@ function shelfCard() {
     </section>`
   }
 
-  const rows = list
-    .map((s) => {
-      const open = shelfOpen === s.materialId
-      const st = shelfState(s)
-      const pct = s.total ? Math.min(100, Math.round((s.rendered / s.total) * 100)) : 0
-      const meta = [
-        s.total ? `${s.total} 页` : '',
-        s.scanned ? '扫描件' : '有文字层',
-        s.points.length ? `${s.points.length} 个单元` : '',
-        s.chapters ? `${s.chapters} 章有页码` : '',
-      ]
-        .filter(Boolean)
-        .join(' · ')
-      return `<li class="shelf-row${open ? ' open' : ''}">
-        <div class="shelf-head">
-          <span class="tag">${esc(KIND[s.kind] || '其他')}</span>
-          <div class="mat-main">
-            <b>${esc(s.title)}</b>
-            <div class="dim">${esc(meta)}</div>
-            ${s.path ? `<div class="path">${esc(s.path)}</div>` : ''}
-          </div>
-          <span class="stage-tag ${st.cls}">${esc(st.text)}</span>
-        </div>
-        ${s.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}
-        <div class="row-acts">
-          <button class="mini" data-act="shelf-toggle" data-id="${esc(s.materialId)}">${open ? '收起归类' : '看页级归类'}</button>
-          ${
-            s.rendering
-              ? '<span class="dim">拆图中，过一会儿刷新看看</span>'
-              : `<button class="mini" data-act="shelf-build" data-id="${esc(s.materialId)}">${
-                  !s.rendered ? '拆成页图' : s.rendered < s.total ? '继续拆' : '重新拆一遍'
-                }</button>`
-          }
-        </div>
-        ${open ? `<div class="shelf-body">${shelfDetail(s)}</div>` : ''}
-      </li>`
+  // 按类别分组：教辅、AI 出题、讲义…… 每组一个小标题。
+  // 学生嘴里说的「一本通」和「你昨天给我出的小测」在书架上是平级的，分组别把它们摞成主次。
+  const groups = KIND_ORDER
+    .map((kind) => [kind, list.filter((s) => (KIND[s.kind] ? s.kind : 'other') === kind)])
+    .filter(([, items]) => items.length)
+
+  const rowsByGroup = new Map(list.map((s) => [s.materialId, renderShelfRow(s)]))
+
+  const body = groups
+    .map(([kind, items]) => {
+      const head = groups.length > 1 ? `<h3 class="sub">${esc(KIND[kind])}<span class="dim">${items.length} 份</span></h3>` : ''
+      return `${head}<ul class="list shelf">${items.map((s) => rowsByGroup.get(s.materialId)).join('')}</ul>`
     })
     .join('')
 
   const root = shelf.pagesRoot ? `<p class="hint">页图存在 <span class="path">${esc(shelf.pagesRoot)}</span>，改了路径也不会动你的原文件。</p>` : ''
   return `<section class="card">
     <div class="card-head"><h2>书架</h2><span class="dim">共 ${list.length} 份</span></div>
-    <p class="dim">每本两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）。</p>
-    <ul class="list shelf">${rows}</ul>
+    <p class="dim">按类别分组。教辅看两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）；AI 出的卷子直接打开就能做。</p>
+    ${body}
     ${root}
   </section>`
 }
@@ -2229,6 +2277,61 @@ function importCard() {
   </section>`
 }
 
+/**
+ * 「让 AI 出题」——资料页上的 AI 入口。
+ *
+ * 它不是让人在这儿直接看卷子：点下去只是把要求投给对话那头的教练，由教练出题、
+ * 把卷子落成一份 kind=ai 的材料（跟教辅平级），再回到书架和做题页上。
+ * 所以这一页只负责「说清要什么」，生成和登记都是教练的活儿。
+ */
+function aiCard() {
+  const points = (state.map && state.map.modules ? state.map.modules : []).flatMap((m) =>
+    (m.points || []).map((p) => ({ id: p.id, title: p.title || '' })),
+  )
+  if (!points.length) {
+    return `<section class="card ai">
+      <div class="card-head"><h2>让 AI 出题</h2></div>
+      <p class="dim">地图上还没有单元，先让教练把知识地图画出来——出题要挂到某个单元上才归得了类。</p>
+    </section>`
+  }
+  const cur = points.find((p) => p.id === ui.aiPoint) ? ui.aiPoint : points[0].id
+  const busy = ui.aiBusy
+  const kinds = [
+    ['quiz', '随堂小测', '6—8 道，由易到难，附答案'],
+    ['recite', '背诵清单', '要背的定义、公式、结论，附「怎么想起来」'],
+    ['variant', '错题变式', '拿最近的错题改数字、改条件，出同构题'],
+  ]
+  return `<section class="card ai">
+    <div class="card-head"><h2>让 AI 出题</h2></div>
+    <p class="dim">给教练递一句话，他出好之后会把卷子登记进书架——跟教辅平级的一类，做题页上按单元也找得到。</p>
+
+    <form data-form="ai" class="form">
+      <div class="chips">
+        ${kinds
+          .map(
+            ([id, label, hint]) =>
+              `<button type="button" class="mini${id === ui.aiWant ? ' on' : ''}" data-act="ai-want" data-want="${id}" title="${esc(hint)}" ${busy ? 'disabled' : ''}>${esc(label)}</button>`,
+          )
+          .join('')}
+      </div>
+      <label>对着哪个单元
+        <select name="pointId" ${busy ? 'disabled' : ''}>
+          ${points
+            .map((p) => `<option value="${esc(p.id)}"${p.id === cur ? ' selected' : ''}>${esc(p.id)} ${esc(p.title)}</option>`)
+            .join('')}
+        </select>
+      </label>
+      <label>补一句要求（可以不写）
+        <textarea name="note" rows="2" maxlength="200" placeholder="例如：只要应用题，别出证明题" ${busy ? 'disabled' : ''}>${esc(ui.aiNote)}</textarea>
+      </label>
+      <div class="row-acts">
+        <button class="btn" type="submit" ${busy ? 'disabled' : ''}>${busy ? '递过去了…' : '交给教练'}</button>
+      </div>
+    </form>
+    <p class="hint">出好之后他会回话，你到书架上看。卷子正文在插件数据目录的 ai/ 里，不搬你的原件。</p>
+  </section>`
+}
+
 function toolsCard() {
   const list = (state.profile && state.profile.tools) || []
   if (!list.length) return ''
@@ -2540,6 +2643,9 @@ document.addEventListener('click', async (event) => {
         el.disabled = false
         render()
       }
+    } else if (act === 'ai-want') {
+      ui.aiWant = el.dataset.want || 'quiz'
+      render()
     } else if (act === 'import-list') {
       const path = (document.querySelector('[data-form="import"] [name="path"]') || {}).value || ''
       if (!path.trim()) {
@@ -2785,8 +2891,15 @@ document.addEventListener('change', async (event) => {
     return
   }
   // 记忆卡那几格：改动先记在 ui 上，这样中途重画（翻答案、换筛选）不会把打好的半句冲掉。
-  if (el.name === 'front' || el.name === 'back' || el.name === 'kind' || el.name === 'pointId') {
+  // 认表单归属，别按 name 认：出题卡上也有个 pointId，否则会把它的选择写进记忆卡草稿。
+  if (el.form && el.form.dataset && el.form.dataset.form === 'card' && ['front', 'back', 'kind', 'pointId'].includes(el.name)) {
     ui.cardDraft = { ...ui.cardDraft, [el.name]: String(el.value || '') }
+    return
+  }
+  // 出题卡：换类型按钮会重画一次，这里把单元和那句话先存住，重画时原样铺回去。
+  if (el.form && el.form.dataset && el.form.dataset.form === 'ai') {
+    if (el.name === 'pointId') ui.aiPoint = String(el.value || '')
+    else if (el.name === 'note') ui.aiNote = String(el.value || '')
     return
   }
   // 选文件上传：一次把选中的都传上去，一个个来（并发太高容易把内存堆满）。
@@ -2839,7 +2952,34 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault()
   const data = new FormData(form)
   try {
-    if (kind === 'import') {
+    if (kind === 'ai') {
+      const pointId = String(data.get('pointId') || ui.aiPoint || '').trim()
+      if (!pointId) {
+        toast('先挑一个单元', true)
+        return
+      }
+      ui.aiBusy = true
+      render()
+      try {
+        const out = await api('/study/api/practice/ask', {
+          pointId,
+          mode: 'ai',
+          want: ui.aiWant,
+          text: String(data.get('note') || '').trim(),
+        })
+        ui.aiNote = ''
+        toast(
+          out.pushed
+            ? '已交给教练：他会出题，然后把卷子登记进书架。'
+            : `已经记下了，但没送进对话：${out.pushError || '通道没接通'}`,
+        )
+      } catch (error) {
+        toast('没交出去：' + error.message, true)
+      } finally {
+        ui.aiBusy = false
+        render()
+      }
+    } else if (kind === 'import') {
       const path = String(data.get('path') || '').trim()
       if (!path) {
         toast('先把路径填上', true)

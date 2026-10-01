@@ -45,7 +45,6 @@ const ROUTES = [
   // 记忆卡那批
   ['/study/api/memory', '记忆卡'],
 ]
-
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
 const MARKS = [
   ['probeCapabilities', '能力探测'],
@@ -58,6 +57,7 @@ const MARKS = [
   ['pomodoroCard', '番茄钟'],
   ['checklistCard', '清单'],
   ['memoryCard', '记忆卡'],
+  ['aiCard', 'AI 出题'],
 ]
 
 let bad = 0

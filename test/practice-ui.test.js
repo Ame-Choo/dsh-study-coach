@@ -168,6 +168,66 @@ test('按页直达：同一个单元，各本教辅各占哪几页，点页码�
   assert.match(html, /<span class="pg-btn off">第 13 页<\/span>/, '第 13 页没拆出来，别给死链')
 })
 
+test('AI 出的卷子在做题页跟教辅平级：它没有页图，from/to 是题号', async () => {
+  // 需求5 的联动就落在这儿：同一节，一本教辅给的是页，一份 AI 卷给的是题，
+  // 都点得开。写错单位（把题号说成页码）会让这份卷看起来像扫描件。
+  const hits = {
+    ok: true,
+    pointId: 'M1.4',
+    hits: [
+      {
+        materialId: 'mat-a', material: '必修一', kind: 'book', from: '12', to: '12',
+        pageKind: '例题', note: '',
+        pages: [{ page: 12, url: '/study/page?path=C%3A%2Fdata%2Fp0012.png' }],
+      },
+      {
+        materialId: 'mat-ai', material: '随堂小测 · M1.4（2026-10-01）', kind: 'ai', from: '1', to: '3',
+        pageKind: '习题', note: '8 道，由易到难', path: 'C:\\data\\ai\\M1.4-随堂小测.md',
+        pages: [{ page: 1, url: '' }, { page: 2, url: '' }, { page: 3, url: '' }],
+      },
+    ],
+  }
+  const html = (await boot(PAYLOAD, 'hits2', { '/study/api/point/pages': hits })).html()
+
+  assert.match(html, /AI 出题/, '标签要写「AI 出题」，别落到「其他」')
+  assert.match(html, /随堂小测 · M1\.4（2026-10-01）/)
+  assert.match(html, /1—3 题 · 习题/, 'AI 卷的单位是「题」不是「页」')
+  assert.match(html, /class="hit ai"/)
+
+  // 它的 from/to 是题号，点题号开的是那份卷，而不是一个根本不存在的页图
+  const ai = html.slice(html.indexOf('class="hit ai"'))
+  assert.ok(ai.includes('/study/file?path=C%3A%5Cdata%5Cai%5CM1.4-'), 'AI 卷的题号要链到正文那份 md')
+  assert.doesNotMatch(ai, /pg-btn off/, 'AI 卷不该出现「没拆出来」的灰按钮')
+})
+
+test('材料对应位置那张卡认出 AI 卷：打标签、说「题」不说「页」', async () => {
+  // 上面那张卡是按**章**列的，教辅和 AI 卷会混在一起。不把类别写出来，
+  // 学生看到「第 1 章 随堂小测 · M1.4」会以为那也是一本教辅。
+  const payload = {
+    ...PAYLOAD,
+    chapters: [
+      ...PAYLOAD.chapters,
+      {
+        no: '1',
+        title: '随堂小测 · M1.4',
+        materialId: 'mat-ai',
+        material: '随堂小测 · M1.4（2026-10-01）',
+        kind: 'ai',
+        file: 'C:\\data\\ai\\M1.4-随堂小测.md',
+        exercises: '1—4 题',
+      },
+    ],
+  }
+  const html = (await boot(payload, 'chai')).html()
+
+  assert.match(html, /材料对应位置/, '这张卡现在也装 AI 卷，标题不能只说教辅')
+  assert.match(html, /class="ch-row ai"/)
+  const ai = html.slice(html.indexOf('class="ch-row ai"'))
+  assert.match(ai.slice(0, 400), /<span class="tag">AI 出题<\/span>/)
+  assert.match(ai.slice(0, 600), /1—4 题/, 'AI 卷的习题区间本来写全了，别再补一个「习题」前缀')
+  assert.match(ai.slice(0, 600), /这份卷还没标到具体题号/, 'AI 卷不该说「仅能打开整份 PDF」')
+})
+
 test('这一节还没归过页的时候，直说，别摆一张空卡', async () => {
   const page = await boot(PAYLOAD, 'nohits', { '/study/api/point/pages': { ok: true, hits: [] } })
   assert.match(page.html(), /按页直达/)

@@ -130,7 +130,7 @@ const REVIEW = {
   svg: '<svg viewBox="0 0 2048 1180" width="2048" height="1180"><title>今日复盘</title></svg>\n',
 }
 
-/** 书架：一本已经拆完、归了 8 页的教辅。 */
+/** 书架：一本已经拆完、归了 8 页的教辅，外加一份 AI 出的卷子。 */
 const SHELF = {
   materials: [
     {
@@ -151,6 +151,26 @@ const SHELF = {
       points: ['M1.1', 'M1.4'],
       kinds: ['讲解', '习题'],
       coverage: '部分通读',
+    },
+    {
+      // AI 出的卷子：没有本机原件、没有页图，但有正文文件和单元。
+      materialId: 'mat-ai',
+      title: '随堂小测 · M1.4（2026-10-01）',
+      kind: 'ai',
+      path: 'C:\\data\\ai\\M1.4-随堂小测.md',
+      file: true,
+      pageDir: '',
+      total: 0,
+      rendered: 0,
+      rendering: false,
+      scanned: false,
+      dpi: 0,
+      toc: [],
+      indexed: 8,
+      chapters: 1,
+      points: ['M1.4'],
+      kinds: ['习题'],
+      coverage: '',
     },
   ],
   pagesRoot: 'C:/data/pages',
@@ -844,6 +864,7 @@ test('资料页：书架列出每本拆到哪、归到哪，点开能看见页�
   assert.match(page.html(), /data-nav="materials"/)
   assert.match(page.html(), /data-card="shelf"/)
   assert.match(page.html(), /data-card="import"/)
+  assert.match(page.html(), /data-card="ai"/)
 
   // 一本教辅：标题、进度徽标、拆图按钮
   assert.match(page.html(), /必修一/)
@@ -876,6 +897,51 @@ test('资料页：书架列出每本拆到哪、归到哪，点开能看见页�
   assert.equal(page.posts.at(-1).path, '/study/api/materials/build')
   assert.deepEqual(page.posts.at(-1).body, { materialId: 'mat-1' })
   assert.ok(page.calls.filter((c) => c === '/study/api/materials').length >= 2, '拆完要重拉书架看进度')
+})
+
+test('资料页：书架按类别分组，AI 出题跟教辅平级；AI 卷不报「原件不在了」', async () => {
+  const page = await boot(fixture(), { path: '/study/materials' })
+  const html = page.html()
+
+  // 两份材料分属两类，各带一个小标题
+  assert.match(html, /<h3 class="sub">教辅<span class="dim">1 份<\/span><\/h3>/)
+  assert.match(html, /<h3 class="sub">AI 出题<span class="dim">1 份<\/span><\/h3>/)
+
+  // AI 卷：标签是「AI 出题」不是「其他」，没有进度条，也不该出现教辅那两颗按钮
+  const ai = html.slice(html.indexOf('class="shelf-row ai"'))
+  assert.match(ai, /随堂小测 · M1\.4（2026-10-01）/)
+  assert.match(ai, /覆盖 M1\.4 · 1 份卷 · 8 题有索引/)
+  assert.match(ai, /AI 出的卷/, '没有页图这件事要当成正常，不是「原件不在了」')
+  assert.doesNotMatch(ai, /原件不在了/)
+  assert.match(ai, /打开这份卷/)
+  assert.match(ai, /按 M1\.4 做题/)
+  assert.doesNotMatch(ai, /data-act="shelf-build"/)
+  assert.doesNotMatch(ai, /<div class="bar">/)
+
+  // 教辅那边不受影响
+  assert.match(html, /data-act="shelf-build" data-id="mat-1"/)
+})
+
+test('资料页的 AI 入口：挑类型、挑单元、递一句话，投给对话而不是自己出卷', async () => {
+  const page = await boot(fixture(), { path: '/study/materials' })
+
+  // 三种卷 + 单元下拉（单元来自地图）
+  assert.match(page.html(), /data-act="ai-want" data-want="quiz"/)
+  assert.match(page.html(), /data-act="ai-want" data-want="recite"/)
+  assert.match(page.html(), /data-act="ai-want" data-want="variant"/)
+  assert.match(page.html(), /class="mini on" data-act="ai-want" data-want="quiz"/)
+  assert.match(page.html(), /<option value="M1\.1" selected>M1\.1 /)
+
+  // 换类型不发接口，只重画
+  const before = page.posts.length
+  await page.clickAct({ act: 'ai-want', want: 'variant' })
+  assert.equal(page.posts.length, before, '换类型只改本地状态，别白打一趟接口')
+  assert.match(page.html(), /class="mini on" data-act="ai-want" data-want="variant"/)
+
+  // 递上去：这一节 + 要哪种卷 + 那句话，一次交给 practice/ask
+  await page.submitForm({ form: 'ai' }, { pointId: 'M1.1', note: '只要应用题' })
+  assert.equal(page.posts.at(-1).path, '/study/api/practice/ask')
+  assert.deepEqual(page.posts.at(-1).body, { pointId: 'M1.1', mode: 'ai', want: 'variant', text: '只要应用题' })
 })
 
 test('工具页：二级菜单切小工具，番茄钟照服务端的绝对时刻走，清单勾得动', async () => {

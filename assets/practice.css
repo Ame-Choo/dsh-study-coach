@@ -64,6 +64,12 @@ html[data-mode="sidebar"] .pg-btn { font-size: 12px; }
 .ch-topics { font-size: 13px; color: var(--dim); margin-top: 3px; }
 .ch-meta { font-size: 12px; color: var(--accent); margin-top: 3px; }
 .ch-role { font-size: 12px; color: var(--dim); margin-top: 3px; }
+/* AI 出的卷子跟教辅混在同一张卡里，靠左边一条 accent 线 + 一颗小标签区分 */
+.ch-row.ai { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); padding-left: 9px; }
+.ch-head .tag {
+  font-size: 11px; line-height: 1.7; flex: none; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 0 7px;
+}
 
 /* 「某知识点 → 第 6 页」：拆过页的章节才有的页码按钮 */
 .pg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }

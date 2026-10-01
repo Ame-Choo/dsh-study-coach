@@ -455,6 +455,8 @@ button.mini.danger:hover { background: var(--danger-bg); }
 .pace-day > span, .pace-day .cap { font-size: 10px; color: var(--dim); }
 
 h3.sub { font-size: 12.5px; font-weight: 660; margin: 14px 0 4px; color: var(--dim); letter-spacing: .3px; }
+h3.sub span.dim { margin-left: 6px; font-weight: 500; }
+h3.sub:first-child { margin-top: 2px; }
 
 /* ── 行内小表单 ───────────────────────────────────────────────────────── */
 .inline-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
@@ -951,6 +953,19 @@ html[data-mode="sidebar"] .mem-front { font-size: 21px; }
 .mem-form select { flex: 1 1 150px; min-width: 0; font: inherit; padding: 6px 8px; max-width: 100%; }
 .mem-list li { align-items: flex-start; gap: 9px; }
 .mem-list .mat-main { min-width: 0; }
+
+/* ── AI 出的卷子 ────────────────────────────────────────────────────────
+   它在书架上跟教辅平级，所以别做得像「次级附属」：只给一道细的 accent 边和
+   一个对得上的标签，让人一眼看出这不是哪本教辅。
+   ───────────────────────────────────────────────────────────────────── */
+.shelf-row.ai { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.shelf-row.ai .tag { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.hit.ai { border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); padding-left: 10px; }
+.hit.ai .tag { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* 出题卡那张表：类型药丸、单元、要求，一路竖着排 */
+.card.ai .chips { margin-bottom: 2px; }
+.card.ai textarea { font: inherit; padding: 7px 9px; resize: vertical; min-height: 44px; }
+.card.ai .mini.on { border-color: var(--accent); color: var(--accent); }
 
 /* 侧栏里那一格菜单横不下，让它换行，别把页面撑宽 */
 html[data-mode="sidebar"] .sub-nav { padding: 7px 9px; }

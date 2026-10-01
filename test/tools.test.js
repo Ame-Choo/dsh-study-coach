@@ -249,6 +249,17 @@ test('study_material：登记与删除', async () => {
 
     await assert.rejects(() => f.call('study_material', { action: 'remove', id: 'nope' }), /没有材料/)
     await assert.rejects(() => f.call('study_material', { action: 'add' }), /要带 title/)
+
+    // 类别写错要当场拦下来：以前照单全收，写错一个字母这份材料就从任何分组里漏掉。
+    await assert.rejects(() => f.call('study_material', { action: 'add', kind: 'textbook', title: '线代讲义' }), /材料类别只能是/)
+    assert.equal(f.store.read('profile').materials.length, 1, '被拒的那条不该落盘')
+
+    // kind=ai 是教练自己出的卷子：跟教辅平级的一类，允许没有本机文件。
+    r = await f.call('study_material', { action: 'add', kind: 'ai', title: '随堂小测 · M1.4（2026-10-01）' })
+    assert.equal(r.count, 2)
+    const ai = r.materials.find((m) => m.kind === 'ai')
+    assert.ok(ai, 'AI 卷要落成一条材料')
+    assert.equal(ai.path, '')
   } finally {
     f.done()
   }

@@ -23,7 +23,7 @@ const esc = (value) => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
-const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', other: '其他' }
+const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', ai: 'AI 出题', other: '其他' }
 
 function toast(text) {
   const box = document.querySelector('#toast')
@@ -80,26 +80,29 @@ function baseName(target) {
 
 function chapterRow(ch) {
   const path = ch.file || materialPath(ch.materialId)
+  const isAi = ch.kind === 'ai'
+  const isPast = ch.kind === 'past'
   const bits = []
   if (ch.pages) bits.push(`${esc(ch.pages)} 页`)
-  if (ch.exercises) bits.push(`习题 ${esc(ch.exercises)}`)
+  if (ch.exercises) bits.push(`${isAi ? '' : '习题 '}${esc(ch.exercises)}`)
   if (ch.examples) bits.push(`例题 ${esc(ch.examples)}`)
   if (ch.difficulty) bits.push(esc(ch.difficulty))
   const marks = (ch.marks || []).filter((m) => m.page)
   return `
-    <div class="ch-row">
+    <div class="ch-row${isAi ? ' ai' : ''}">
       <div class="ch-head">
         <span class="ch-no">${ch.no ? '第 ' + esc(ch.no) + ' 章' : '章节'}</span>
         <span class="ch-title">${esc(ch.title) || esc(ch.material)}</span>
+        ${isAi ? '<span class="tag">AI 出题</span>' : isPast ? '<span class="tag">真题</span>' : ''}
         ${path ? `<a class="open-link" href="${esc(openLink(path))}" target="_blank" rel="noopener">打开</a>` : ''}
       </div>
       ${ch.topics ? `<div class="ch-topics">${esc(ch.topics)}</div>` : ''}
       ${bits.length ? `<div class="ch-meta">${bits.join(' · ')}</div>` : ''}
       ${marks.length
         ? `<div class="pg">${marks.map((m) => path
-            ? `<a class="pg-btn" href="${esc(openLink(path, m.page))}" target="_blank" rel="noopener">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} 页</b></a>`
-            : `<span class="pg-btn">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} 页</b></span>`).join('')}</div>`
-        : (path ? '<div class="pg none">本章尚未按页拆解，仅能打开整份 PDF</div>' : '')}
+            ? `<a class="pg-btn" href="${esc(openLink(path, m.page))}" target="_blank" rel="noopener">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} ${isAi ? '题' : '页'}</b></a>`
+            : `<span class="pg-btn">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} ${isAi ? '题' : '页'}</b></span>`).join('')}</div>`
+        : (path ? `<div class="pg none">${isAi ? '这份卷还没标到具体题号，点开整份就能做' : '本章尚未按页拆解，仅能打开整份 PDF'}</div>` : '')}
       ${ch.role ? `<div class="ch-role">${esc(ch.role)}</div>` : ''}
     </div>`
 }
@@ -119,7 +122,7 @@ function pageHint() {
 /**
  * 「按页直达」：同一个单元，手上这几本教辅各占哪几页。
  *
- * 跟上面那张「教辅对应位置」不是一回事——那张是按**章**列的（这一章在哪份文件的第几页），
+ * 跟上面那张「材料对应位置」不是一回事——那张是按**章**列的（这一章在哪份文件的第几页），
  * 这张是按**单元**列的（M1.4 在教辅 A 是第 12—17 页、在教辅 B 是第 30—34 页）。
  * 于是他手上有什么就能做什么，不用被绑死在一本书上。
  */
@@ -134,19 +137,25 @@ function hitsCard() {
   }
   const rows = hits
     .map((h) => {
+      // AI 出的卷子没有页图，它的 from/to 是**题号**；点题号直接打开那份卷。
+      const isAi = h.kind === 'ai'
+      const unit = isAi ? '题' : '页'
       const span = Number(h.from) === Number(h.to) ? `${h.from}` : `${h.from}—${h.to}`
+      const paper = isAi ? h.path : ''
       const pagesHtml = (h.pages || [])
         .map((p) =>
-          p.url
-            ? `<a class="pg-btn" href="${esc(p.url)}" target="_blank" rel="noopener"><b>第 ${esc(p.page)} 页</b></a>`
-            : `<span class="pg-btn off">第 ${esc(p.page)} 页</span>`,
+          isAi
+            ? `<a class="pg-btn" href="${esc(openLink(paper))}" target="_blank" rel="noopener"><b>第 ${esc(p.page)} 题</b></a>`
+            : p.url
+              ? `<a class="pg-btn" href="${esc(p.url)}" target="_blank" rel="noopener"><b>第 ${esc(p.page)} 页</b></a>`
+              : `<span class="pg-btn off">第 ${esc(p.page)} 页</span>`,
         )
         .join('')
-      return `<div class="hit">
+      return `<div class="hit${isAi ? ' ai' : ''}">
         <div class="hit-head">
           <span class="tag">${esc(KIND[h.kind] || '其他')}</span>
           <b>${esc(h.material)}</b>
-          <span class="dim">${span} 页 · ${esc(h.pageKind || '其他')}</span>
+          <span class="dim">${span} ${unit} · ${esc(h.pageKind || '其他')}</span>
         </div>
         ${h.note ? `<div class="dim">${esc(h.note)}</div>` : ''}
         <div class="pg">${pagesHtml}</div>
@@ -155,7 +164,7 @@ function hitsCard() {
     .join('')
   return `<section class="card">
     <h2>按页直达</h2>
-    <p class="dim">同一个单元，各本教辅各占哪几页。想做哪本点哪本。</p>
+    <p class="dim">同一个单元，各本教辅各占哪几页。想做哪本点哪本；AI 出的卷子点题号直接打开。</p>
     ${rows}
   </section>`
 }
@@ -246,7 +255,7 @@ function render() {
   </section>
 
   <section class="card">
-    <h2>教辅对应位置</h2>
+    <h2>材料对应位置</h2>
     ${chapters.length
       ? chapters.map(chapterRow).join('') + pageHint()
       : '<p class="dim">尚未通读教辅，或本节未匹配到章节。通读材料后即可在此显示页码与题号。</p>'}
