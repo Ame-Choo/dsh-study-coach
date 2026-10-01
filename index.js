@@ -21,7 +21,6 @@
  */
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -31,6 +30,7 @@ import { createBridge } from './lib/bridge.js'
 import { createChat } from './lib/chat.js'
 import { createHandler } from './lib/handler.js'
 import { DEFAULT_PORT, startPanelServer } from './lib/panel-server.js'
+import { PAGES_DIR, UPLOADS_DIR, dataRoot } from './lib/paths.js'
 import { registerTools } from './lib/tools.js'
 import { registerPreset } from './lib/preset.js'
 
@@ -43,15 +43,15 @@ export const inject = ['webServer', 'tools']
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ASSETS = join(HERE, 'assets')
 
-/** 档案放哪儿。想换地方就设 DSH_STUDY_ROOT。 */
-export const DATA_ROOT = process.env.DSH_STUDY_ROOT || join(homedir(), '.dsh', 'study-coach')
+/** 档案放哪儿。想换地方就设 DSH_STUDY_ROOT。真值在 lib/paths.js，别处别自己读环境变量。 */
+export const DATA_ROOT = dataRoot()
 
 /**
  * 拆出来的页图和网页上传的原件，都放档案库根下，**不动用户自己的文件夹**。
  * 页图单独开一条只读出口（/study/page），因为它不归任何一份登记过的材料管。
  */
-export const PAGES_ROOT = join(DATA_ROOT, 'pages')
-export const UPLOAD_ROOT = join(DATA_ROOT, 'uploads')
+export const PAGES_ROOT = join(DATA_ROOT, PAGES_DIR)
+export const UPLOAD_ROOT = join(DATA_ROOT, UPLOADS_DIR)
 
 /** @param {import('@deepseek-ai/cordis').Context} ctx */
 export function apply(ctx) {
@@ -112,13 +112,11 @@ export function apply(ctx) {
   }, 'dsh-study-coach: 面板独立端口')
 
   ctx.effect(() => {
-    // pagesRoot 是拆书拆出来的页图落脚的地方（`pages/<书名>-<hash>/p0007.png`）。
-    // study_pages 也渲到这里：跟页面出口 /study/page 用同一个目录，渲完就能点开看。
-    // scratchDir 是老名字，留着给别处调用，值一样。故意放在档案目录下、不进工作区。
+    // study_pages 把页图渲到 pagesRoot，跟页面出口 /study/page 是同一个目录，渲完就能点开看。
+    // `scratchDir` 那个老名字已经删了：谁也没在用，留着只会让人以为有两套目录。
     const disposers = registerTools(ctx, store, defineTool, {
       panel,
       pagesRoot: PAGES_ROOT,
-      scratchDir: PAGES_ROOT,
     })
     return () => {
       for (const dispose of disposers) {

@@ -15,6 +15,7 @@ import { Store } from '../lib/store.js'
 import { buildTools } from '../lib/tools.js'
 import { createRouter } from '../lib/routes.js'
 import { findPython, pagesDirFor, renderPages } from '../lib/pages.js'
+import { pagesRootOf } from '../lib/paths.js'
 
 const EXEC = { signal: { throwIfAborted() {} } }
 
@@ -44,13 +45,15 @@ function fresh() {
   const root = mkdtempSync(join(tmpdir(), 'study-pages-'))
   const store = new Store(root)
   store.ensure()
-  const scratchDir = join(root, 'scratch', 'pages')
-  const specs = buildTools(store, { panelPath: '/study', scratchDir })
+  // 老写法是传一个自己的 scratchDir；现在目录算法统一走 lib/paths.js，
+  // 这里显式传 pagesRoot，值仍然在 store 根底下，和生产里那套是同一套。
+  const pagesRoot = pagesRootOf(store)
+  const specs = buildTools(store, { panelPath: '/study', pagesRoot })
   const byName = new Map(specs.map((s) => [s.name, s]))
   return {
     root,
     store,
-    scratchDir,
+    pagesRoot,
     call: (name, args = {}) => byName.get(name).execute(args, EXEC),
     route: (request) => createRouter(store, {})(request),
     done: () => rmSync(root, { recursive: true, force: true }),
@@ -106,7 +109,7 @@ test('study_pages：把 PDF 拆成按页码编号的 PNG，页码跟 PDF 自己�
       assert.ok(statSync(p.file).size > 0, `${p.file} 是空文件`)
       assert.match(p.file, new RegExp(`p${String(p.page).padStart(4, '0')}\\.png$`), '文件名要带页码')
     }
-    assert.ok(out.dir.startsWith(f.scratchDir), `图片要落在数据目录的 scratch 里，实际 ${out.dir}`)
+    assert.ok(out.dir.startsWith(f.pagesRoot), `图片要落在数据目录的 pages 里，实际 ${out.dir}`)
 
     // 渲过的页不重来：再渲一次拿到的还是同一个文件。
     const again = await f.call('study_pages', { pdfPath: pdf, from: 1, to: 1, dpi: 60 })

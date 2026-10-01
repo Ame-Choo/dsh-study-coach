@@ -18,17 +18,17 @@
  */
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
 
 import { Library } from '../lib/library.js'
 import { createRouter } from '../lib/routes.js'
 import { createHandler } from '../lib/handler.js'
 import { startPanelServer } from '../lib/panel-server.js'
+import { dataRoot, pagesRootOf, uploadRootOf } from '../lib/paths.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ASSETS = join(HERE, '..', 'assets')
 
-const root = process.env.DSH_STUDY_ROOT || join(homedir(), '.dsh', 'study-coach')
+const root = dataRoot()
 const port = Number(process.env.DSH_STUDY_PREVIEW_PORT || 19390)
 
 /**
@@ -80,7 +80,13 @@ const library = new Library(root)
 library.ensure()
 
 const deps = process.env.DSH_STUDY_PREVIEW_CHAT ? { chat: demoChat() } : {}
-const handler = createHandler(library, createRouter(library, deps), { assetsDir: ASSETS })
+// 显式把页图 / 上传目录传进去，别走 handler 的兜底——这样预览跟 DSH 里那份
+// 一定是同一套目录算法（都在 lib/paths.js 里），改了一边不会只对一边生效。
+const handler = createHandler(library, createRouter(library, deps), {
+  assetsDir: ASSETS,
+  pagesRoot: pagesRootOf(library),
+  uploadRoot: uploadRootOf(library),
+})
 const server = await startPanelServer(handler, { port })
 
 console.log('[study-coach] 预览地址 ' + server.url)
