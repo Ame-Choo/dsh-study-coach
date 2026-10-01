@@ -34,6 +34,11 @@ const ROUTES = [
   ['/study/api/chat', '对话快照'],
   ['/study/api/mistakes', '错题本'],
   ['/study/api/review', '今日复盘图'],
+  // 资料库那批：书架、单本详情
+  // 注意别拿 /study/api/point/pages 当探针——旧服务端那条 `/study/api/point/:id`
+  // 会把 `pages` 当成单元 id 接住，回 200，新旧分不出来。
+  ['/study/materials', '资料页'],
+  ['/study/api/materials', '书架'],
 ]
 
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
@@ -44,6 +49,7 @@ const MARKS = [
   ['openFirstCard', '侧栏自动展开'],
   ['mistakesCard', '错题本'],
   ['reviewCard', '今日复盘图'],
+  ['shelfCard', '资料书架'],
 ]
 
 let bad = 0
