@@ -3,11 +3,12 @@
 写这份手册的出发点：**下一个开这个仓库的人，大概率是个 agent。** 所以它不写「这个项目多有意思」，
 只写「东西在哪、请求怎么走、要加一个功能该动哪几处、改完怎么验」。
 
-## 0. 先认路：跟另外四份文档的分工
+## 0. 先认路：跟另外几份文档的分工
 
 | 文档 | 什么时候翻它 |
 | --- | --- |
-| [`README.md`](README.md) | 想知道它现在长什么样、以前踩过哪些坑。它是一份**按时间追加**的叙述，末尾一堆「补：…」节就是历次改动的账本 |
+| [`README.md`](README.md) | 想知道这个插件**是什么、装完有什么用**——它是给使用者看的首页（功能、安装、快速上手、常见问题）。里面不放实现细节 |
+| [`NOTES.md`](NOTES.md) | 想知道「这块为什么长这样」。代码地图 + HTTP 接口清单 + 改动流水（按时间追加，末尾一堆「补：…」节就是历次改动的账本） |
 | [`AGENTS.md`](AGENTS.md) | 动手之前必须过的硬规矩：常量不许在别处重抄、图标不许退回 emoji、新页面必须在 `PANEL_PAGES` 登记、别为前端小事新增服务端路由…… |
 | [`design.md`](design.md) | 写 CSS、开新页面之前。配色 / 字号 / 间距 / 造型动机，色值一律抄 `assets/style.css` 顶部 `:root` |
 | [`skills/study-coach/SKILL.md`](skills/study-coach/SKILL.md) | 改「agent 怎么教」的时候。它是方法论本体，483 行，按需加载 |
@@ -93,7 +94,7 @@ assets/
 skills/study-coach/SKILL.md    agent 的工作法
 test/                          39 个测试文件，node --test
 scripts/                       check-live.mjs / preview.mjs / setup-repo.mjs
-design.md  README.md  AGENTS.md  PUBLISHING.md
+design.md  README.md  NOTES.md  AGENTS.md  PUBLISHING.md
 ```
 
 ## 4. 一个请求怎么走
@@ -319,9 +320,9 @@ node scripts/check-live.mjs 19387 19388
 
 ## 11. 发版
 
-- `package.json` 的 `files` 必须含 `index.js, lib, assets, skills, cordis.patch.yml, README.md, PUBLISHING.md, AGENTS.md, design.md, DEV.md, LICENSE`
-  （`design.md` / `AGENTS.md` / `DEV.md` 在列是因为 README 链到它们）。**本机的 `node_modules` 是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的 junction，别提交。**
-- CI（`.github/workflows/ci.yml`）只有 ubuntu + `node: ['22','24']`，`npm install` 是 `continue-on-error`（宿主包拉不到就让测试 skip），最后跑 `node --test`。
+- `package.json` 的 `files` 必须含 `index.js, lib, assets, skills, cordis.patch.yml, README.md, CHANGELOG.md, docs, PUBLISHING.md, AGENTS.md, design.md, DEV.md, NOTES.md, LICENSE`
+  （`design.md` / `AGENTS.md` / `DEV.md` / `NOTES.md` 在列是因为 README 链到它们，`docs/` 是 README 顶上的截图）。**本机的 `node_modules` 是指向 `~/.dsh/profiles/node_modules/@deepseek-ai` 的 junction，别提交。**
+- CI（`.github/workflows/ci.yml`）只有 ubuntu + `node: ['22','24']`：先探宿主 `@deepseek-ai/*` 装没装上（没装上就跳过测试并 warning），然后 `node scripts/ci-test.mjs` 跑测试——失败用例写成 GitHub 注解（原始日志不登录看不到）。
 - 流程见 [`PUBLISHING.md`](PUBLISHING.md)：`npm pack --dry-run` 核清单 → `git init/add/commit` + `npm run setup-repo`（从 `git remote get-url origin` 抠 owner/repo 填进 `package.json`）→ push → 打 GitHub topic（`dsh-plugin` 必打，市场每天爬一次）→ `npm publish`。
 - 日常循环：`node --test` 全绿 → `npm version patch` → `git push --follow-tags` → `npm publish`。
 - 改到 `lib/` / `index.js` / `package.json` 的那一版，**发布说明里要提醒用户重启 DSH**，否则他们会看到「页面是新的、按钮全 404」。

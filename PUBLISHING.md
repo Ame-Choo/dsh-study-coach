@@ -11,7 +11,7 @@ cd dsh-study-coach
 npm pack --dry-run
 ```
 
-看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `CHANGELOG.md` / `docs/**` / `PUBLISHING.md` / `AGENTS.md` / `design.md` / `DEV.md` / `LICENSE` / `package.json`。
+看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `CHANGELOG.md` / `docs/**` / `PUBLISHING.md` / `AGENTS.md` / `design.md` / `DEV.md` / `NOTES.md` / `LICENSE` / `package.json`。
 
 `README.md` 里链到 `design.md`，所以 `design.md` 必须在包里，不然装完那个链接是死的；`AGENTS.md` 同理（它写的是「改界面前先读 design.md」这条规矩）。
 
