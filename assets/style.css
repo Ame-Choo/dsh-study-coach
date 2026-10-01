@@ -254,6 +254,27 @@ html[data-theme="dark"] .pill.hot { color: var(--hl-text); }
 .card.stale b { color: var(--warn); }
 .card.stale .hint { margin-top: 6px; color: var(--dim); font-size: 13px; }
 
+/* ── 体检卡 ───────────────────────────────────────────────────────────────
+   三档用「左边一条竖线」区分，不靠底色块堆；每档的标题旁挂计数与一句说明。 */
+.card.health { padding-bottom: 11px; }
+.hd-sec + .hd-sec { margin-top: 13px; }
+.hd-sec > h3 {
+  display: flex; align-items: baseline; gap: 7px;
+  margin: 0 0 7px; font-size: 13px; font-weight: 660; letter-spacing: .2px;
+}
+.hd-sec > h3 > .dim { font-weight: 500; font-variant-numeric: tabular-nums; }
+.hd-sec > h3 > em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 400; color: var(--dim); }
+.hd-sec.bad > h3 { color: var(--bad); }
+.hd-sec.warn > h3 { color: var(--warn); }
+.hd-sec.ok > h3 { color: var(--ok); }
+.hd-list li { align-items: flex-start; gap: 9px; }
+.hd-list li .mat-main { min-width: 0; }
+.hd-list li .dim { margin: 3px 0 0; font-size: 13px; line-height: 1.55; }
+.hd-sec.bad .hd-list li { border-left: 2px solid var(--bad); padding-left: 9px; }
+.hd-sec.warn .hd-list li { border-left: 2px solid var(--warn); padding-left: 9px; }
+.hd-sec.ok .hd-list li { border-left: 2px solid var(--line-2); padding-left: 9px; }
+html[data-mode="sidebar"] .hd-sec > h3 > em { display: none; }
+
 .card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-head h2 {
   font-size: 15px; font-weight: 660; margin: 0; flex: 1; letter-spacing: .2px;

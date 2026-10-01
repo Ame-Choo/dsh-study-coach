@@ -50,6 +50,7 @@ const ROUTES = [
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
 const MARKS = [
   ['probeCapabilities', '能力探测'],
+  ['healthCard', '体检卡'],
   ['resolvePage', '分页面'],
   ['chatCard', '对话页'],
   ['openFirstCard', '侧栏自动展开'],

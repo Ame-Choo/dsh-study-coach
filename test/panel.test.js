@@ -693,6 +693,36 @@ test('服务端是旧代码时，面板把话说清楚，而不是让人对着�
   assert.match(today.html(), /data-act="task-toggle"/)
 })
 
+test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都说得出为什么', async () => {
+  // 服务端都是新的：没有「挡路的」这一档，剩下的都是能自己修的
+  const ok = await boot(fixture())
+  assert.match(ok.html(), /class="card health"/)
+  assert.match(ok.html(), /件该修的/)
+  assert.match(ok.html(), /学习目标还缺 3 项/)
+  assert.match(ok.html(), /minutesPerDay/)
+  assert.match(ok.html(), /顺手能做的/)
+  assert.doesNotMatch(ok.html(), /挡路的/, '服务端是新的就不该有挡路那一档')
+  assert.doesNotMatch(ok.html(), /class="hd-sec bad"/)
+  // 每条都配一个能点回去的地方
+  assert.match(ok.html(), /data-nav="materials"/)
+
+  // 服务端是旧的：升成「挡路的」，并且逐条写清是哪一样、坏在哪儿
+  const stale = await boot(fixture(), { stale: true })
+  assert.match(stale.html(), /件挡路的/)
+  assert.match(stale.html(), /class="hd-sec bad"/)
+  assert.match(stale.html(), /服务端还是旧代码，11 处点下去会 404/)
+  assert.match(stale.html(), /学生画像——能力页的画像卡/)
+  assert.match(stale.html(), /记忆卡——工具页的记忆卡/)
+  assert.match(stale.html(), /重启 DSH/)
+
+  // 挡路那条不给「去看」按钮：这个学生自己点不回去，只能重启
+  const body = stale.html()
+  const badStart = body.indexOf('hd-sec bad')
+  const badEnd = body.indexOf('hd-sec warn')
+  assert.ok(badStart > 0 && badEnd > badStart, '挡路的要排在前面')
+  assert.doesNotMatch(body.slice(badStart, badEnd), /data-nav=/)
+})
+
 /** 「今天」那栏的多科目版本：两门课各一条，服务端把链接都算好了。 */
 function agendaFixture() {
   const date = new Date().toISOString().slice(0, 10)

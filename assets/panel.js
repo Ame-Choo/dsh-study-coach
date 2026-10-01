@@ -50,17 +50,17 @@ const BACK_HINT = '本页仅供查看。修改学习目标、登记材料、重�
 let capabilities = null
 
 const STALE_NEED = [
-  ['ability', '总体能力判断'],
-  ['archive', '每级掌握档案'],
-  ['student', '学生画像'],
-  ['library', '学习目标库'],
-  ['practice', '做题页'],
-  ['mistakes', '错题本'],
-  ['review', '今日复盘图'],
-  ['shelf', '资料书架'],
-  ['toolbox', '工具栏目'],
-  ['memory', '记忆卡'],
-  ['file', '打开网课 / 讲义'],
+  ['ability', '总体能力判断', '能力页那张总评卡'],
+  ['archive', '每级掌握档案', '点「档案」看单个单元的明细'],
+  ['student', '学生画像', '能力页的画像卡'],
+  ['library', '学习目标库', '档案页切目标、新建目标'],
+  ['practice', '做题页', '「做题」那一整页'],
+  ['mistakes', '错题本', '错题本卡和每条的「再练」'],
+  ['review', '今日复盘图', '今天页那张图'],
+  ['shelf', '资料书架', '资料页的书架'],
+  ['toolbox', '工具栏目', '工具页'],
+  ['memory', '记忆卡', '工具页的记忆卡'],
+  ['file', '打开网课 / 讲义', '任务里所有「打开」按钮'],
 ]
 
 let state = null
@@ -412,21 +412,175 @@ async function fileAlive() {
   }
 }
 
-/** 缺了哪几样。全都在就是 null。 */
-function staleMissing() {
-  if (!capabilities) return null
-  const miss = STALE_NEED.filter(([key]) => !capabilities[key]).map(([, label]) => label)
-  return miss.length ? miss : null
+/**
+ * 体检：把「现在有什么不对」分成三档摊开，别只报一句「404」。
+ *
+ * 学生打开面板想知道的是「我该干什么」，不是「哪条路由没注册」。所以每条都写成
+ * 「哪儿不对 + 为什么 + 怎么修」，能点的还挂一颗按钮直接过去。
+ *
+ * 三档的分法：
+ *   挡路的（bad）——这件事不做，页面上有一整块是坏的；
+ *   该修的（warn）——不挡路，但拖着迟早出事（地图没定稿、材料没通读、证据兑不上）；
+ *   顺手能做的（ok）——现在不做也没什么，做了下一节会顺一点。
+ */
+function healthReport() {
+  const blockers = []
+  const warn = []
+  const tips = []
+  const map = (state && state.map) || {}
+  const profile = (state && state.profile) || {}
+  const modules = Array.isArray(map.modules) ? map.modules : []
+  const points = modules.flatMap((m) => (Array.isArray(m.points) ? m.points : []))
+  const materials = Array.isArray(profile.materials) ? profile.materials : []
+  const byMaterial = ((state && state.analysis && state.analysis.byMaterial) || {})
+  const masteryPoints = ((state && state.mastery && state.mastery.points) || {})
+  const target = Number(profile.minutesPerDay) || 0
+
+  // ── 挡路的：服务端旧代码 ───────────────────────────────────────────────
+  if (capabilities) {
+    const miss = STALE_NEED.filter(([key]) => !capabilities[key])
+    if (miss.length) {
+      blockers.push({
+        title: `服务端还是旧代码，${miss.length} 处点下去会 404`,
+        hint:
+          miss.map(([, label, where]) => `${label}——${where}`).join('；') +
+          '。页面内容是从磁盘现读的，所以看着是新版；路由在 DSH 启动时加载，换不掉。重启 DSH 就都回来了。这段时间要用，直接在对话里跟教练说。',
+      })
+    }
+  }
+
+  // ── 该修的 ─────────────────────────────────────────────────────────────
+  if (modules.length && map.status !== 'confirmed') {
+    warn.push({
+      title: '知识地图还是草稿',
+      hint: '没念给学生确认过。地图错了，后面排的任务和记的掌握度全落在错的地方——念一遍，他认可了再定稿。',
+      nav: ['map', '去看地图'],
+    })
+  }
+
+  if (Object.keys(profile).length) {
+    const gaps = []
+    if (!String(profile.outcome || '').trim()) gaps.push('要掌握到什么程度（outcome）')
+    if (!String(profile.deadline || '').trim()) gaps.push('最晚哪天（deadline）')
+    if (!target) gaps.push('每天能学多久（minutesPerDay）')
+    if (gaps.length) {
+      warn.push({
+        title: `学习目标还缺 ${gaps.length} 项`,
+        hint: `${gaps.join('、')}。${target ? '' : '没有分钟数就只能靠猜着排任务。'}在对话里跟教练说一声，让他补上。`,
+      })
+    }
+  }
+
+  const unread = materials.filter((m) => !byMaterial[m.id])
+  if (unread.length) {
+    warn.push({
+      title: `${unread.length} 份材料登记了但没通读`,
+      hint: `${
+        unread.map((m) => m.title || m.id).slice(0, 3).join('、')
+      }${unread.length > 3 ? ' 等' : ''}。没通读就排作业，页码、题号多半对不上，学生一打开就发现是错的。`,
+      nav: ['materials', '去资料页'],
+    })
+  }
+
+  if (student && Array.isArray(student.orphans) && student.orphans.length) {
+    warn.push({
+      title: `学生画像里 ${student.orphans.length} 条判断引的证据找不到了`,
+      hint: '多半是地图重画换了单元号，或者那条证据被删了。不是坏事，但得核一下——在对话里让教练重新挂证据，或者删掉这条判断。',
+      nav: ['ability', '去能力页'],
+    })
+  }
+
+  const day = todayTasks()
+  const planned = day.reduce((n, t) => n + (Number(t.minutes) || 0), 0)
+  if (target && planned > target) {
+    warn.push({
+      title: `今天的任务排了 ${planned} 分钟，比每天能学的多 ${planned - target} 分钟`,
+      hint: '排多了的结果通常是一条都不做。让教练砍掉几条，或者把其中一条挪到明天。',
+      nav: ['today', '去看今天'],
+    })
+  }
+
+  const pending = mistakes && Number(mistakes.byStatus && mistakes.byStatus['待验证'])
+  if (pending >= 3) {
+    warn.push({
+      title: `错题本上有 ${pending} 道还挂着「待验证」`,
+      hint: '订正了不等于会了。挑一两道隔几天重做一遍，做对了再标「已复做对」——不然这个本子只会越堆越长。',
+      nav: ['ability', '去错题本'],
+    })
+  }
+
+  // ── 顺手能做的 ─────────────────────────────────────────────────────────
+  if (Object.keys(profile).length && !materials.length) {
+    tips.push({
+      title: '一份材料都还没登记',
+      hint: '把教辅、网课目录丢进对话里。材料登记完才有地图、才有能落到页码的任务。',
+      nav: ['materials', '去资料页'],
+    })
+  }
+
+  const noPractice = points.filter((p) => !String(p.practice || '').trim()).length
+  if (points.length && noPractice) {
+    tips.push({
+      title: `${noPractice} 个单元还没挂练习材料`,
+      hint: '挂上之后做题页才有「按页直达」，点一下直接翻到那一页。',
+      nav: ['map', '去看地图'],
+    })
+  }
+
+  const touched = Object.values(masteryPoints).filter((p) => p && (p.evidence || []).length).length
+  if (points.length && !touched) {
+    tips.push({
+      title: '一条掌握度证据都还没记',
+      hint: '让他做几道题，判完记一条。没有证据，能力页和复盘图都是空的。',
+    })
+  }
+
+  if (memory && Number(memory.dueTotal) > 0) {
+    tips.push({
+      title: `今天有 ${memory.dueTotal} 张记忆卡到点了`,
+      hint: '按艾宾浩斯排的，到点过一次再往后推。翻卡片这活儿他自己做，别替他自评。',
+      nav: ['toolbox', '去背'],
+    })
+  }
+
+  return { blockers, warn, tips }
 }
 
-/** 服务端是旧代码时的横幅：先说清为什么，再给一条能走的路。 */
-function staleCard() {
-  const miss = staleMissing()
-  if (!miss) return ''
-  return `<section class="card stale">
-    <div><b>服务端还是旧代码</b>：${esc(miss.join('、'))} 这几样点下去会 404。</div>
-    <div class="hint">页面内容直接从磁盘读取，因此显示为新版；路由在 DSH 启动时加载，无法热更新。
-    重启 DSH 后即可全部恢复。此期间如需使用，请在对话中提出，由教练代为处理。</div>
+/** 体检卡。三档都空就不出这张卡。 */
+function healthCard() {
+  const { blockers, warn, tips } = healthReport()
+  const sections = [
+    ['挡路的', 'bad', blockers, '这几样不修，页面上有一整块是坏的'],
+    ['该修的', 'warn', warn, '不挡路，但拖着迟早出事'],
+    ['顺手能做的', 'ok', tips, '现在不做也没什么'],
+  ].filter(([, , list]) => list.length)
+  if (!sections.length) return ''
+
+  const body = sections
+    .map(([label, cls, list, note]) => {
+      const rows = list
+        .map(
+          (item) => `<li class="hd-item">
+        <div class="mat-main"><b>${esc(item.title)}</b><p class="dim">${esc(item.hint || '')}</p></div>
+        ${item.nav ? `<button class="mini" data-nav="${esc(item.nav[0])}">${esc(item.nav[1])}</button>` : ''}
+      </li>`,
+        )
+        .join('')
+      return `<div class="hd-sec ${cls}">
+      <h3>${label}<span class="dim">${list.length}</span><em>${note}</em></h3>
+      <ul class="list tight hd-list">${rows}</ul>
+    </div>`
+    })
+    .join('')
+
+  const head = blockers.length
+    ? `${blockers.length} 件挡路的`
+    : warn.length
+      ? `${warn.length} 件该修的`
+      : '没有挡路的问题'
+  return `<section class="card health">
+    <div class="card-head"><h2>体检</h2><span class="dim">${head}</span></div>
+    ${body}
   </section>`
 }
 
@@ -790,7 +944,7 @@ function render() {
   app.className = ''
   app.innerHTML = `
     ${topBar()}
-    ${staleCard()}
+    ${healthCard()}
     ${page === 'home' ? homePage() : `${page === 'toolbox' ? toolMenu() : ''}${pageCards()}`}
     ${archiveModal()}
     ${floatChat()}
