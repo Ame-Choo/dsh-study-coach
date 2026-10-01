@@ -26,7 +26,11 @@ const ROUTES = [
   ['/study/api/library', '学习目标库'],
   ['/study/api/archive?level=group&key=', '每级档案'],
   ['/study/practice', '做题页'],
+  ['/study/read', '读卷页'],
   ['/study/file?path=', '打开文件'],
+  // /study/api/doc 空参数回的是 {ok:false,error:{code:'not-found'}}，不是 unknown study route，
+  // 所以它能分清新旧：旧代码根本没有这条路由。
+  ['/study/api/doc?path=', '读正文'],
   // 下面这几条是「分页面 + 多科目 + 对话页 + 错题本 + 复盘图」那几批，最容易漏判：
   ['/study/today', '子页面'],
   ['/study/api/tasks?all=1', '多科目'],
@@ -90,6 +94,16 @@ for (const port of ports) {
     )
   } catch {
     /* 面板都没起来，上面那排已经说明了 */
+  }
+  // 读卷页那套是独立文件，探一下它的记号在不在
+  try {
+    const rd = await (await fetch(base + '/study/assets/read.js')).text()
+    const ok = rd.includes('renderMarkdown')
+    if (!ok) bad += 1
+    console.log(`  静态资源：read.js ${rd.length} 字节，${ok ? '记号齐全（新读卷页）' : '缺 renderMarkdown（旧文件）'}`)
+  } catch {
+    bad += 1
+    console.log('  静态资源：read.js 取不到（旧代码里没有这一页）')
   }
 }
 

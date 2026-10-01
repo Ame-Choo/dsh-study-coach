@@ -17,6 +17,7 @@ try {
 }
 
 import { STAGES, STAGE_COLOR } from './stages.js'
+import { openPath } from './urls.js'
 
 /* 与 lib/store.js 的 MISTAKE_STATUS 同序：待验证 → 已订正 → 已复做对 */
 const MISTAKE_STATUS = ['待验证', '已订正', '已复做对']
@@ -1170,8 +1171,7 @@ function openMaterial(kind, point) {
   const target = String(point.video || '').trim()
   if (target) {
     if (capabilities && !capabilities.file) return toast('打开文件这条路还没上线（服务端是旧代码，重启 DSH）', true)
-    const url = /^https?:\/\//i.test(target) ? target : '/study/file?path=' + encodeURIComponent(target)
-    openUrl(url)
+    openUrl(openPath(target))
     return
   }
   const name = `${point.id} ${point.title || ''}`.trim()
@@ -1903,7 +1903,7 @@ function taskView(t) {
   const addLink = (kind, label, raw) => {
     const value = String(raw || '').trim()
     if (!value) return
-    links.push({ kind, label, url: /^https?:\/\//i.test(value) ? value : '/study/file?path=' + encodeURIComponent(value) })
+    links.push({ kind, label, url: openPath(value) })
   }
   const watching = String(t.kind || '') === 'watch'
   // 看课为主线：先看，再去做练习。顺序反了学生一点就跳过课直接做题。
@@ -2051,7 +2051,7 @@ function renderShelfRow(s) {
     ? `<div class="row-acts">
         ${
           s.file
-            ? `<a class="mini" href="/study/file?path=${encodeURIComponent(s.path)}" target="_blank" rel="noopener">打开这份卷</a>`
+            ? `<a class="mini" href="${esc(openPath(s.path))}" target="_blank" rel="noopener">打开这份卷</a>`
             : '<span class="dim">正文文件不在了</span>'
         }
         ${

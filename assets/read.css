@@ -1,0 +1,158 @@
+/* 读卷页。通用变量、card、button、toast 都在 style.css 里，这里只管这页自己的东西。
+   字号/间距/圆角一律照 design.md，别在这页另起一套。
+
+   这一页的正文来自 assets/md.js —— 那边的类名都以 md- 开头，跟这里的一起用。 */
+
+/* 单栏长文，版心跟做题页一样收在 900（style.css 那条 1160 是给面板两栏用的）。 */
+html[data-mode="browser"] #app { max-width: 900px; }
+html[data-mode="sidebar"] #app { padding: var(--sp-3) var(--sp-3) 40px; }
+html[data-mode="sidebar"] .card { padding: var(--sp-3); margin-bottom: var(--sp-2); }
+
+.rd-head {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  margin: var(--sp-1) 2px var(--sp-3);
+}
+.rd-head .cardish { flex: 1; min-width: 0; }
+.back {
+  font-size: var(--fs-label); color: var(--dim); text-decoration: none;
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; flex: none;
+}
+.back:hover { color: var(--accent); border-color: var(--accent); }
+.crumb { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--dim); flex: 1; min-width: 0; }
+.crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb i { font-style: normal; opacity: .45; flex: none; }
+.rd-kind {
+  font-size: var(--fs-label); padding: 2px 10px; border-radius: var(--radius-pill); flex: none;
+  color: var(--accent); border: 1px solid var(--accent);
+}
+
+/* 卡头跟面板一致：var(--fs-title) + 一条 3×14px accent 竖条
+   （panel.js 那边是 .card-head h2，做题页是 .card h2，三边同一套） */
+.card h2 {
+  font-size: var(--fs-title); font-weight: 600; color: var(--ink); line-height: var(--lh-title);
+  margin: 0 0 var(--sp-3); display: flex; align-items: center; gap: var(--sp-2);
+}
+.card h2::before {
+  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--accent); flex: none;
+}
+.btn { font-size: var(--fs-sm); padding: 7px 13px; }
+.btn.ghost { cursor: default; }
+
+/* ── 顶上一排能跳的地方 ──────────────────────────────────────────────────── */
+.rd-nav { padding: var(--sp-3); margin-bottom: var(--sp-3); }
+.rd-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rd-row + .rd-row { margin-top: var(--sp-2); }
+.rd-row b {
+  font-size: var(--fs-label); font-weight: 600; color: var(--faint);
+  flex: none; min-width: 30px;
+}
+.rd-row a {
+  font-size: var(--fs-label); color: var(--dim); text-decoration: none;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 2px 9px; background: var(--card-2);
+}
+.rd-row a:hover { color: var(--accent); border-color: var(--accent); }
+.rd-row a.sec { border-style: dashed; }
+
+/* ── 正文 ────────────────────────────────────────────────────────────────── */
+/* 版心再收一道：一行的字数一多，题面就读串行 */
+.rd-doc { padding: var(--sp-5) var(--sp-6); }
+.rd-doc > *:first-child { margin-top: 0; }
+.rd-doc > *:last-child { margin-bottom: 0; }
+
+.md-p { margin: 0 0 var(--sp-3); font-size: var(--fs-body); line-height: 1.75; color: var(--text); }
+.md-p b { color: var(--ink); font-weight: 600; }
+.md-p code, .md-list code, .md-table code, .md-quote code {
+  font-family: var(--font-mono); font-size: .92em;
+  background: var(--input); border-radius: 4px; padding: 1px 5px;
+}
+.md-doc a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+.md-doc a:hover { border-bottom-color: var(--accent); }
+
+/* 标题。题号那一条（h2 的「第 N 题」）刻意比别的重，扫一眼就知道题从哪儿起。 */
+.rd-doc h1, .rd-doc h2, .rd-doc h3, .rd-doc h4, .rd-doc h5, .rd-doc h6 {
+  color: var(--ink); line-height: var(--lh-title); font-weight: 600;
+  margin: var(--sp-5) 0 var(--sp-2); scroll-margin-top: var(--sp-6);
+}
+.rd-doc h1 { font-size: var(--fs-title); }
+.rd-doc h2 {
+  font-size: var(--fs-sub); display: flex; align-items: center; gap: var(--sp-2);
+  padding-top: var(--sp-3); border-top: 1px solid var(--line);
+}
+.rd-doc h2::before {
+  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--accent); flex: none;
+}
+.rd-doc h3 { font-size: var(--fs-body); }
+.rd-doc h4, .rd-doc h5, .rd-doc h6 { font-size: var(--fs-sm); color: var(--dim); }
+
+/* 题号锚点：从做题页跳过来（/study/read?path=…#q3）会闪一下，好知道落哪了 */
+.rd-doc [id^="q"]:target, .rd-doc [id^="sec"]:target {
+  animation: rd-flash 1.4s ease-out 1;
+}
+@keyframes rd-flash {
+  from { background: var(--hl); box-shadow: 0 0 0 6px var(--hl); }
+  to { background: transparent; box-shadow: 0 0 0 6px transparent; }
+}
+
+.rd-doc .md-list { margin: 0 0 var(--sp-3); padding-left: 1.4em; }
+.rd-doc .md-list ol, .rd-doc .md-list ul { margin: 0; padding-left: 1.2em; }
+.rd-doc .md-list li { font-size: var(--fs-body); line-height: 1.75; margin-bottom: 4px; }
+.rd-doc .md-list li.md-sub { font-size: var(--fs-sm); color: var(--dim); }
+.rd-doc .md-list li > b { color: var(--ink); font-weight: 600; }
+/* 选项排成一列，别跟着文字流挤成一坨 */
+.rd-doc .md-list li { scroll-margin-top: var(--sp-6); }
+
+.rd-doc .md-quote {
+  margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--accent-soft); background: var(--card-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--fs-sm); color: var(--dim); line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+}
+.rd-doc .md-hr { border: none; border-top: 1px solid var(--line); margin: var(--sp-4) 0; }
+
+.rd-doc .md-code {
+  margin: 0 0 var(--sp-3); padding: var(--sp-3);
+  background: var(--input); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.rd-doc .md-code code { font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.65; color: var(--text); }
+
+.rd-doc .md-table-wrap { margin: 0 0 var(--sp-3); overflow-x: auto; }
+.rd-doc .md-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+.rd-doc .md-table th, .rd-doc .md-table td {
+  border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top;
+}
+.rd-doc .md-table th { background: var(--card-2); color: var(--ink); font-weight: 600; }
+
+/* 答案折起来。summary 做成一颗按钮样的东西，点开才见到答案。 */
+.rd-doc .md-answer {
+  margin: var(--sp-4) 0; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card-2); padding: 0 var(--sp-3);
+}
+.rd-doc .md-answer > summary {
+  cursor: pointer; list-style: none; padding: var(--sp-2) 0;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--accent);
+  display: flex; align-items: center; gap: 6px;
+}
+.rd-doc .md-answer > summary::-webkit-details-marker { display: none; }
+.rd-doc .md-answer > summary::before { content: "▸"; flex: none; transition: transform .15s; }
+.rd-doc .md-answer[open] > summary::before { transform: rotate(90deg); }
+.rd-doc .md-answer > summary::after {
+  content: "（先自己做，做完再掀）"; font-weight: 400; color: var(--faint); font-size: var(--fs-label);
+}
+.rd-doc .md-answer[open] > summary::after { content: ""; }
+.rd-doc .md-answer > *:last-child { margin-bottom: var(--sp-3); }
+
+/* 截断提示 */
+.rd-cut {
+  margin-bottom: var(--sp-3); padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warn); border-radius: var(--radius-sm);
+  font-size: var(--fs-sm); color: var(--dim);
+}
+.rd-cut b { color: var(--warn); }
+
+.rd-foot .quick { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.rd-foot p { margin: 0 0 var(--sp-3); font-size: var(--fs-sm); color: var(--dim); }

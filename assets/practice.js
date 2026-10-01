@@ -7,6 +7,7 @@
  *   3. 做完自己评个档位，直接落到掌握度上。
  */
 import { STAGE_COLOR, STAGES } from './stages.js'
+import { openPath } from './urls.js'
 
 const api = async (path, body) => {
   const res = await fetch(path, body
@@ -33,13 +34,11 @@ function toast(text) {
   toast.timer = setTimeout(() => { box.classList.remove('show') }, 2600)
 }
 
-/** 本地文件走 /study/file，http 链接直接开。给了页码就带 #page=N，PDF 阅读器会翻到那一页。 */
+/** 转成面板能开的地址。规则只有一处（assets/urls.js）：
+ *  讲义、AI 出的卷子（.md）进读卷页（按面板版式摊开，题号还能直接跳），
+ *  PDF、视频走 /study/file，给了页码就带 #page=N。 */
 function openLink(target, page) {
-  const t = String(target || '').trim()
-  if (!t) return ''
-  const base = /^https?:\/\//i.test(t) ? t : '/study/file?path=' + encodeURIComponent(t)
-  const n = Number(String(page ?? '').replace(/\D/g, ''))
-  return n > 0 ? base + '#page=' + n : base
+  return openPath(target, page)
 }
 
 let data = null

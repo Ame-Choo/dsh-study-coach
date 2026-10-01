@@ -442,8 +442,11 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 | --- | --- |
 | `assets/style.css` | 面板全部样式。顶部的 `:root` 是唯一的变量来源 |
 | `assets/practice.css` | 做题页。只写这一页特有的东西，其余继承 `style.css` |
+| `assets/read.css` | 读卷页（AI 出的卷子、`.md` / `.txt`）。同上，且**一条 `var(--x, 兜底值)` 都不写**，全用裸 token |
 | `assets/graph.css` | 知识图谱（SVG 内部无法用 CSS 变量的地方才写死，并留注释） |
 | `design.md` | 就是这一份（放仓库根目录，不在 assets 里） |
 
 改完配色或刻度要一起动的三处：`style.css` 的 `:root`、`html[data-theme="dark"]`、
 以及 `practice.css` / `graph.css` 里那些 `var(--x, 兜底色)` 的兜底值。
+（`read.css` 不在这三处里——它刻意一个兜底值都不写，`test/mirrors.test.js` 那条
+「兜底值必须跟 `:root` 逐字相同」的守卫对它无事可做，也少一处以后会漂的地方。）

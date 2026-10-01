@@ -194,9 +194,11 @@ test('AI 出的卷子在做题页跟教辅平级：它没有页图，from/to 是
   assert.match(html, /1—3 题 · 习题/, 'AI 卷的单位是「题」不是「页」')
   assert.match(html, /class="hit ai"/)
 
-  // 它的 from/to 是题号，点题号开的是那份卷，而不是一个根本不存在的页图
+  // 它的 from/to 是题号，点题号开的是那份卷，而不是一个根本不存在的页图。
+  // 正文是 .md，所以走读卷页（按面板版式摊开），不是把 markdown 源码倒给他看。
   const ai = html.slice(html.indexOf('class="hit ai"'))
-  assert.ok(ai.includes('/study/file?path=C%3A%5Cdata%5Cai%5CM1.4-'), 'AI 卷的题号要链到正文那份 md')
+  assert.ok(ai.includes('/study/read?path=C%3A%5Cdata%5Cai%5CM1.4-'), 'AI 卷的题号要链到读卷页那份 md')
+  assert.doesNotMatch(ai, /\/study\/file\?path=/, 'AI 卷不该再走 /study/file 倒源码')
   assert.doesNotMatch(ai, /pg-btn off/, 'AI 卷不该出现「没拆出来」的灰按钮')
 })
 

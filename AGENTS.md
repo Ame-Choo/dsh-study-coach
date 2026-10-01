@@ -6,7 +6,7 @@
 一个动作绿）、字号表与字重阶梯、间距刻度、组件（按钮 / 卡片 / 导航栏 / 表单 / 标签 / 列表 /
 进度条 / 空态，每块都带能直接抄的 CSS）、层次与阴影、Do/Don't。
 
-写新页面、或者动 `assets/style.css` / `assets/practice.css` / `assets/graph.css` 之前：
+写新页面、或者动 `assets/style.css` / `assets/practice.css` / `assets/read.css` / `assets/graph.css` 之前：
 
 1. 先读 `design.md`。
 2. 色值、字号、字重、行高、间距、圆角一律照它的表来。**别现编一个 15.5px、7px 圆角或者

@@ -223,7 +223,7 @@ node --test
 | `lib/pages.js`、`lib/build-pages.mjs` | 把扫描版 PDF 一页一张渲成 `p0007.png`；拆书走子进程，免得把面板进程僵住 |
 | `lib/preset.js` | 「学习教练」这个 agent 预设的定义（直接 `agentPresets.register`，不走 patch） |
 | `lib/panel-server.js` | 插件自己起的那个本地小服务器，绕开 DSH 内嵌浏览器「不许开 DSH 自己」的限制 |
-| `assets/` | 面板 `panel.*`、做题页 `practice.*`、图谱 `graph.*`、六档表 `stages.js`、启动规则 `boot.js` |
+| `assets/` | 面板 `panel.*`、做题页 `practice.*`、读卷页 `read.*`、图谱 `graph.*`、六档表 `stages.js`、URL 规则 `urls.js`、小 markdown 渲染器 `md.js`、启动规则 `boot.js` |
 
 `assets/` 那一摊的规矩写在 [design.md](design.md) 里，**动 CSS 或新写页面之前先读它**。
 
@@ -769,13 +769,29 @@ prompt 里带了四步收尾指令，最后一步是「告诉他去资料页书�
 「资料页和做题页联动」落到两处：
 
 - 进去的路：AI 行上每个单元一颗「按 M1.4 做题」→ `/study/practice?point=M1.4`。
-- 出来的路：做题页「按页直达」里，同一节的教辅和 AI 卷并排——教辅给 `第 10 页`，AI 卷给 `第 1 题`，点题号直接打开那份 `.md`。上面那张「材料对应位置」也会列 AI 卷，带一颗 `AI 出题` 标签。
+- 出来的路：做题页「按页直达」里，同一节的教辅和 AI 卷并排——教辅给 `第 10 页`，AI 卷给 `第 1 题`，点题号直接**打开读卷页**（下一节）。上面那张「材料对应位置」也会列 AI 卷，带一颗 `AI 出题` 标签。
 
 「材料对应位置」这个标题原来叫「教辅对应位置」——加了 AI 卷之后就不准了：学生看到「第 1 章 随堂小测 · M1.4」会以为那也是一本教辅。
 
 #### 六、测试
 
 `test/store.test.js` 的类别校验（`textbook` 被拒且不落盘、`ai` 落盘且 `path` 为空）、`test/tools.test.js` 的 `study_material` 校验、`test/panel.test.js` 的书架分组与 AI 入口（挑类型 / 挑单元 / 递一句话，断言打的是 `/study/api/practice/ask` 而不是别的）、`test/practice-ui.test.js` 的两条（按页直达里的 AI 行用「题」；材料对应位置认出 AI 卷、不写「仅能打开整份 PDF」）。
+
+## 补：读卷页 —— AI 生成的东西按面板排版摊开
+
+原先的毛病：AI 出一份卷子，正文是 `.md`，面板上点开走的是 `/study/file`——浏览器把 markdown **当纯文本倒出来**，`## 第 3 题`、`**|2A|**` 原样露着，跟这个 web 的版式毫无关系。学生要看的是一份卷子，不是一份源码。
+
+现在 `.md` / `.markdown` / `.txt` 一律走**读卷页** `/study/read?path=…`，其余（PDF、视频、文件夹）照旧 `/study/file`。判据只有一处：
+
+- `assets/urls.js` 是这条规则的**唯一实现**。`openPath(target, page)` 决定一个材料路径该往哪儿开：文档 → 读卷页（`page` 变成 `#qN`），其它 → `/study/file` 拼 `#page=N`，`http(s)` 和站内路径原样放行。宿主那半边按 `lib/urls.js`（一行 `export * from '../assets/urls.js'`）引同一份。
+- 接线三处：面板的资料卡与 AI 卷按钮（`assets/panel.js`）、做题页的 `openLink()`（`assets/practice.js`）、任务按钮（`lib/map.js` 的 `taskLinks()`）。**再要有第四处，先想清楚为什么不能走 `openPath`。**
+- `assets/md.js` 是渲染器，不是通用 markdown 实现：标题 → `hN` 并生成侧栏目录；`第 N 题` / `N.` / `N、` / `**N.**` 都认，认出来的题号会钉一个 `id="qN"`，页面顶上自动长出一排「第 N 题」按钮；`## 参考答案`（`参考解答`/`解答`/`解析` 同）整节折进 `<details>`，**点开之前看不见**；表格、引用、代码块、分隔线都画。不认 LaTeX、HTML、嵌套列表。**先转义再替换**，`<img src=x onerror=…>` 只会成一行字面量。
+- 页面 `assets/read.html` + `read.js` + `read.css`，版式照 `design.md`（版心 900、卡头那条 accent 竖条、`practice.css` 的同款规矩）。页尾留一颗「看原文」通向 `/study/file`，想读源码的时候有路。
+- 服务端 `GET /study/api/doc?path=…`（`lib/handler.js`）：只在**已登记材料**范围内（复用 `allowedTarget`），非文件 → 400 `not-file`，后缀不在 `.md/.markdown/.txt` → 415 `not-text`，超 `MAX_DOC_BYTES`（512 KB）截断并回 `truncated: true`（读的时候只读到上限，不整份进内存）。
+
+`test/md.test.js`（渲染器 12 条）、`test/read.test.js`（服务端 8 条）、`test/read-ui.test.js`（页面 7 条）钉住它；`scripts/check-live.mjs` 多了 `/study/read`、`/study/api/doc?path=` 两条探针和一次 `read.js` 记号检查，好分辨「新页面配旧路由」这种状态。
+
+写卷子的格式约定在 `skills/study-coach/SKILL.md`「卷子写成什么格式，面板才画得好看」那一节——**那是给 agent 看的**，它决定学生在读卷页上看到什么。
 
 ## 补：学生画像 —— 结论要能追回到哪一次
 
