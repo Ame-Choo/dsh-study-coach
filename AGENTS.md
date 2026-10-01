@@ -210,9 +210,19 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
   在 `resolvePage()` 的 `alias` 表里指到活着的页上，并在 `test/pages-consistency.test.js` 的 `LEGACY_PAGES` 里写清为什么留着。
 - 抬头复用今日任务那套 `.day-hero`（眉标 `MATERIAL GRAPH · 资料图谱`、`.day-pill` 写「N 份材料 ·
   覆盖 x/y 个单元」、`.day-gauge` 的 `aria-label="材料覆盖度 P%"`）——**复盘图那套版式是这一族的唯一版式**。
-- 大类/模块/单元三级：`.atlas-group` / `.atlas-mod` / `li.atlas-unit`，字母块 `.atlas-tag` 对应材料筹码
-  （`atlas-pick`，字母 A…H）。没材料对上的单元加 `.miss` 并写「还没有材料对上」；`points` 为空的那几份
+- 大类/模块/单元三级：`.atlas-group` / `.atlas-mod` / `li.atlas-unit`，材料筹码 `.atlas-tag` 挂 `atlas-pick`
+  那一排。**材料一律写名字，不许退回 A/B/C**——一串字母看不出是哪本（用户原话：「教辅的名字要显示它的名字
+  而不是一串字母」）。行里放不下就走 `shortMatTitle()`（去年份、「新高考/高考/中考」、「数学」，超 11 字掐中间），
+  **全名永远留在 `title` 里**。没材料对上的单元加 `.miss` 并写「还没有材料对上」；`points` 为空的那几份
   收进末尾的 `.atlas-blank`，每份一颗「让教练标一遍」。
+- **两种分组由用户选**：`ui.atlasMode` 是 `'module'`（默认，一行一个模块；模块头后面挂这一模块对上它的材料，
+  下面才是它的单元）或 `'point'`（一行一个最小单元；不铺模块块，把大类下所有单元平铺）。开关是
+  `.chips.atlas-mode` 里两颗 `data-act="atlas-mode" data-mode=`，切的时候顺手清 `ui.atlasPages`。
+  **用户说的是「知识图谱可以依据模块和最小单元两种方式区分」，落地落在资料图谱这一页**（他随后纠正
+  「说错了，资料图谱」）——改的是这一页，不是知识地图页。
+- 单元行是 `46px minmax(0,1fr) auto` 三列；材料筹码那一列 `.atlas-covers` 封顶 56% 并允许折行，
+  **单元名用两行 clamp，宁可换行也别只剩「集合…」**。侧栏（`html[data-mode="sidebar"]`）只有两列，
+  筹码必须 `grid-column: 1 / -1` 挪到下一行，否则会掉进 42px 那格。
 - **转给教练只有一个出口**：`forwardToCoach({materialId, title, path, reason, annotate})`。
   `annotate: false` 是「读不动」的措辞，`true` 是「没标到单元上」的措辞——两套话都写在那一个函数里，
   别在其它地方再拼一遍。**同一份 + 同一个理由只投一次**（`acted` 表），否则刷新会刷出一串重复消息。

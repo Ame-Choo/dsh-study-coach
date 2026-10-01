@@ -1621,22 +1621,43 @@ test('学习页：选材料就看它覆盖了哪些单元；没标的交给教�
   assert.match(page.html(), /<span class="day-pill">3 份材料 · 覆盖 1\/2 个单元<\/span>/)
   assert.match(page.html(), /aria-label="材料覆盖度 50%"/)
 
-  // ② 三份材料各一个字母，默认全选；没标注的那份写出来
+  // ② 三份材料各写自己的名字（全名在筹码上，行里用短的那一截），不带字母；没标的写「未标」
   assert.equal((page.html().match(/data-act="atlas-pick" data-id=/g) || []).length, 3)
-  assert.match(page.html(), /A · 教辅 · 2 个单元/)
-  assert.match(page.html(), /C · 网课 · 还没标注/)
+  assert.match(page.html(), /<span class="mini-t">必修一<\/span><span class="mini-n">2<\/span>/)
+  assert.match(page.html(), /<span class="mini-t">一轮课程<\/span><span class="mini-n">未标<\/span>/)
+  assert.match(page.html(), /<span class="mini-t">随堂小测 · M1\.4（2026-10-01）<\/span><span class="mini-n">1<\/span>/)
+  assert.doesNotMatch(page.html(), /A · 教辅/, '材料不许再写成一串字母')
   assert.match(page.html(), /data-act="atlas-all">全选/)
 
-  // ③ 按大类 → 模块 → 单元摊开：M1.1 被两份材料对上，M1.2 还没有
+  // ③ 两种分组让人自己挑，默认按模块
+  assert.match(page.html(), /data-act="atlas-mode" data-mode="module"/)
+  assert.match(page.html(), /data-act="atlas-mode" data-mode="point"/)
+  assert.match(page.html(), /class="mini on" data-act="atlas-mode" data-mode="module"/)
+
+  // ④ 按模块：一行一个模块——模块头 + 覆盖量尺 + 对上这一块的材料筹码，底下才是它的单元
   assert.match(page.html(), /第一大块/)
   assert.match(page.html(), /<span class="atlas-mid">M1<\/span>/)
-  assert.match(page.html(), /1\/2<\/span>/)
+  assert.match(page.html(), /<span class="atlas-count">1\/2<\/span>/)
   assert.match(page.html(), /<li class="atlas-unit" data-act="atlas-point" data-point="M1\.1"/)
   assert.match(page.html(), /<li class="atlas-unit miss">/)
   assert.match(page.html(), /还没有材料对上/)
   assert.match(page.html(), /第二个单元/)
+  assert.match(page.html(), /<b class="atlas-tag" title="必修一 · 教辅">必修一<\/b>/)
+  const modCovers = page.html().match(/class="atlas-covers atlas-mod-covers">[\s\S]*?<\/div>/)[0]
+  assert.match(modCovers, /必修一/)
 
-  // ④ 取消「必修一」：这份夹具里只有它覆盖 M1.1，退了就没人对得上了
+  // ⑤ 换「按最小单元」：模块那一块撤掉，一个个单元平铺；切回去还是模块视图
+  await page.clickAct({ act: 'atlas-mode', mode: 'point' })
+  assert.match(page.html(), /class="mini on" data-act="atlas-mode" data-mode="point"/)
+  assert.doesNotMatch(page.html(), /class="atlas-mod"/, '按最小单元就别再铺模块块了')
+  assert.match(page.html(), /<span class="atlas-id">M1\.1<\/span>/)
+  assert.match(page.html(), /<span class="atlas-id">M1\.2<\/span>/)
+  assert.match(page.html(), /<b class="atlas-tag" title="必修一 · 教辅">必修一<\/b>/)
+  await page.clickAct({ act: 'atlas-mode', mode: 'module' })
+  assert.match(page.html(), /class="atlas-mod"/)
+  assert.doesNotMatch(page.html(), /class="mini on" data-act="atlas-mode" data-mode="point"/)
+
+  // ⑥ 取消「必修一」：这份夹具里只有它覆盖 M1.1，退了就没人对得上了
   await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
   assert.equal((page.html().match(/class="mini on" data-act="atlas-pick"/g) || []).length, 2)
   assert.match(page.html(), /覆盖 0\/2 个单元/)
@@ -1644,15 +1665,16 @@ test('学习页：选材料就看它覆盖了哪些单元；没标的交给教�
   assert.match(m11, /还没有材料对上/)
   assert.doesNotMatch(m11, /atlas-tag/, '没选中的材料不该算进覆盖')
 
-  // ⑤ 一份都没标的那份列在末尾，「让教练标一遍」把它投进对话
+  // ⑦ 一份都没标的那份列在末尾，「让教练标一遍」把它投进对话
   assert.match(page.html(), /还有 1 份没标到单元上/)
+  assert.match(page.html(), /<span class="atlas-kind">网课<\/span>/)
   await page.clickAct({ act: 'atlas-annotate', id: 'mat-video' })
   assert.equal(page.posts.at(-1).path, '/study/api/chat/send')
   assert.match(page.posts.at(-1).body.text, /资料没标到知识图谱，交给你/)
   assert.match(page.posts.at(-1).body.text, /F:\\课件\\一轮课程/)
   assert.match(page.boxes.get('toast').textContent, /让教练去标了/)
 
-  // ⑥ 点一个单元：问服务端它在各材料里第几页，就地铺开；再点收起
+  // ⑧ 点一个单元：问服务端它在各材料里第几页，就地铺开；再点收起
   await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
   await page.clickAct({ act: 'atlas-point', point: 'M1.1' })
   assert.ok(page.calls.some((c) => c === '/study/api/point/pages?point=M1.1'))

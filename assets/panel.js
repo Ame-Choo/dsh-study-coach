@@ -119,6 +119,8 @@ const ui = {
   /* 「学习」页选中的材料（null = 还没选过，进来默认全选）；点开的那个单元在各材料里的页码 */
   atlasPicked: null,
   atlasPages: null,
+  /* 「学习」页怎么分组：module = 一行一个模块（M1 一块），point = 一行一个最小单元（平铺） */
+  atlasMode: 'module',
   /* 「对话」页正看着哪个会话；空串 = 服务端替我挑最近那个 */
   chatSession: '',
   /* 正在发的话（发出后先乐观占位，等服务端日志追上再换成真的） */
@@ -2407,15 +2409,41 @@ function shelfCard() {
 /* ── 学习页（/study/atlas）：资料图谱 ──────────────────────────────────────
  *
  * 「哪些材料对上了哪些最小单元」——这句话只有跟知识地图摆在一起才有意义，所以
- * 这一页把 map 的三层（大类 / 模块 / 单元）摊开，每一行单元后面挂上覆盖它的材料。
+ * 这一页把 map 的层次摊开，每一级后面挂上覆盖它的材料。
+ *
+ * **摊到哪一级由学生自己挑**（`ui.atlasMode`）：`module` 一行一个模块（M1 一块，模块头
+ * 带覆盖量尺和这一模块的材料筹码，底下列它的单元行），`point` 一行一个最小单元
+ * （M1.1 / M1.2 … 平铺，不再分模块块）。前者看「哪几块还空着」，后者看「一个个单元
+ * 到底有没有东西」。
  *
  * 数据全是现成的：`state.map` 给单元清单，书架的每一份材料带 `points`（它的分析里
  * 出现过的 pointId 并集，教辅按页归的、网课按讲次归的都算）。所以这里**不新增任何
  * 服务端路由**——选了哪几份、覆盖到哪一级，全在客户端算。
  *
- * 一份材料一个字母（A/B/C…），跟图例对上；没标注的材料单独列出来，一颗按钮交给教练
- * 去标（这正是「agent 在最小单元上标注它的位置」那条要求的入口）。
+ * 材料在行里写**名字**（`shortMatTitle()` 去过前缀的那一截，全名在 `title` 里），不再用
+ * A/B/C——一串字母看不出是哪本。没标注的材料单独列出来，一颗按钮交给教练去标（这正是
+ * 「agent 在最小单元上标注它的位置」那条要求的入口）。
  */
+const MAT_KINDS = { book: '教辅', video: '网课', notes: '讲义', ai: 'AI 卷', past: '真题', other: '材料' }
+
+function matKind(m) {
+  return MAT_KINDS[(m && m.kind) || ''] || '材料'
+}
+
+/** 行里的筹码放不下全名：去掉年份、「数学」和那几样人人都有的前缀，留能区分的那一截；全名进 title。 */
+function shortMatTitle(title) {
+  const raw = String(title || '').replace(/\s+/g, '')
+  if (!raw) return '没名字的材料'
+  let t = raw
+    .replace(/^\d{4}[-年]?\d{0,2}[-月]?\d{0,2}日?[·.]?/, '') // 开头的日期（2026-10-01 · 随堂小测 → 随堂小测）
+    .replace(/[（(]\d{4}[^）)]{0,14}[）)]$/, '') // 结尾的年份括注（随堂小测 · M1.4（2026-10-01））
+    .replace(/^(新高考|高考|中考)/, '')
+    .replace(/数学/g, '')
+  if (t.length < 4) t = raw
+  // 还是太长就掐中间：留得下开头那截（M2.3…）和结尾那截（…随堂小测）
+  return t.length <= 11 ? t : `${t.slice(0, 5)}…${t.slice(-4)}`
+}
+
 function atlasGroups() {
   const mods = (state && state.map && state.map.modules) || []
   const order = []
@@ -2454,10 +2482,10 @@ function atlasCard() {
   }
 
   const picked = atlasPicked()
-  const letters = new Map()
-  mats.forEach((m, i) => letters.set(m.materialId, String.fromCharCode(65 + (i % 26))))
+  const mode = ui.atlasMode === 'point' ? 'point' : 'module'
+  const byId = new Map(mats.map((m) => [m.materialId, m]))
   const on = mats.filter((m) => picked.has(m.materialId))
-  // 单元 → 覆盖它的材料字母（只算选中的那几份）
+  // 单元 → 覆盖它的材料（只算选中的那几份，按材料在书架上的顺序）
   const cover = new Map()
   for (const m of on) {
     for (const id of m.points || []) {
@@ -2471,24 +2499,65 @@ function atlasCard() {
   const hit = allPoints.filter((p) => cover.has(p.id)).length
   const pct = allPoints.length ? Math.round((hit / allPoints.length) * 100) : 0
 
+  /** 材料筹码：写名字（短的那一截），全名和类别进 title。 */
+  const tag = (id) => {
+    const m = byId.get(id)
+    if (!m) return ''
+    return `<b class="atlas-tag" title="${esc(m.title)} · ${esc(matKind(m))}">${esc(shortMatTitle(m.title))}</b>`
+  }
+  const covers = (ids) => `<div class="atlas-covers">${ids.map(tag).join('')}</div>`
+
   const picker = `<div class="chips atlas-pick">
     ${mats
       .map((m) => {
-        const l = letters.get(m.materialId)
-        const kind = m.kind === 'video' ? '网课' : m.kind === 'ai' ? 'AI 卷' : m.kind === 'notes' ? '讲义' : '教辅'
         const n = (m.points || []).length
-        return `<button type="button" class="mini${picked.has(m.materialId) ? ' on' : ''}" data-act="atlas-pick" data-id="${esc(m.materialId)}" title="${esc(m.title)}">${l} · ${kind} · ${n ? `${n} 个单元` : '还没标注'}</button>`
+        const info = `${matKind(m)}${n ? ` · ${n} 个单元` : ' · 还没标注'}`
+        return `<button type="button" class="mini${picked.has(m.materialId) ? ' on' : ''}" data-act="atlas-pick" data-id="${esc(m.materialId)}" title="${esc(m.title)} · ${esc(info)}"><span class="mini-t">${esc(m.title || '没名字的材料')}</span><span class="mini-n">${n || '未标'}</span></button>`
       })
       .join('')}
     <button type="button" class="mini" data-act="atlas-all">全选</button>
     <button type="button" class="mini" data-act="atlas-none">清空</button>
   </div>`
 
-  const legend = on.length
-    ? `<ul class="legend atlas-legend">${on
-        .map((m) => `<li><b>${letters.get(m.materialId)}</b>${esc(m.title)}${m.kind === 'video' ? '<span class="dim">网课</span>' : ''}</li>`)
-        .join('')}</ul>`
-    : '<p class="dim">一份都没选。上面点一下材料把它加进来。</p>'
+  const modeBox = `<div class="chips atlas-mode">
+    <span class="atlas-mlabel">按什么分组</span>
+    <button type="button" class="mini${mode === 'module' ? ' on' : ''}" data-act="atlas-mode" data-mode="module" title="一行一个模块：M1 一块，看哪几块还没有材料">按模块</button>
+    <button type="button" class="mini${mode === 'point' ? ' on' : ''}" data-act="atlas-mode" data-mode="point" title="一行一个最小单元：M1.1 / M1.2 … 平铺，看一个个单元有没有东西">按最小单元</button>
+  </div>`
+
+  /** 一行一个最小单元（两种分组共用这一行）。 */
+  const unitRow = (p, mod) => {
+    const who = cover.get(p.id) || []
+    const where = mod ? `${mod.id} ${mod.title || ''}`.trim() : ''
+    return `<li class="atlas-unit${who.length ? '' : ' miss'}"${
+      who.length ? ` data-act="atlas-point" data-point="${esc(p.id)}" title="${esc(where ? where + ' · ' : '')}看它在各材料里在第几页 / 第几讲"` : ''
+    }>
+      <span class="atlas-id">${esc(p.id)}</span>
+      <span class="atlas-name">${esc(p.title || '')}</span>
+      <span class="atlas-covers">${who.length ? who.map(tag).join('') : '<span class="dim">还没有材料对上</span>'}</span>
+      ${ui.atlasPages && ui.atlasPages.point === p.id ? `<div class="atlas-pages">${ui.atlasPages.html}</div>` : ''}
+    </li>`
+  }
+
+  /** 一块模块：模块头 + 量尺 + 这一块的材料筹码 + 它的单元行。 */
+  const modBlock = (mod) => {
+    const pts = mod.points || []
+    const mHit = pts.filter((p) => cover.has(p.id)).length
+    const done = pts.length ? Math.round((mHit / pts.length) * 100) : 0
+    const covered = new Set()
+    for (const p of pts) for (const id of cover.get(p.id) || []) covered.add(id)
+    const ids = on.map((m) => m.materialId).filter((id) => covered.has(id))
+    return `<div class="atlas-mod">
+      <div class="atlas-mod-head">
+        <span class="atlas-mid">${esc(mod.id)}</span>
+        <span class="atlas-mtitle">${esc(mod.title || '')}</span>
+        <span class="atlas-count${mHit ? '' : ' miss'}">${mHit}/${pts.length}</span>
+      </div>
+      <div class="atlas-gauge"><i style="width:${done}%"></i></div>
+      ${ids.length ? `<div class="atlas-covers atlas-mod-covers">${ids.map(tag).join('')}</div>` : ''}
+      <ul class="list atlas-units">${pts.map((p) => unitRow(p, mod)).join('')}</ul>
+    </div>`
+  }
 
   const body = !on.length
     ? ''
@@ -2496,41 +2565,19 @@ function atlasCard() {
         .map((g) => {
           const gPoints = g.modules.flatMap((mod) => mod.points || [])
           const gHit = gPoints.filter((p) => cover.has(p.id)).length
-          const mods = g.modules
-            .map((mod) => {
-              const pts = mod.points || []
-              const mHit = pts.filter((p) => cover.has(p.id)).length
-              const rows = pts
-                .map((p) => {
-                  const who = cover.get(p.id) || []
-                  const tags = who.map((id) => `<b class="atlas-tag">${letters.get(id)}</b>`).join('')
-                  return `<li class="atlas-unit${who.length ? '' : ' miss'}"${
-                    who.length ? ` data-act="atlas-point" data-point="${esc(p.id)}" title="看它在各材料里在第几页 / 第几讲"` : ''
-                  }>
-                    <span class="atlas-id">${esc(p.id)}</span>
-                    <span class="atlas-name">${esc(p.title || '')}</span>
-                    <span class="atlas-covers">${who.length ? tags : '<span class="dim">还没有材料对上</span>'}</span>
-                    ${ui.atlasPages && ui.atlasPages.point === p.id ? `<div class="atlas-pages">${ui.atlasPages.html}</div>` : ''}
-                  </li>`
-                })
-                .join('')
-              return `<div class="atlas-mod">
-                <div class="atlas-mod-head">
-                  <span class="atlas-mid">${esc(mod.id)}</span>
-                  <span class="atlas-mtitle">${esc(mod.title || '')}</span>
-                  <span class="atlas-count${mHit ? '' : ' miss'}">${mHit}/${pts.length}</span>
-                </div>
-                <div class="atlas-gauge"><i style="width:${pts.length ? Math.round((mHit / pts.length) * 100) : 0}%"></i></div>
-                <ul class="list atlas-units">${rows}</ul>
-              </div>`
-            })
-            .join('')
+          // 按最小单元：模块那层不铺开，一个个单元挨着排（模块名留在每一行的 title 里）
+          const inner =
+            mode === 'point'
+              ? `<ul class="list atlas-units">${g.modules
+                  .map((mod) => (mod.points || []).map((p) => unitRow(p, mod)).join(''))
+                  .join('')}</ul>`
+              : g.modules.map(modBlock).join('')
           return `<div class="atlas-group">
             <div class="atlas-group-head">
               <span class="atlas-gname">${esc(g.name)}</span>
               <span class="dim">${g.modules.length} 个模块 · ${gHit}/${gPoints.length} 个单元有材料</span>
             </div>
-            ${mods}
+            ${inner}
           </div>`
         })
         .join('')
@@ -2544,13 +2591,18 @@ function atlasCard() {
         ${blank
           .map(
             (m) => `<div class="atlas-blank-row">
-              <span><b>${letters.get(m.materialId)}</b>${esc(m.title)}</span>
+              <span><span class="atlas-kind">${esc(matKind(m))}</span><span class="atlas-bname" title="${esc(m.title)}">${esc(m.title || '没名字的材料')}</span></span>
               ${forwardAct(m.materialId, m.path, { act: 'atlas-annotate', label: '让教练标一遍' })}
             </div>`,
           )
           .join('')}
         <p class="hint">教辅按页范围对、网课按讲次对，一处内容可以同时归好几个单元。让教练读过标一遍，回来刷新就能看见。</p>
       </div>`
+
+  const sub =
+    mode === 'point'
+      ? '一行一个最小单元（M1.1 / M1.2 …）；上面挑了哪几份材料，下面就只看那几份覆盖到的单元'
+      : '一行一个模块（M1 一块）；模块头那行后面挂着对上它的材料，下面才是它的单元'
 
   return `<section class="card atlas" data-card="atlas">
     <div class="day-hero">
@@ -2559,11 +2611,11 @@ function atlasCard() {
         <h2 class="day-title">资料图谱</h2>
         <span class="day-pill">${on.length} 份材料 · 覆盖 ${hit}/${allPoints.length} 个单元</span>
       </div>
-      <p class="day-sub">A / B / C 是材料；上面挑了哪几份，下面就只看那几份覆盖到的单元</p>
+      <p class="day-sub">${sub}</p>
       <div class="day-gauge" role="img" aria-label="材料覆盖度 ${pct}%"><i style="width:${pct}%"></i></div>
     </div>
     ${picker}
-    ${legend}
+    ${modeBox}
     ${body}
     ${blankBox}
   </section>`
@@ -3562,6 +3614,11 @@ document.addEventListener('click', async (event) => {
       const picked = atlasPicked()
       if (picked.has(id)) picked.delete(id)
       else picked.add(id)
+      ui.atlasPages = null
+      render()
+    } else if (act === 'atlas-mode') {
+      // 按模块看 / 按最小单元看——纯客户端的分组方式，不惊动服务端。
+      ui.atlasMode = el.dataset.mode === 'point' ? 'point' : 'module'
       ui.atlasPages = null
       render()
     } else if (act === 'atlas-all' || act === 'atlas-none') {
