@@ -1232,5 +1232,28 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - 只动 `assets/panel.js` + 测试 + 文档 → **刷新页面即可，不用重启 DSH**；全量 `node --test` 仍是 333 pass。
 - 教训：**「也摆一份」反悔时要把旧的那张一起收掉**，否则同一张卡在两页各出现一次，用户会以为是两件事。
 
+### 七、换页要顺手把那一页的数据补上（用户报的「一开始进去读取不到数据」）
+
+用户说（m21952）：「有的功能一开始进去的时候读取不到数据，刷新一下浏览器就是正常的了」。
+
+- **病根**：`assets/panel.js` 的 `go(id, path)` 换页时只做 `page = id; openFirstCard(id); render()`
+  + `pushState`，**从不补取这一页的数据**；而「今日复盘 / 书架 / 资料图谱 / 番茄钟 / 对话清单」
+  这些是各页专属的，只在 `load()`（开机那一刻、或表单提交后）里按 `page === …` 条件拉。
+  于是从主页点进「资料 / 学习 / 工具 / 今日任务」全是空的；而这些页的地址已经被 `pushState` 改成
+  真地址了，**按 F5 正好从那一页重新开机**，数据就齐了——「刷新一下浏览器就正常了」就是这么来的。
+- **修法**：新增 `async function fillPage({ fresh = false } = {})`（`assets/panel.js:593`），
+  把「这一页要的」那六份集中到一处：复盘图（today）、书架（materials / atlas）、资料图谱（atlas）、
+  番茄钟（toolbox）、记忆卡（toolbox 且选了那个小工具）、对话快照与会话清单（coach / 浮窗 / 整份重来）。
+  每份都写 `(fresh || !x)`：`load()` 走 `fillPage({ fresh: true })`（整份重来），换页只补缺的。
+  **顺序也在这儿管**——`loadAtlas()` 要读 `shelf`，所以书架必须排在它前面。
+  `go()` 返回那一趟 `fillPage()` 的 promise，补完若还停在这一页就再 `render()` 一次
+  （先画再补，切页不空窗）；导航那条 click 分支 `await go(...)`，`popstate` 也一样接上。
+- **规矩**：以后再加「只有某一页要」的数据，一律挂进 `fillPage()`，别只写进 `load()`
+  ——AGENTS.md 里也钉了这一条。
+- 回归测试是 `test/panel.test.js` 的「换页时把那一页的数据补上，不用按 F5」：从主页起，
+  数着精确路径断言点 today 才有 `/api/review?date=`、点 atlas 才有 `materialId=mat-1` 且书架排在它前面、
+  点回 materials 不重复拉书架、点 toolbox 才拉番茄钟。全量 `node --test` = **334 pass / 0 fail / 0 skipped**。
+- 只动 `assets/panel.js` + 测试 + 文档 → **刷新页面即可，不用重启 DSH**。
+
 
 

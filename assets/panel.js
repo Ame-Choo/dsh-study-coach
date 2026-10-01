@@ -567,20 +567,8 @@ async function load() {
     library = await loadLibrary()
     mistakes = await loadMistakes()
     student = await loadStudent()
-    // 复盘图只有「今日任务」这一页要（主页不放它——用户说主页那两张卡删掉）。其余页不拉，省一趟请求和 9 KB。
-    review = page === 'today' ? await loadReview() : null
-    // 书架只有「资料」这一页要。
-    shelf = page === 'materials' || page === 'atlas' ? await loadShelf() : null
-    // 资料图谱：拿挑中的那份材料自己的目录摊三层。只有「学习」页要。
-    atlasTree = page === 'atlas' ? await loadAtlas() : null
-    // 工具栏目只有「工具」这一页要。
-    toolbox = page === 'toolbox' ? await loadToolbox() : null
-    // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
-    memory = page === 'toolbox' && ui.tool === 'memory' ? await loadMemory() : null
-    // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通。
-    // 会话清单要的是「对话页开着」或者「悬浮窗开着」——悬浮窗里也有选择器，
-    // 只在对话页拉的话，浮窗切过去就是一个空下拉。
-    await loadChat({ withSessions: page === 'coach' || ui.float })
+    // 这一页要的那几份（`fresh`：整份重来，手上有的也重拉一遍）
+    await fillPage({ fresh: true })
     applyMode()
     app.className = ''
     render()
@@ -588,6 +576,35 @@ async function load() {
     app.className = 'loading'
     app.innerHTML = `<div class="card error">读取档案失败：${esc(error.message)}</div>`
   }
+}
+
+/**
+ * 把**这一页要的**那几份数据补齐。
+ *
+ * 为什么要有这个函数：`go()` 换页只重画，不补数据，所以「资料」「学习」「工具」
+ * 「今日复盘」这些页面的内容第一次点进去是空的，得按 F5 从那一页重新开机才有
+ * ——学生报的「有的功能一开始进去的时候读取不到数据，刷新一下浏览器就正常了」
+ * 就是这个（2026-10-02 修）。**以后再加某一页专属的数据，一律挂到这里**，
+ * 别只写进 `load()` 里。
+ *
+ * `fresh = true`：手上有的也重拉（`load()` 整份重来走这条）。
+ * 默认只补缺的那几份，换页时不会白跑一趟。顺序要紧：`loadAtlas()` 要读 `shelf`。
+ */
+async function fillPage({ fresh = false } = {}) {
+  // 复盘图只有「今日任务」这一页要（主页不放它——用户说主页那两张卡删掉）。别页不拉，省一趟请求和 9 KB。
+  if (page === 'today' && (fresh || !review)) review = await loadReview()
+  // 书架只有「资料」和「学习」两页要。
+  if ((page === 'materials' || page === 'atlas') && (fresh || !shelf)) shelf = await loadShelf()
+  // 资料图谱：拿挑中的那份材料自己的目录摊三层。只有「学习」页要。
+  if (page === 'atlas' && (fresh || !atlasTree)) atlasTree = await loadAtlas()
+  // 工具栏目只有「工具」这一页要。
+  if (page === 'toolbox' && (fresh || !toolbox)) toolbox = await loadToolbox()
+  // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
+  if (page === 'toolbox' && ui.tool === 'memory' && (fresh || !memory)) memory = await loadMemory()
+  // 对话快照：整份重来时每页都要（右下角那颗悬浮按钮得知道通道通没通）；
+  // 换页只在去「对话」或者浮窗开着的时候拉。会话清单要的是「对话页开着」或者
+  // 「悬浮窗开着」——悬浮窗里也有选择器，只在对话页拉的话，浮窗切过去就是一个空下拉。
+  if (fresh || page === 'coach' || ui.float) await loadChat({ withSessions: page === 'coach' || ui.float })
 }
 
 /**
@@ -861,10 +878,19 @@ let page = resolvePage()
  * 地址栏还是真地址（新服务端下刷新、直连都对）。
  */
 function go(id, path) {
+  let filled = null
   if (id !== page) {
     page = id
     openFirstCard(id)
     render()
+    // 这一页要的那几份数据得补上（`fillPage()` 的注释里写了为什么）。
+    // 先画再补：切页是瞬时的，本地跑一趟就几十毫秒，补完如果还停在这一页就再画一次。
+    // 返回出去是为了让调用方（导航那一下）能等到数据到位——测试和不闪空都靠它。
+    filled = fillPage()
+      .catch(() => {})
+      .then(() => {
+        if (page === id) render()
+      })
     try {
       window.scrollTo(0, 0)
     } catch {
@@ -878,6 +904,7 @@ function go(id, path) {
   } catch {
     /* 地址改不了不影响切页 */
   }
+  return filled
 }
 
 /** 从地址认页；认不出来（或者测试里没有 location）就落主页。 */
@@ -3784,7 +3811,8 @@ document.addEventListener('click', async (event) => {
   ) {
     if (typeof event.preventDefault === 'function') event.preventDefault()
     const target = PAGES.find((p) => p.id === navEl.dataset.nav)
-    go(target ? target.id : 'home', target ? target.path : '/study')
+    // 等这一页要的数据补齐再往下走：`go()` 返回的就是那一趟（不切页时是 null）。
+    await go(target ? target.id : 'home', target ? target.path : '/study')
     return
   }
   const el = event.target.closest('[data-act]')
@@ -4521,6 +4549,11 @@ window.addEventListener('popstate', () => {
   page = next
   openFirstCard(next)
   render()
+  void fillPage()
+    .catch(() => {})
+    .then(() => {
+      if (page === next) render()
+    })
 })
 
 /* 切回这个标签页时补一次快照：后台期间轮询是停的。 */

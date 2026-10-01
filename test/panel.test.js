@@ -772,6 +772,47 @@ test('换页走前端，不整页跳——服务端没重启时子页面也点�
   assert.equal(window.history.pushes.at(-1), '/study')
 })
 
+test('换页时把那一页的数据补上，不用按 F5（用户报的「一开始进去读取不到数据」）', async () => {
+  // 病根：`go()` 换页只重画、不补数据，而「资料 / 学习 / 工具 / 今日复盘」是各页专属的，
+  // 只在 `load()`（开机那一刻）里拉。于是从主页点进去是空的，F5 从那一页重启才有。
+  const { html, calls, clickNav } = await boot(fixture())
+  const count = (exact) => calls.filter((c) => c === exact).length
+  const all = () => calls.join('\n')
+
+  // 主页：探针各探了一次，这一页要的东西之外没有第二趟
+  assert.equal(count('/study/api/materials'), 1)
+  assert.equal(count('/study/api/toolbox'), 1)
+  assert.doesNotMatch(all(), /\/study\/api\/review\?date=/)
+  assert.doesNotMatch(all(), /\/study\/api\/material\/tree\?materialId=/)
+
+  // 点「今日任务」：复盘图得补上（以前只有从这一页开机才看得到）
+  await clickNav('today')
+  assert.match(all(), /\/study\/api\/review\?date=\d{4}-\d{2}-\d{2}/, '切到今日任务要拉复盘图')
+  assert.match(html(), /data-card="review"/)
+
+  // 点「学习」：先拉书架，再按挑中的那份材料摊三层——顺序不能反（摊图谱要读书架）
+  await clickNav('atlas')
+  assert.equal(count('/study/api/materials'), 2, '切到学习页要拉书架')
+  assert.match(all(), /\/study\/api\/material\/tree\?materialId=mat-1/)
+  assert.ok(
+    calls.lastIndexOf('/study/api/materials') < calls.lastIndexOf('/study/api/material/tree?materialId=mat-1'),
+    '书架得排在摊图谱前面',
+  )
+  assert.match(html(), /data-card="atlas"/)
+
+  // 点「资料」：书架手上已经有了，别白跑第二趟
+  await clickNav('materials')
+  assert.equal(count('/study/api/materials'), 2, '书架已经有了就不重复拉')
+  assert.match(html(), /data-card="shelf"/)
+  assert.match(html(), /必修一/)
+
+  // 点「工具」：番茄钟 + 清单
+  await clickNav('toolbox')
+  assert.equal(count('/study/api/toolbox'), 2, '切到工具页要拉番茄钟')
+  assert.match(html(), /data-card="tool"/)
+  assert.match(html(), /背 20 个单词/)
+})
+
 test('今天页：任务能跳转、能改能删；一行只留「打开 / 改 / 删除」', async () => {
   const { html, clickAct } = await boot(fixture(), { path: '/study/today' })
 

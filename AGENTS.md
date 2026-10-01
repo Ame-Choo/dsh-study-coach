@@ -289,6 +289,12 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
   否则那个网址直接 404（它只认列出来的那几个）。这是 `lib/` 改动 → 要重启 DSH。
   **并掉一个页面则反过来**：从 `assets/panel.js` 的 `PAGES` 里删掉、`PANEL_PAGES` 里留着（老 URL 不能 404）、
   在 `resolvePage()` 的 `alias` 表里指到活着的页上，并在 `test/pages-consistency.test.js` 的 `LEGACY_PAGES` 里写清为什么留着。
+- **新加一个「只有某一页要」的数据，必须挂进 `fillPage()`**（`assets/panel.js:593`），**别只写进 `load()`**。
+  `load()` 只在开机那一次（和表单提交后）跑；`go()` 换页只重画、不补数据，所以只写在 `load()` 里的东西，
+  第一次点进那一页必然是空的、按 F5 从那一页重新开机才有——这就是学生报的「有的功能一开始进去的时候
+  读取不到数据，刷新一下浏览器就正常了」（2026-10-02 修，见 `test/panel.test.js` 那条换页补数据的回归）。
+  `fillPage({ fresh })` 里每份都写 `(fresh || !x)`：`load()` 走 `fresh: true`（整份重来），换页只补缺的。
+  **顺序也在这儿管**：`loadAtlas()` 要读 `shelf`，所以书架必须排在它前面。
 - 抬头复用今日任务那套 `.day-hero`（眉标 `MATERIAL GRAPH · 资料图谱`、`.day-pill` 写「N 份材料 ·
   这一份 N 条内容」、`.day-gauge` 的 `aria-label="已挂到单元 P%"`）——**复盘图那套版式是这一族的唯一版式**。
 - 版本守卫：`probeCapabilities()` 里 `alive('/study/api/material/tree')`（缺参新代码回 400、旧代码 404）

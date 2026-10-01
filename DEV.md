@@ -236,6 +236,9 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 
 - **`ui`（`:93`）**：页面级状态总摊（展开的卡、档案弹层、正在编辑的任务、`atlasPicked/atlasMode`、浮窗位置、导入日志……）。要加状态就加这儿。
 - **`PAGES` / `PAGE_CARDS`（`:811` / `:871`）**：页面骨架。`render()`（`:910`）= 顶栏 + 主页或 `pageCards()` + 档案弹层 + 浮窗，末尾 `mountGraph()`。
+- **换页时补数据的是 `fillPage()`（`:593`）**：`go(id, path)` 只重画不拉数据，所以「只有某一页要」的那几份
+  （复盘图 / 书架 / 资料图谱 / 番茄钟 / 记忆卡 / 对话清单）都挂在 `fillPage()` 里，`load()` 走 `fillPage({ fresh: true })`。
+  新加这类数据**只能挂这儿**，只写进 `load()` 的话第一次点进那一页是空的、F5 才有。
 - **事件**：**全部是 document 级委托**，只有四份监听器——`click`（`:3480`，认 `data-act` / `data-card` / `data-nav`）、`change`（`:3948`）、`submit`（`:4016`）、`keydown`（`:4216`），
   外加浮窗那几条 pointer/dblclick/contextmenu 与 window 的 resize/popstate。
 
@@ -254,7 +257,7 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 - `--dsw-alias-*` 是 DSH 主题给的变量，**必须带字面兜底**，而且**别拿 `--dsw-alias-bg-base` 当文字色**：装了壁纸类插件时它会是透明，字就看不见了。
 
 知识图谱在 `assets/graph.js`：零依赖、不碰数据，几何常量定死，HUD 是 `<svg>` 的直接子节点**不能加反向 transform**，
-画布**不跟鼠标拖**（改这块之前先看 `AGENTS.md` 那一节和 `test/graph.test.js`）。
+画布**能按住拖着挪**（`PAN_SLOP = 4px` 才算拖、位移要除以 `scaleOf()`、按在工具箱上不算拖；改这块之前先看 `AGENTS.md` 那一节和 `test/graph.test.js`）。
 
 ## 9. 测试怎么写
 
