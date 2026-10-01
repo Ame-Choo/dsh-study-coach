@@ -66,8 +66,8 @@ test('学生画像五类：assets/panel.js 抄的那份与 lib/store.js 一致',
   assert.deepEqual(listConst(panel, 'assets/panel.js', 'FACT_KINDS'), FACT_KINDS)
 })
 
-test('材料类别的中文名：面板与做题页那两份 KIND 都跟 lib/store.js 一致', () => {
-  const store = mapConst(readFileSync(join(import.meta.dirname, '..', 'lib', 'store.js'), 'utf8'), 'lib/store.js', 'MATERIAL_KIND_LABELS')
+test('材料类别的中文名：面板与做题页那两份 KIND 都跟 lib/schema.js 一致', () => {
+  const store = mapConst(readFileSync(join(import.meta.dirname, '..', 'lib', 'schema.js'), 'utf8'), 'lib/schema.js', 'MATERIAL_KIND_LABELS')
   assert.deepEqual(store, MATERIAL_KIND_LABELS, '先确认抠出来的就是 store 里那份表')
   for (const file of ['panel.js', 'practice.js']) {
     assert.deepEqual(mapConst(read(file), `assets/${file}`, 'KIND'), MATERIAL_KIND_LABELS, `assets/${file} 的 KIND 漂了`)
