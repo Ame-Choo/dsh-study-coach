@@ -400,7 +400,7 @@ node --test
 - `sessionController` 是 DSH 的**可选**服务，和 `lib/bridge.js` 一样**不写进 `inject`**，拿不到就 `available:false`，面板自动退回「留言」那套，绝不白屏。
 - `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单，取第一个不带头会话的顶层会话当默认）、`history({sessionId, maxMessages})`（`sessionController.page()` 拿历史记录，翻成面板要的 `{id, role, text, time, tools, steps}`；折叠掉纯工具轮，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。
 - HTTP 三条：`GET /study/api/chat/sessions`、`GET /study/api/chat?sessionId=&max=&sessions=1`、`POST /study/api/chat/send {text, sessionId?, mode?}`（`mode` 只收 `queue` / `steer`，复用 `lib/bridge.js` 的投递通道）。
-- 面板侧：开着对话页时**每 4 秒拉一次快照**，标签页切到后台、或者离开这一页就把定时器停掉；只有指纹变了才重画消息列表，正在输的字和滚到一半的位置都不动。**通道通了，右下角那张「给教练留言」卡自动让位**（`inboxCard()` 返回空串，`pageCards()` 把空卡滤掉）。
+- 面板侧：开着对话页时**每 2.5 秒拉一次快照**，标签页切到后台、或者离开这一页就把定时器停掉；只有指纹变了才重画消息列表，正在输的字和滚到一半的位置都不动。**通道没接通就别开定时器**（会留一个永远停不下来的 interval），卡片上给一颗「重新连接」。**通道通了，右下角那张「给教练留言」卡自动让位**（`inboxCard()` 返回空串，`pageCards()` 把空卡滤掉）。
 - 侧栏模式下一屏只放得下一张卡，所以**换页时自动把那一页的主卡摊开**（`openFirstCard()` 只在换页和首次加载时调一次，放进 `render()` 里会让折叠按钮按不动）。
 
 三条路由同样是**服务端代码 → 必须重启 DSH 才生效**。没重启时对话页会直接说「服务端还没重启」，而不是装作坏了。
