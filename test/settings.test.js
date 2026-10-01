@@ -266,7 +266,7 @@ test('面板接口：状态、开关、存端口，回的形状前端只解析�
   }
 })
 
-test('设置页能从独立端口那半打开，静态资源也端得出来', async () => {
+test('独立端口那半端得出面板页面，静态资源也端得出来', async () => {
   const { root, handler } = fixture()
   const control = createPanelControl({ handler, port: 0 })
   try {
@@ -274,7 +274,7 @@ test('设置页能从独立端口那半打开，静态资源也端得出来', as
     assert.equal(started.url, `http://127.0.0.1:${started.port}/study`)
 
     // 壳子在服务端就写好了，卡片是 panel.js 在浏览器里画的（渲染那部分 panel.test.js 管）
-    const page = await fetch(`${started.url}/settings`)
+    const page = await fetch(`${started.url}/today`)
     assert.equal(page.status, 200)
     const html = await page.text()
     assert.match(html, /<title>学习教练<\/title>/)

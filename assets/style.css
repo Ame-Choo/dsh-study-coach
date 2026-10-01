@@ -1053,11 +1053,6 @@ html[data-mode="sidebar"] .sub-hint { display: none; }
 html[data-mode="sidebar"] .focus-clock { font-size: 42px; }
 html[data-mode="sidebar"] .mem-form input { flex: 1 1 100%; }
 
-/* 设置页：首选端口就五位数字，别跟「加载时就启动」平分一整行（.form .two 是 flex 两等分） */
-.card[data-card='panel'] .two label:first-child {
-  flex: 0 0 160px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

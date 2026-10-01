@@ -53,7 +53,6 @@ const STALE_NEED = [
   ['toolbox', '工具栏目', '工具页'],
   ['memory', '记忆卡', '工具页的记忆卡'],
   ['file', '打开网课 / 讲义', '任务里所有「打开」按钮'],
-  ['panel', '面板服务开关', '设置页里的启动 / 停止 / 重启'],
 ]
 
 let state = null
@@ -84,8 +83,6 @@ let chatStamp = ''
 let toolbox = null
 /* 记忆卡那一份：{ stats, soon, items, total }；只有工具页切到「记忆卡」时拉 */
 let memory = null
-/* 面板服务自己的状态与设置：{ supported, running, port, url, preferred, error, settings }。只有设置页拉。 */
-let panelInfo = null
 /* 番茄钟那个每秒走动的句柄；离开这一页、或者钟停了就清掉 */
 let focusTimer = null
 const ui = {
@@ -152,8 +149,6 @@ const ui = {
   cardStatus: 'due',
   /* 记忆卡表单里那几格（重画不冲掉填好的字） */
   cardDraft: { front: '', back: '', kind: '', pointId: '' },
-  /* 设置页：正等面板服务哪个动作（start / stop / restart），空串就是没在等 */
-  panelBusy: '',
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -305,7 +300,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, panelAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -316,7 +311,6 @@ async function probeCapabilities() {
     alive('/study/api/materials'),
     alive('/study/api/toolbox'),
     alive('/study/api/memory'),
-    alive('/study/api/panel'),
   ])
   return {
     ability,
@@ -329,7 +323,6 @@ async function probeCapabilities() {
     shelf: shelfAlive,
     toolbox: toolboxAlive,
     memory: memoryAlive,
-    panel: panelAlive,
     file: await fileAlive(),
   }
 }
@@ -550,8 +543,6 @@ async function load() {
     toolbox = page === 'toolbox' ? await loadToolbox() : null
     // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
     memory = page === 'toolbox' && ui.tool === 'memory' ? await loadMemory() : null
-    // 面板服务状态只有设置页要。
-    panelInfo = page === 'settings' ? await loadPanel() : null
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通。
     // 会话清单要的是「对话页开着」或者「悬浮窗开着」——悬浮窗里也有选择器，
     // 只在对话页拉的话，浮窗切过去就是一个空下拉。
@@ -735,23 +726,6 @@ async function refreshMemory() {
   render()
 }
 
-/**
- * 面板服务自己的状态与设置。
- *
- * 这一份跟别的 load* 不一样：它不管 `capabilities`，因为「接口在不在」本身就是要报告的
- * 事情之一——旧服务端下 `/study/api/panel` 直接 404，那正是设置页该说清的话。
- * 返回 null 只代表「连服务端都没答上来」（网络层就失败了）。
- */
-async function loadPanel() {
-  try {
-    const out = await api('/study/api/panel')
-    if (!out || typeof out !== 'object') return null
-    return out
-  } catch {
-    return null
-  }
-}
-
 /** 打一次写接口；失败就把服务端那句中文原样 toast 出来。 */
 async function toolPost(path, body) {
   try {
@@ -811,7 +785,6 @@ const PAGES = [
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
   { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
-  { id: 'settings', path: '/study/settings', label: '设置', hint: '面板服务的开关与端口，各页入口' },
 ]
 
 let page = resolvePage()
@@ -888,11 +861,6 @@ const PAGE_CARDS = {
   },
   // 对话页不放别的：这一页就是那个聊天窗口，整屏给它。
   coach: { main: [['chat', '与教练对话', chatCard]] },
-  // 设置页：主栏是面板服务本身（开关、端口、自启），边栏是各页的跳转入口。
-  settings: {
-    main: [['panel', '面板服务', panelCard]],
-    aside: [['entries', '跳转入口', entriesCard]],
-  },
 }
 
 /** 「工具」页主栏那张卡：跟着二级菜单走。 */
@@ -1632,99 +1600,6 @@ function goalCard() {
     </div>
     ${g.note ? `<p class="dim">${esc(g.note)}</p>` : ''}
     ${form}
-  </section>`
-}
-
-/* ── 设置页 ───────────────────────────────────────────────────────────── */
-
-/**
- * 面板服务那张卡。
- *
- * 面板挂着两个地址，这里得把话说明白，不然「启动 / 停止」看着像在开关整个面板：
- *   · 同源那条（DSH 自己 webServer 上的 /study）一直都在，关不掉——系统浏览器
- *     直接开、对话里贴出来的链接走的都是它；
- *   · 独立端口那条是给 DSH 内嵌浏览器用的（内嵌浏览器不许开 DSH 自身的 origin）。
- *     这一页管的就是它：停了之后内嵌浏览器里那份打不开，系统浏览器那份没事。
- *
- * 状态是这一刻问出来的，不是本地猜的：按钮点完重新拉一次再画。
- */
-function panelCard() {
-  const p = panelInfo
-  if (!p) {
-    return `<section class="card">
-      <div class="card-head"><h2>面板服务</h2></div>
-      <p class="dim">没问出面板服务的状态。要么服务端还是旧代码（没有 <code>/study/api/panel</code> 这条路由，重启一次 DSH 就有了），要么这个进程里根本没接上它。</p>
-    </section>`
-  }
-
-  const on = Boolean(p.running)
-  const badge = on ? '<span class="badge confirmed">运行中</span>' : '<span class="badge">已停止</span>'
-  const saved = (p.settings && p.settings.panel) || {}
-  const auto = saved.autoStart !== false
-  const busy = ui.panelBusy || ''
-  const link = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`
-
-  const controls = p.supported
-    ? `<div class="row">
-        <button class="primary" data-act="panel-start"${on || busy ? ' disabled' : ''}>${busy === 'start' ? '正在起…' : '启动'}</button>
-        <button data-act="panel-stop"${on && !busy ? '' : ' disabled'}>${busy === 'stop' ? '正在停…' : '停止'}</button>
-        <button data-act="panel-restart"${busy ? ' disabled' : ''}>${busy === 'restart' ? '正在重启…' : '重启'}</button>
-      </div>
-      <p class="dim">「启动」是给 DSH 内嵌浏览器用的那个地址。系统浏览器一直能开同源那份，不用管这里。</p>`
-    : `<p class="dim">这个进程里没接上面板服务控制器：看得见状态，但开不了也关不了。</p>`
-
-  return `<section class="card">
-    <div class="card-head"><h2>面板服务</h2>${badge}</div>
-    <div class="goal">
-      <div class="goal-line"><span class="k">同源地址</span><span class="v">${link('/study', '/study')} —— 一直在，关不掉</span></div>
-      <div class="goal-line"><span class="k">内嵌浏览器</span><span class="v">${on ? link(p.url, p.url) : '<span class="dim">没起来 —— 点下面的「启动」</span>'}</span></div>
-      <div class="goal-line"><span class="k">监听端口</span><span class="v">${on ? esc(p.port) : `<span class="dim">首选 ${esc(p.preferred)}</span>`}</span></div>
-      <div class="goal-line"><span class="k">数据目录</span><span class="v">${esc((state && state.root) || '')}</span></div>
-    </div>
-    ${p.error ? `<p class="dim">上次没起来：${esc(p.error)}</p>` : ''}
-    ${controls}
-    <form class="form" data-form="panel">
-      <div class="two">
-        <label>首选端口<input name="port" type="number" min="1024" max="65535" value="${esc(saved.port == null ? '' : saved.port)}"></label>
-        <label>加载时就启动<select name="autoStart">
-          <option value="true"${auto ? ' selected' : ''}>开</option>
-          <option value="false"${auto ? '' : ' selected'}>关</option>
-        </select></label>
-      </div>
-      <div class="row"><button type="submit"${busy ? ' disabled' : ''}>存下来</button></div>
-    </form>
-    <p class="dim">端口写 1024—65535；被占了就从它往后试 20 个。关了自启，内嵌浏览器要用的时候来这儿点一下。</p>
-    ${p.note ? `<p class="dim">${esc(p.note)}</p>` : ''}
-  </section>`
-}
-
-/**
- * 跳转入口：每一页都给出两个地址。
- *
- * 同源那个相对路径就够了（这页本身就在同源上），独立端口那个得拼完整——
- * 面板里点「打开」是在新标签里开，相对路径会开到当前 origin 上去，那是另一个地址。
- */
-function entriesCard() {
-  const p = panelInfo || {}
-  const base = p.running ? String(p.url || '') : ''
-  const rows = PAGES.map((item) => {
-    const tail = item.path.startsWith('/study') ? item.path.slice('/study'.length) : ''
-    const other = base ? base + tail : ''
-    return `<li>
-      <div style="flex:1;min-width:0">
-        <b>${esc(item.label)}</b>
-        <div class="dim">${esc(item.hint)}</div>
-      </div>
-      <a class="mini" href="${esc(item.path)}" target="_blank" rel="noopener">同源</a>
-      ${other ? `<a class="mini" href="${esc(other)}" target="_blank" rel="noopener">内嵌</a>` : ''}
-    </li>`
-  }).join('')
-  return `<section class="card">
-    <div class="card-head"><h2>跳转入口</h2></div>
-    <p class="dim">「同源」是 DSH 自己端口上那份，系统浏览器直接开；「内嵌」是插件独立端口那份，只有它在 DSH 内嵌浏览器里加载得了。都在新标签里打开。${
-      base ? '' : '独立端口现在没起来，所以只给得出同源那份。'
-    }</p>
-    <ul class="list tight">${rows}</ul>
   </section>`
 }
 
@@ -3227,21 +3102,6 @@ document.addEventListener('click', async (event) => {
       await api('/study/api/library/restore', { entry })
       toast('已恢复')
       await load()
-    } else if (act === 'panel-start' || act === 'panel-stop' || act === 'panel-restart') {
-      /* 设置页那三颗按钮。服务端回的是新状态，直接拿它重画，别在前端猜。 */
-      const which = act.slice('panel-'.length)
-      ui.panelBusy = which
-      render()
-      try {
-        panelInfo = await api('/study/api/panel', { action: which })
-        if (which === 'stop') toast('停了。内嵌浏览器那份打不开，同源这份没事。')
-        else toast(`${which === 'restart' ? '重启' : '起'}好了${panelInfo.url ? '：' + panelInfo.url : ''}`)
-      } catch (error) {
-        toast('没成：' + error.message, true)
-      } finally {
-        ui.panelBusy = ''
-        render()
-      }
     }
   } catch (error) {
     toast(error.message, true)
@@ -3472,22 +3332,6 @@ document.addEventListener('submit', async (event) => {
       })
       ui.newTask = false
       toast('已添加')
-    } else if (kind === 'panel') {
-      /* 端口和自启一起交上去；服务端会逐项校验，不合法就回 400 带中文原话。 */
-      ui.panelBusy = 'save'
-      render()
-      try {
-        panelInfo = await api('/study/api/panel', {
-          port: Number(data.get('port')),
-          autoStart: String(data.get('autoStart')) === 'true',
-        })
-        toast('存下了。')
-      } catch (error) {
-        toast('没存成：' + error.message, true)
-      } finally {
-        ui.panelBusy = ''
-        render()
-      }
     } else if (kind === 'goal') {
       const minutes = Number(data.get('minutesPerDay') || 0)
       await api('/study/api/goal', {

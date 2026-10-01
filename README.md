@@ -469,7 +469,7 @@ node --test
 
 ### 四、分页面 + 面板里直接看对话
 
-面板原来是一张长纸，什么都堆在上面。现在拆成**一个主页面 + 八个子页面**，顶栏是文字导航：
+面板原来是一张长纸，什么都堆在上面。现在拆成**一个主页面 + 七个子页面**，顶栏是文字导航：
 
 | 路径 | 页 | 干什么 |
 | --- | --- | --- |
@@ -481,7 +481,8 @@ node --test
 | `/study/materials` | 资料 | 资料书架：一本拆到哪、归到哪个单元，按页直达；右栏登记新资料 |
 | `/study/toolbox` | 工具 | 二级菜单装小工具：番茄钟、清单（以后往这儿加） |
 | `/study/coach` | 对话 | 整页就是一个聊天窗口：听教练说、直接回话；顶上能选 DSH 里哪个会话 |
-| `/study/settings` | 设置 | 独立端口那个面板服务的启动 / 停止 / 重启、首选端口、加载时自启；每一页的跳转入口 |
+
+**面板服务自己的开关不在这儿**——它属于「这台插件怎么跑」，不是「这个学生学到哪了」，所以只有一个地方管它：**DSH 的设置**（见下面「补：设置界面」）。
 
 - 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。
 - 导航走 **`pushState` 前端切页**，不往服务端整页跳——因为服务端路由是 DSH 启动时加载的，改完 `lib/` 没重启时子页面会回 JSON 404，整页跳过去人看到的是一屏报错。前端切页让旧服务端也能用，地址栏仍是真地址。
@@ -830,9 +831,11 @@ prompt 里带了四步收尾指令，最后一步是「告诉他去资料页书�
 
 ---
 
-## 补：设置界面（面板服务开关 + DSH 里的页签）
+## 补：设置界面（面板服务的开关，只在 DSH 设置里）
 
-插件原来只有一个地址：DSH 自己 webServer 上的 `/study`。内嵌浏览器不许开 DSH 自身的 origin，所以还起了**第二个**：插件自己监听 `127.0.0.1:19388`（被占往后试 20 个）的独立端口。第二个能关、能换端口，就得有地方按开关——这就是设置界面。
+插件原来只有一个地址：DSH 自己 webServer 上的 `/study`。内嵌浏览器不许开 DSH 自身的 origin，所以还起了**第二个**：插件自己监听 `127.0.0.1:19388`（被占往后试 20 个）的独立端口。第二个能关、能换端口，就得有地方按开关——这个地方**只有一个**：DSH 的设置。
+
+插件自己的网页面板里**不设**这一页。理由：那是「这台机器上这个插件怎么跑」，不是「这个学生学到哪了」，而网页面板整个是给学生看的（改什么都得回对话里跟教练说）。运行参数混进去，学生点错了整个面板就打不开了。
 
 ### 一、设置存在哪
 
@@ -845,7 +848,7 @@ prompt 里带了四步收尾指令，最后一步是「告诉他去资料页书�
 档案是「这一个学习目标学到哪了」，一个目标一份；这份是「这台机器上这个插件怎么跑」，全局一份。切换学习目标不该把端口改掉，所以 `lib/settings.js` 自己读写、不进 `Store` 的 `FILES` 那张表。
 
 - **读宽容**：文件不在、半截 JSON、字段全乱，一律退回默认值，不抛——盘上那份被人手改坏不该拦住插件启动。
-- **写严格**：`validateSettings()` 逐项过关才落盘，不合格抛中文错（`panel.port 要是 1024—65535 之间的整数，收到「80」`）。静默吞掉最坑：存的是 99999，面板上显示的还是旧端口，人以为存上了。
+- **写严格**：`validateSettings()` 逐项过关才落盘，不合格抛中文错（`panel.port 要是 1024—65535 之间的整数，收到「80」`）。静默吞掉最坑：存的是 99999，页签上显示的还是旧端口，人以为存上了。
 - 默认端口只写在 `lib/panel-server.js` 的 `DEFAULT_PORT` 一处，`lib/settings.js` 从那儿 import。
 
 ### 二、两个地址，别混
@@ -855,15 +858,17 @@ prompt 里带了四步收尾指令，最后一步是「告诉他去资料页书�
 | `/study`（同源） | 挂在 DSH 自己的 webServer 上，`ctx.effect(() => ctx.webServer.register({kind:'prefix',path:'/study',handler}))` | 关不掉，也不用关；系统浏览器直接开 |
 | `http://127.0.0.1:<port>/study`（独立端口） | `createPanelControl()` 起的第二个 HTTP 服务，复用同一个 handler | 能启动 / 停止 / 重启 / 换端口；**这是给 DSH 内嵌浏览器用的** |
 
-`autoStart` 为真时插件一加载就起独立端口；关掉之后，要用的时候到设置里点一下。
+`autoStart` 为真时插件一加载就起独立端口；关掉之后，要用的时候到 DSH 设置里点一下。
 
 ### 三、接口
 
-- `GET /study/api/panel` → `{ ok, supported, running, port, url, preferred, hintUrl, error, settings, note }`。`deps.panel` 缺席（`scripts/preview.mjs` 之外的直接 `createRouter`）回 `supported:false` + 一句为什么，**不让面板页炸**。
+- `GET /study/api/panel` → `{ ok, supported, running, port, url, preferred, hintUrl, error, settings, note }`。`deps.panel` 缺席（`scripts/preview.mjs` 之外的直接 `createRouter`）回 `supported:false` + 一句为什么。
 - `POST /study/api/panel`，两种写法都收，也可以一起给：
   - `{ action: 'start' | 'stop' | 'restart' }`
-  - `{ panel: { autoStart, port } }` 或扁平的 `{ autoStart, port }`（面板上就俩控件，扁平更好写）
-  - 起 / 重启一律听**设置里那个端口**，不是「这次请求里顺手存的那个」——先改端口再点重启是两次请求，只在当次请求里找端口，重启就会回到旧端口上而界面写着新端口。改了端口没重启会回一句 `note` 说清现在听的还是旧的。
+  - `{ panel: { autoStart, port } }` 或扁平的 `{ autoStart, port }`（页签上就俩控件，扁平更好写）
+  - 起 / 重启一律听**设置里那个端口**，不是「这次请求里顺手存的那个」——先改端口再点重启是两次请求，只在当次请求里找端口，重启就会回到旧端口上而界面上写着新端口。改了端口没重启会回一句 `note` 说清现在听的还是旧的。
+
+这条路由只有 DSH 设置页签在用；网页面板不碰它。
 
 ### 四、DSH 里的页签（客户端半边）
 
@@ -887,13 +892,14 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 ### 五、测试
 
-- `test/settings.test.js` 7 条：读宽容（不在 / 半截 JSON / 顶层不是对象 / 字段全乱）、写严格（四类非法值 + 抛了不落盘 + 不提 panel 就当没改）、`createPanelControl`（起停重启、重复 start 不换端口、并发 start 合流到一次、首选端口被占往后挪且 `info().preferred` 还是用户写的那个）、路由层（没控制器时的 GET/POST、状态与开关与存端口、被挡住的不落盘）、独立端口那半端得出页面和静态资源。
-- `test/panel.test.js` 加一条（`设置页：面板服务的状态、三颗开关按钮、各页跳转入口`）；`lib/handler.js` 的 `PANEL_PAGES` 跟着加 `'settings'`。
+- `test/settings.test.js` 7 条：读宽容（不在 / 半截 JSON / 顶层不是对象 / 字段全乱）、写严格（四类非法值 + 抛了不落盘 + 不提 panel 就当没改）、`createPanelControl`（起停重启、重复 start 不换端口、并发 start 合流到一次、首选端口被占往后挪且 `info().preferred` 还是用户写的那个）、路由层（没控制器时的 GET/POST、状态与开关与存端口、被挡住的不落盘）、独立端口那半端得出面板页面和静态资源。
 - `test/client.test.js` 6 条：只跟平台要 react、bundle id = 包名、`apply` 之后 `settings.plugins.tab` 上真的多一条 `study-coach`、拿不到 slots 也不炸、跳转入口覆盖各页、样式只用 `--dsw-alias-*`。
+- 网页面板那侧没有新增测试——它压根没多出界面。
 
 ### 六、一个真 bug（顺手修的）
 
 `server.close()` 只等已有连接自己断。浏览器跟面板一直是 keep-alive，**点「停止」或「重启」就会一直转圈**——而浏览器永远不松手。`lib/panel-server.js` 的 `close()` 里先 `server.closeAllConnections()` 再 `close()`。
+
 
 
 
