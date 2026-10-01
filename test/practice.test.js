@@ -136,14 +136,17 @@ test('做题页：材料、章节、进度、自评一条线', async () => {
   const loose = await (await get('/study/api/practice?point=g2.p1')).json()
   assert.equal(loose.chapters.length, 2, '对不上就把整份教辅摆出来')
 
-  // ⑦ 自评之后档位和进度都跟着动
-  const rated = await post('/study/api/mastery', {
-    pointId: 'g1.p1',
-    stage: '能独立做',
-    kind: 'quiz',
-    note: '做了 5 道，4 道对',
-  })
-  assert.equal(rated.status, 200)
+  // ⑦ 自评之后档位和进度都跟着动。门跟教练那条是同一个（一次只前进一档），
+  //    所以从「没接触过」走到「能独立做」是三步，不是一步。
+  for (const stage of ['见过', '能跟做', '能独立做']) {
+    const step = await post('/study/api/mastery', {
+      pointId: 'g1.p1',
+      stage,
+      kind: 'quiz',
+      note: '做了 5 道，4 道对',
+    })
+    assert.equal(step.status, 200)
+  }
 
   const after2 = await (await get('/study/api/practice?point=g1.p1')).json()
   assert.equal(after2.stage, '能独立做')

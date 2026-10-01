@@ -171,3 +171,29 @@ test('每处 var(--x) 引用的 token 都真的有人定义', () => {
   }
   assert.deepEqual([...missing], [], '有不存在的 token：\n' + [...missing].join('\n'))
 })
+
+/* ── 升档那道门 ─────────────────────────────────────────────────────────── */
+
+test('升档那道门只有一份实现：教练的工具和学生的自评按钮都走 lib/map.js 的 gateStage', () => {
+  const libDir = join(import.meta.dirname, '..', 'lib')
+  assert.match(
+    stripComments(readFileSync(join(libDir, 'map.js'), 'utf8')),
+    /export function gateStage\(/,
+    'lib/map.js 里没有 gateStage —— 门被人搬走了？',
+  )
+
+  for (const file of ['tools.js', 'routes.js']) {
+    const src = readFileSync(join(libDir, file), 'utf8')
+    const imports = src.match(/import\s*\{([\s\S]*?)\}\s*from\s*'\.\/map\.js'/)
+    assert.ok(imports, `lib/${file} 没有从 ./map.js 的 import，正则多半失效了`)
+    assert.match(imports[1], /\bgateStage\b/, `lib/${file} 没引 gateStage —— 门又被各写一遍了`)
+    assert.match(src, /gateStage\(/, `lib/${file} 引了 gateStage 却没用`)
+    // 那两条规矩（一次一档 + 攒够 quiz/photo）不许在别处重抄一遍：
+    // 只有 map.js 该读 STAGE_NEEDS，别处都该调 gateStage。
+    assert.doesNotMatch(
+      stripComments(src),
+      /STAGE_NEEDS\s*\[/,
+      `lib/${file} 又自己算了一遍闸门，改用 gateStage`,
+    )
+  }
+})

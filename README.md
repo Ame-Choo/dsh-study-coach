@@ -151,11 +151,11 @@ pnpm add link:/绝对路径/dsh-study-coach
 - 每个 `object` 节点都得显式写 `additionalProperties`（`true` 或 `false`），不写会被 schema 编译器拒；写了 `false` 就必须把字段列全，多一个字段返回值就违规。所以返回给模型的对象都走 `pickTask` / `pickModule` 这类投影函数裁字段。
 - `required` 要么不写、要么写 `true`。写 `false` 会抛 `parameters.X.required must be true when present`。这意味着一部分必填只能靠描述和 `execute` 里的中文报错拦（比如 `study_map` 只在 `action=set` 时必填 `modules`，无法用 schema 表达）。
 
-「一次只推进一档」这条也是工具自己实现的：`study_record` 里填跳了会被压回上一档，返回的 `summary` 里写「跳档」。
+「一次只推进一档」这条也在 `gateStage()` 里：`study_record` 里填跳了会被压回上一档，返回的 `summary` 里写「跳档」；面板那颗自评按钮跳档时返回 `clamped: true`，`note` 里说一句「你点的 X 跳档了，先落在 Y」。
 
 压档之后还有一道**硬闸门**：往「能独立做 / 熟练稳定 / 能讲明白」推的时候，该单元底下必须先有够数的「真做过」证据（`kind` 是 `quiz` 或 `photo`），不够就直接抛错，写清楚现在有几条、还差几条。`STAGE_NEEDS = { 能独立做: 1, 熟练稳定: 2, 能讲明白: 3 }`、`WORK_KINDS = ['quiz', 'photo']` 都在 `lib/schema.js`（`lib/store.js` 转出来，`import … from './store.js'` 的老写法照样能拿到）。
 
-这道门刻意只装在**工具层**，没装进 `recordEvidence()`：`study_record` 是教练记档位的唯一入口，而面板上学生自己点的那颗自评按钮走 `POST /study/api/mastery`，那是他自己的说法，本来就该让它记下来——档案要留下的是「他认为自己到什么程度了」，不是「他证明了什么程度」。两笔账分开，判卷的时候才分得清。
+这道门只有一份实现：**`lib/map.js` 的 `gateStage()`**。教练的工具和学生自己在面板上点的那颗档位按钮走的是**同一条** —— 以前那条路是直通的（他点一下「能讲明白」，档位就真成了能讲明白，门只管得住教练），可档位只有一份账，门就分不出两条路。自评被挡下来时**不报错**：记下他的说法、档位不动，返回里的 `note` 说清还差几条、`advanced: false`，面板把这句话原样 toast 出来（`practice.js` 那条还会用返回的 `point.stage` 重画档位条）。`test/mirrors.test.js` 钉住这两条规矩不许在别处重抄（`STAGE_NEEDS` 只许在 `lib/map.js` 里被读）。
 
 闸门跑在**压过之后的**档位上，所以跳档落地到一个设门的档时照样挡得住（`M1.2` 在「能跟做」上直接填「熟练稳定」，压成「能独立做」，那道门过不去）。「能跟做」及以下不设门——那几档本来就只是「见过 / 跟着走过」，允许自评。
 

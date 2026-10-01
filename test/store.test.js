@@ -123,9 +123,23 @@ test('掌握度：记证据推进档位，未知知识点拒绝', () => {
     assert.equal(r.body.point.stage, '见过')
     assert.equal(r.body.point.evidence.length, 1)
 
+    // 跳档会被压回一档：他点「能独立做」，实际只落在「能跟做」
     r = f.handle({ method: 'POST', pathname: '/study/api/mastery', body: { pointId: 'M1.1', kind: 'quiz', stage: '能独立做', confidence: 0.8 } })
     assert.equal(r.body.point.evidence.length, 2, '证据要累积')
+    assert.equal(r.body.point.stage, '能跟做', '一次只前进一档，学生这条也一样')
+    assert.equal(r.body.clamped, true)
+
+    // 这一档不跳了；「能独立做」要 1 条 quiz/photo，上面那条已经攒够
+    r = f.handle({ method: 'POST', pathname: '/study/api/mastery', body: { pointId: 'M1.1', kind: 'self', stage: '能独立做' } })
     assert.equal(r.body.point.stage, '能独立做')
+    assert.equal(r.body.advanced, true)
+
+    // 「熟练稳定」要 2 条 quiz/photo，现在只有 1 条：他的话记下来，档位不动
+    r = f.handle({ method: 'POST', pathname: '/study/api/mastery', body: { pointId: 'M1.1', kind: 'self', stage: '熟练稳定', note: '我觉得我挺熟了' } })
+    assert.equal(r.body.point.stage, '能独立做', '门拦住了，档位不许动')
+    assert.equal(r.body.advanced, false)
+    assert.match(r.body.note, /2 条/)
+    assert.equal(r.body.point.evidence.length, 4, '他说的话还是要记下来')
 
     r = f.handle({ method: 'POST', pathname: '/study/api/mastery', body: { pointId: 'NOPE', stage: '见过' } })
     assert.equal(r.code, 404)

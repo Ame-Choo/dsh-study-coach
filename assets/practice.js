@@ -367,11 +367,13 @@ document.addEventListener('click', async (event) => {
     const stage = btn.dataset.stage
     const note = (document.querySelector('#note') || {}).value || ''
     try {
-      await api('/study/api/mastery', { pointId: data.pointId, stage, note, kind: 'self' })
-      data.stage = stage
+      const res = await api('/study/api/mastery', { pointId: data.pointId, stage, note, kind: 'self' })
+      // 档位不一定会动（门是跟教练共用的那条），所以以返回的档位为准，
+      // 升不动就把后端那句差几条的话原样说出来。
+      data.stage = (res && res.point && res.point.stage) || (res && res.advanced ? stage : data.stage)
       ui.note = ''
       render()
-      toast('已记录')
+      toast(res && res.note ? res.note : '已记录')
     } catch (error) {
       toast(String(error.message || error))
     }

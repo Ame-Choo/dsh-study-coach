@@ -222,6 +222,7 @@ test('地图能写入、能自评、能定稿', async () => {
   const badStage = await post('/study/api/mastery', { pointId: 'm1.p1', stage: '还行' })
   assert.equal(badStage.status, 400)
 
+  // 一次只前进一档：从「没接触过」点「能跟做」，落在「见过」
   const rated = await post('/study/api/mastery', {
     pointId: 'm1.p1',
     stage: '能跟做',
@@ -230,11 +231,12 @@ test('地图能写入、能自评、能定稿', async () => {
     kind: 'self',
   })
   assert.equal(rated.status, 200)
+  assert.equal((await rated.json()).point.stage, '见过')
 
   const summary = await (await get('/study/api/summary')).json()
   assert.equal(summary.summary.total, 2)
   assert.equal(summary.summary.touched, 1)
-  assert.equal(summary.summary.byStage['能跟做'], 1)
+  assert.equal(summary.summary.byStage['见过'], 1)
 
   const confirmed = await post('/study/api/map/confirm', {})
   assert.equal(confirmed.status, 200)

@@ -2774,8 +2774,10 @@ document.addEventListener('click', async (event) => {
       const pointId = el.dataset.point
       const noteEl = document.querySelector(`[data-note-for="${pointId}"]`)
       const note = noteEl ? noteEl.value.trim() : ''
-      await api('/study/api/mastery', { pointId, stage: el.dataset.stage, note, kind: 'self' })
-      toast(`已记录为「${el.dataset.stage}」`)
+      const res = await api('/study/api/mastery', { pointId, stage: el.dataset.stage, note, kind: 'self' })
+      // 升不动的时候后端会在 note 里说清差几条；别让 toast 继续说「已记录为」——
+      // 档位没动，那句话就成了骗他的。
+      toast(res && res.note ? res.note : `已记录为「${el.dataset.stage}」`)
       ui.openPoint = null
       await load()
     } else if (act === 'map-confirm') {
