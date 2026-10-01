@@ -131,7 +131,7 @@ const CHAT_MESSAGES = [
 const NOW = Date.now()
 const SESSIONS = [
   { sessionId: 's1', title: '学习教练', updatedAt: NOW - 60_000, running: true, blank: false, cwd: '' },
-  { sessionId: 's2', title: '', updatedAt: NOW - 5 * 86400000, running: false, blank: false, cwd: 'F:\\dshworkingspace(studyplugin' },
+  { sessionId: 's2', title: '', updatedAt: NOW - 5 * 86400000, running: false, blank: false, cwd: 'D:\\code\\我的插件(studyplugin' },
   { sessionId: 's3', title: '', updatedAt: NOW - 3 * 3600_000, running: false, blank: true, cwd: '' },
 ]
 
@@ -1446,7 +1446,7 @@ test('会话选择：只有一个会话也写出来，多个才给下拉，浮�
   assert.match(page.html(), /value="s1" selected/)
   assert.match(page.html(), /学习教练[^<]*·[^<]*进行中/, '标题 + 时间 + 进行中')
   assert.match(page.html(), /（新会话）/, '空会话要有名字，不能是一片空白')
-  assert.match(page.html(), /dshworkingspace\(studyplugin/, '没标题就退回目录末段')
+  assert.match(page.html(), /我的插件\(studyplugin/, '没标题就退回目录末段')
   assert.doesNotMatch(page.html(), /当前会话/, '有得选就不叫「当前会话」')
 
   // 切一个：带上 sessionId 重新拉，并且还要再要一次清单

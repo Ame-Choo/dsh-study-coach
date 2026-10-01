@@ -342,6 +342,42 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
   **别指望浏览器换 `innerHTML` 时替你保住位置**——这就是「发一条就跳回顶部」的根。
   换会话（不是刷新）强制落到底。`test/panel.test.js` 的『对话：换会话落到底…』钉着这条。
 
+## 测试别写死平台（2026-10-02，CI 在 `ubuntu-latest` 上红过一批）
+
+本机是 Windows，CI 是 Linux，**夹具里写死 `F:\课件`、`Z:\没有这个目录`、`startsWith(root + '\\')` 这种
+迟早会红**，而且红的是「用例自己写错了」，不是代码坏了。规矩：
+
+- 夹具路径用 `join()` / `resolve()` 拼，期望值也跟着拼；要断言分隔符就 `path.sep`，别写字面量 `\\`。
+- 拿真环境（家目录里 DSH 装的那份 `python`、装没装 `pymupdf`）当下判断的用例，**自己造一个假家目录**
+  （`mkdtempSync` + 空文件），或者在不满足时 `t.skip('为什么')`。`test/pages.test.js` 的 `findPython`
+  与 `renderPages` 两条就是这么改的——skip 判据放宽成 `/pymupdf|No module named|ENOENT|spawn/i`，
+  别只认 `No module named`（本机没 pymupdf 时的原话是「这份 python 里没有 pymupdf：python」）。
+- 同一毫秒里连做两次「新增」的用例（登记材料）**会撞出真 bug**：以前的 id 是
+  `'mat-' + Date.now().toString(36)`，撞了就同号，而删除按 id 过滤 → 删一份带走另一份。
+  现在统一走 `lib/ids.js` 的 `uniqueId(prefix, taken, ms)`（先看已有哪些 id，撞了往后挪 `-2`、`-3`…），
+  `lib/routes.js` 与 `lib/tools.js` 两条路都改用它；`test/ids.test.js` 钉着（`ms` 参数只为测试钉死「同一毫秒」）。
+  新增别的会落盘的 id 时也照这个办（`lib/notice.js` 的消息 id、`lib/routes.js` 的任务 id 还是老写法）。
+
+## CI 红了怎么读（没装 `gh`、也没有 token 的时候）
+
+- 直连 `github.com:443` 在本机不通，但系统代理活着（`http://127.0.0.1:12450`）：git 用
+  `git -c http.proxy=http://127.0.0.1:12450 -c https.proxy=http://127.0.0.1:12450 push`（**别写进 config**），
+  API 用 `Invoke-RestMethod -Proxy http://127.0.0.1:12450 -Uri …`。
+- **原始日志匿名读不到**（`/actions/jobs/:id/logs` → 403），但**注解能读**：
+  `…/actions/runs?per_page=1` 轮询到 `status=completed` → `…/commits/<sha>/check-runs` →
+  `…/check-runs/<id>/annotations`。所以 `.github/workflows/ci.yml` 里不用 `node --test`，
+  而用 `node scripts/ci-test.mjs`：它解析 TAP 的 `not ok N - 名字`，把每条失败写成
+  `::error title=<用例名>::<细节>`（`::notice:: 测试全绿：N 条` 是全绿时那条），退出码跟 `node --test` 一样。
+- workflow 里先探一下宿主的 `@deepseek-ai/*` 装没装上，没装上就跳过测试并给 warning——
+  否则「依赖没装」会红成「用例失败」，白折腾一轮。
+
+## 改源码只用 edit 工具，别用 PowerShell 改写文件
+
+`(Get-Content x -Raw) -replace … | Set-Content -Encoding utf8` 会把整个文件的中文注释变成乱码
+（Windows PowerShell 按 GBK 读 UTF-8 字节，再按 UTF-8 写回去），而且一旦吞掉某行的结尾，
+下面的 `return` 会掉到函数外面——21 个测试文件会一起挂在 `SyntaxError: Illegal return statement`。
+真踩过（`lib/routes.js`，还原靠 `git checkout --`）。批量替换用 `edit` 的 `replace_all: true`。
+
 
 
 

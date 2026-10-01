@@ -177,7 +177,7 @@ test('数学：没装 KaTeX 也认得出来，退回等宽源码而不是原样�
   assert.match(inline('价格 \\$5 起步'), /\\\$5/, '转义过的美元号按字面量留着')
   assert.equal(inline('花了 $5 到 $8'), '花了 $5 到 $8')
   // Windows 路径里的反斜杠不会被当公式或转义吃掉
-  assert.equal(inline('看 C:\\Users\\zongy\\.dsh\\study-coach'), '看 C:\\Users\\zongy\\.dsh\\study-coach')
+  assert.equal(inline('看 C:\\Users\\someone\\.dsh\\study-coach'), '看 C:\\Users\\someone\\.dsh\\study-coach')
   // 公式源码也要转义：认不出来的是数学，不是标签
   assert.doesNotMatch(inline('$<img src=x onerror=alert(1)>$'), /<img/)
 })

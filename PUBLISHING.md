@@ -123,35 +123,43 @@ npm publish
 以下都是 2026-10-02 在 Windows + node v24.21.0 上实测出来的，别照抄结论、照抄**怎么查**。
 
 **仓库里已经有的**：`.github/workflows/ci.yml`（push main / PR / 手动；`ubuntu-latest`；node `22` 与 `24`；
-`npm install --no-audit --no-fund` 之后 `node --test`）、`.gitattributes`（`* text=auto eol=lf` + 二进制白名单）、
-`.gitignore`、MIT `LICENSE`、这份 `PUBLISHING.md`、`npm run setup-repo`、keywords 里的 `dsh-plugin`。
+`npm install --no-audit --no-fund` → 先探一下 `@deepseek-ai/*` 装没装上（装不上就跳过测试并给一条 warning，
+不把「环境缺包」红成「用例失败」）→ `node scripts/ci-test.mjs` 跑测试，**失败用例写成 GitHub 注解**）、
+`.gitattributes`（`* text=auto eol=lf` + 二进制白名单）、`.gitignore`、MIT `LICENSE`、这份 `PUBLISHING.md`、
+`npm run setup-repo`、keywords 里的 `dsh-plugin`。
 
 **已经查过的**：
 
 | 查了什么 | 怎么查的 | 结果 |
 | --- | --- | --- |
-| 仓库自不自洽 | `git bundle create x.bundle --all` → 在别处 `git clone x.bundle` | 127 个 tracked、HEAD 对得上；**`npm install` 后 334 pass / 0 fail**（不装依赖直接跑是 315 pass / 4 fail，原因只是缺宿主的 `@deepseek-ai/dsh-tools`，不是代码坏了） |
+| 仓库自不自洽 | `git bundle create x.bundle --all` → 在别处 `git clone x.bundle` | 132 个 tracked、HEAD 对得上；`npm install` 后 **340 pass / 0 fail**（不装依赖直接跑就缺宿主的 `@deepseek-ai/dsh-tools`，那是环境，不是代码） |
+| Linux 上跑不跑得起来 | 推到 GitHub 看 Actions | `ubuntu-latest` × node `22`/`24` 都是绿的：336 → 340 条用例，**跳过 2 条**（那两条要 pymupdf，runner 上没装）。红过一阵，原因全是测试自己写死了 Windows 的写法，另有一条真 bug（材料 id 撞号） |
 | npm 上名字占没占 | `npm view dsh-study-coach version` | 404，没被占 |
-| 包里装了什么 | `npm pack --dry-run` | 81 个文件 / 815.8 kB（解包 1.8 MB），只有源码 + 文档 + 字体 |
+| 包里装了什么 | `npm pack --dry-run` | 86 个文件 / 1.2 MB，只有源码 + 文档 + 截图 + 字体 |
 | peer 区间对不对 | `npm view @deepseek-ai/dsh-tools versions` 等 | 线上有 `dsh-tools 0.2.0-rc.1/rc.2` 与 `cordis 4.0.4`，本机装的是 `0.2.0-rc.2` / `4.0.4`，两个区间都满足 |
 
-**要你拍板的（我不替你决定）**：
+**已经办掉的（2026-10-02）**：
 
-1. **git 身份是占位的**：`user.name = dsh-study-coach`、`user.email = noreply@example.com`，现有 commit
-   全挂在它名下，推上去没有头像、也关联不到你的账号。给我 GitHub 用户名 + 邮箱
-   （`<id>+<用户名>@users.noreply.github.com` 也行）我就设上；旧 commit 要不要一起重写
-   （`git rebase -r --root --exec 'git commit --amend --no-edit --reset-author'`）你说一声。
-2. **`package.json` 里的 `OWNER`**：`repository` / `homepage` / `bugs` 还是占位，配好 remote 后
-   `npm run setup-repo` 一次填掉——需要你的 GitHub 用户名（或仓库全名）。
-3. **topic 只能手动打**：`dsh-plugin`（必打）+ `deepseek-harness`。本机没装 `gh`，仓库网页 About 齿轮里填最快。
-4. **公开还是私有**：要进 `dshmarket` 目录**必须公开**，爬虫只看得见公开仓库。
-5. **首屏**（已补，2026-10-02）：README 顶上是 CI / node / DSH / license 四颗徽章，
-   下面一张知识地图大图 + 今日任务 / 资料图谱 / 档案三张并排，图在 `docs/`（也进了 `files` 白名单，
-   所以 npm 上的 README 能显示出来）；另有一份 `CHANGELOG.md`。
+1. ~~git 身份是占位的~~ → `Ame-Choo <ray060619@gmail.com>`，**全部 73 个 commit 一起重写过**
+   （`git filter-branch --env-filter` + 清 `refs/original` + `gc --prune=now`，日期没动）。
+2. ~~`OWNER` 占位~~ → `npm run setup-repo` 跑过，`repository` / `homepage` / `bugs` 都指着
+   `https://github.com/Ame-Choo/dsh-study-coach`；remote 已配（推的时候经系统代理 `127.0.0.1:12450`，
+   `git config` 里没写 proxy）。
+3. ~~公开还是私有~~ → 仓库已经是**公开**的（要进 `dshmarket` 必须公开，爬虫只看得见公开仓库）。
+4. ~~首屏~~ → README 顶上 CI / node / DSH / license 四颗徽章，下面一张知识地图大图 + 今日任务 / 资料图谱 / 档案
+   三张并排，图在 `docs/`（也进了 `files` 白名单，npm 上的 README 才显示得出来）；另有一份 `CHANGELOG.md`。
    底图是拿演示数据在 `node scripts/preview.mjs` 上拍的，仓库里没有那些数据。
-6. **本机路径已清过一遍**：`DEV.md` / `README.md` / `AGENTS.md` 里那几处
-   `F:\dshworkingspace(studyplugin…` 与 `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；
-   只剩 `test/panel.test.js` 两处夹具字符串还故意带着那个括号目录名——那条用例测的就是「cwd 里带括号」。
+5. ~~本机路径~~ → `DEV.md` / `README.md` / `AGENTS.md` 里那几处 `F:\dshworkingspace(studyplugin…` 与
+   `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；测试夹具里那两个假的也换了
+   （`test/panel.test.js` 测「cwd 里带括号」、`test/md.test.js` 测 Windows 路径不被 markdown 吃掉）。
+
+**还差你一步（我做不了：没装 `gh`，也没有 GitHub token）**：
+
+1. **topic 只能手动打**：仓库页 About 齿轮里填 `dsh-plugin`（必打）+ `deepseek-harness`。
+   API 也能打（`PUT /repos/{owner}/{repo}/topics`），但要带 token。
+2. **仓库描述**（About 里那句）：现在是空的，随手写一句。
+3. **发 npm**：本机 `npm whoami` 回 `ENEEDAUTH`，得你先 `npm login`，然后 `npm publish`
+   （`npm pack --dry-run` 已经确认包里干净）。发完 `npm view dsh-study-coach version` 应该能看到 `0.1.0`。
 
 ---
 

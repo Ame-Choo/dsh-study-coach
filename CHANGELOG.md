@@ -44,7 +44,23 @@
 
 - `lib/client.js`：设置 → 学习教练那一页（面板入口、快捷键、数据目录、当前档案）。
 - 数据落盘：`registry.json` + `profiles/<id>/*.json`，写入是临时文件改名，坏了不留半截。
-- `node --test` 335 条用例；`node scripts/preview.mjs` 不用 DSH 就能把面板起在 19390 看。
+- `node --test` 340 条用例（本机全绿）；`node scripts/preview.mjs` 不用 DSH 就能把面板起在 19390 看。
+- GitHub Actions 跑 `ubuntu-latest` + node 22 / 24：`node scripts/ci-test.mjs` 跑测试并把**失败用例写成 GitHub 注解**
+  （Actions 的原始日志不登录看不到，注解是匿名也能读的那份）；宿主包 `@deepseek-ai/*` 没装上时跳过测试并给一条
+  warning，不把「环境缺包」红成「用例失败」。
+
+### 修掉的问题
+
+- 体检卡误报「学习目标还缺 3 项」：它读的是平铺的 `profile.outcome` / `deadline` / `minutesPerDay`，
+  而目标其实存在 `profile.goal` 里——目标填全了也会被报缺三项。
+- 材料登记过、但盘上已经找不到（移动硬盘没插、网盘没挂）时，`/study/file` 回的是 404，
+  而面板探活正是拿 404 判「服务端还是旧代码」的，于是它举着红条让人去重启 DSH。现在这种情况回 **410**
+  并说清「登记过、盘上没了」；没登记过的路径仍然是 404。
+- 同一毫秒里连着登记两份材料会撞 id，而删除是按 id 过滤的——删一份会把另一份一起删掉
+  （批量登记一个文件夹、脚本灌数据时最容易撞上）。发号改成先看已有哪些 id，撞了就往后挪。
+- CI 在 `ubuntu-latest` 上红的那一批：全是测试自己把路径写成了 Windows 的写法（`F:\课件`、
+  `Z:\没有这个目录`、`startsWith(root + '\\')`），夹具改成一侧按平台拼、一侧归一化分隔符；
+  `findPython` 那条改成自己造一个假家目录，`renderPages` 那条在渲不了 PDF 的环境里明确 skip。
 
 ### 已知问题
 
