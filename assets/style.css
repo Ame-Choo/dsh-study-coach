@@ -911,10 +911,52 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .tick:hover { border-color: var(--accent); }
 .tick.on { background: var(--ok); border-color: var(--ok); }
 
+/* 记忆卡 */
+.mem-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  text-align: center;
+}
+.mem-label { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: var(--dim); }
+.mem-front { font-size: 26px; line-height: 1.35; word-break: break-word; }
+html[data-mode="sidebar"] .mem-front { font-size: 21px; }
+.mem-back {
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  width: 100%;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+  word-break: break-word;
+}
+.mem-grades { margin-top: 2px; }
+/* 四档自评按「记得多牢」深浅排开，像一把尺子：
+   别只给「记住 / 秒答」上底色——四个人一起看，两颗实心的会被当成已经选中了。
+   这里只动字色和边框，四颗一律不填充。 */
+.mem-grades .btn.grade { background: var(--card); }
+.mem-grades .btn.grade[data-grade="忘了"] { color: var(--bad-text, var(--bad)); border-color: var(--bad); }
+.mem-grades .btn.grade[data-grade="模糊"] { color: var(--warn); border-color: var(--warn); }
+.mem-grades .btn.grade[data-grade="记住"] { color: var(--accent); border-color: var(--accent); }
+.mem-grades .btn.grade[data-grade="秒答"] { color: var(--ok); border-color: var(--ok); }
+.mem-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.mem-form input { flex: 1 1 190px; min-width: 0; font: inherit; padding: 7px 9px; }
+/* 两个下拉并排占一行：竖着摞三行会把这张卡拉得太长，填的时候还得上下找。 */
+.mem-form select { flex: 1 1 150px; min-width: 0; font: inherit; padding: 6px 8px; max-width: 100%; }
+.mem-list li { align-items: flex-start; gap: 9px; }
+.mem-list .mat-main { min-width: 0; }
+
 /* 侧栏里那一格菜单横不下，让它换行，别把页面撑宽 */
 html[data-mode="sidebar"] .sub-nav { padding: 7px 9px; }
 html[data-mode="sidebar"] .sub-hint { display: none; }
 html[data-mode="sidebar"] .focus-clock { font-size: 42px; }
+html[data-mode="sidebar"] .mem-form input { flex: 1 1 100%; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

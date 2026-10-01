@@ -42,6 +42,8 @@ const ROUTES = [
   // 工具栏目那批
   ['/study/toolbox', '工具页'],
   ['/study/api/toolbox', '工具数据'],
+  // 记忆卡那批
+  ['/study/api/memory', '记忆卡'],
 ]
 
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
@@ -55,6 +57,7 @@ const MARKS = [
   ['shelfCard', '资料书架'],
   ['pomodoroCard', '番茄钟'],
   ['checklistCard', '清单'],
+  ['memoryCard', '记忆卡'],
 ]
 
 let bad = 0

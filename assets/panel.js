@@ -54,6 +54,7 @@ const STALE_NEED = [
   ['review', '今日复盘图'],
   ['shelf', '资料书架'],
   ['toolbox', '工具栏目'],
+  ['memory', '记忆卡'],
   ['file', '打开网课 / 讲义'],
 ]
 
@@ -81,6 +82,8 @@ let chatTimer = null
 let chatStamp = ''
 /* 工具栏目那一份：{ focus, todos }；只有「工具」页拉 */
 let toolbox = null
+/* 记忆卡那一份：{ stats, soon, items, total }；只有工具页切到「记忆卡」时拉 */
+let memory = null
 /* 番茄钟那个每秒走动的句柄；离开这一页、或者钟停了就清掉 */
 let focusTimer = null
 const ui = {
@@ -134,6 +137,12 @@ const ui = {
   breakMinutes: 5,
   /* 正等哪条清单/番茄钟的响应，别让人连点 */
   toolBusy: '',
+  /* 记忆卡：正面翻过来没有、正在背哪一张、只看哪一档 */
+  cardReveal: false,
+  cardId: '',
+  cardStatus: 'due',
+  /* 记忆卡表单里那几格（重画不冲掉填好的字） */
+  cardDraft: { front: '', back: '', kind: '', pointId: '' },
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -344,7 +353,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, review, shelfAlive, toolboxAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, review, shelfAlive, toolboxAlive, memoryAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -353,6 +362,7 @@ async function probeCapabilities() {
     alive('/study/api/review'),
     alive('/study/api/materials'),
     alive('/study/api/toolbox'),
+    alive('/study/api/memory'),
   ])
   return {
     ability,
@@ -363,6 +373,7 @@ async function probeCapabilities() {
     review,
     shelf: shelfAlive,
     toolbox: toolboxAlive,
+    memory: memoryAlive,
     file: await fileAlive(),
   }
 }
@@ -426,6 +437,8 @@ async function load() {
     shelf = page === 'materials' ? await loadShelf() : null
     // 工具栏目只有「工具」这一页要。
     toolbox = page === 'toolbox' ? await loadToolbox() : null
+    // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
+    memory = page === 'toolbox' && ui.tool === 'memory' ? await loadMemory() : null
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通。
     // 会话清单要的是「对话页开着」或者「悬浮窗开着」——悬浮窗里也有选择器，
     // 只在对话页拉的话，浮窗切过去就是一个空下拉。
@@ -555,6 +568,37 @@ async function loadToolbox() {
 async function refreshToolbox() {
   const next = await loadToolbox()
   if (next) toolbox = next
+  render()
+}
+
+/**
+ * 拉一份记忆卡。
+ *
+ * 服务端那边 `dueAt` 存的是绝对时刻，所以「现在该背哪几张」是它现算的——
+ * 这里只管把 `status` 那一档递过去，不带任何本地倒计时。
+ */
+async function loadMemory() {
+  if (!capabilities || !capabilities.memory) return null
+  try {
+    const out = await api('/study/api/memory?status=' + encodeURIComponent(ui.cardStatus) + '&limit=200')
+    if (!out || !out.stats) return null
+    return {
+      stats: out.stats,
+      soon: out.soon || 0,
+      dueTotal: out.dueTotal || 0,
+      dueItems: Array.isArray(out.dueItems) ? out.dueItems : [],
+      items: Array.isArray(out.items) ? out.items : [],
+      total: out.total || 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 背完一张、加一张、删一张都用这个收口。 */
+async function refreshMemory() {
+  const next = await loadMemory()
+  if (next) memory = next
   render()
 }
 
@@ -1872,6 +1916,12 @@ const TOOLS = [
     hint: '今天想办的那几件，勾掉一件算一件',
     card: () => checklistCard(),
   },
+  {
+    id: 'memory',
+    label: '记忆卡',
+    hint: '要背的东西按艾宾浩斯排，到点回来过一遍',
+    card: () => memoryCard(),
+  },
 ]
 
 function toolMenu() {
@@ -1990,6 +2040,103 @@ function checklistCard() {
     <div class="chips">${chips}</div>
     ${rows ? `<ul class="list tight todos-list">${rows}</ul>` : '<p class="dim">这一类里没有条目。</p>'}
     <p class="hint">清单跟「今天」页的任务不是一回事：任务是我排的学习计划，清单是你自己想起来要办的事。点右边那颗番茄可以就着这一条起一轮计时。</p>
+  </section>`
+}
+
+/* 自评四档：跟 lib/store.js 的 CARD_GRADES 同序同字，改一边就得改另一边。 */
+const CARD_GRADES = ['忘了', '模糊', '记住', '秒答']
+/* 类型也照 store 那份抄，默认那条「其他」由空串表示。 */
+const CARD_KINDS = ['单词', '公式', '定义']
+const CARD_FILTERS = [
+  ['due', '该背了'],
+  ['waiting', '还没到点'],
+  ['graduated', '已经背下来'],
+  ['', '全部'],
+]
+
+/**
+ * 记忆卡：要背的东西一张一张摊开，按艾宾浩斯那条间隔排。
+ *
+ * 跟「今天」页的任务、跟掌握度都是两套账：这里只管背没背下来。
+ * 页面**不是**定时器——该背哪几张是服务端拿 `dueAt` 跟当下比出来的，
+ * 所以关掉页面、过一天再打开，看到的还是真数据。
+ */
+function memoryCard() {
+  const m = memory
+  if (!m) {
+    return `<section class="card mem" data-card="memory">
+      <div class="card-head"><h2>记忆卡</h2></div>
+      <p class="dim">读不到记忆卡。这一页要等 DSH 重启之后才能用——路由是进程启动时加载的。</p>
+    </section>`
+  }
+  const st = m.stats || {}
+  const dueList = m.dueItems || []
+  const cur = dueList.find((c) => c.id === ui.cardId) || dueList[0] || null
+  const box = cur
+    ? `<div class="mem-face">
+      <span class="mem-label">${esc(cur.kind)}${cur.pointId ? ' · ' + esc(cur.pointId) : ''}${cur.step ? ` · 第 ${cur.step} 级` : ''}${cur.lapses ? ` · 忘过 ${cur.lapses} 次` : ''}</span>
+      <b class="mem-front">${esc(cur.front)}</b>
+      ${ui.cardReveal
+        ? `<p class="mem-back">${esc(cur.back)}</p>
+      <div class="row-acts mem-grades">
+        ${CARD_GRADES.map((g) => `<button class="btn grade" data-act="card-grade" data-grade="${g}" data-id="${esc(cur.id)}">${g}</button>`).join('')}
+      </div>`
+        : `<button class="btn primary" data-act="card-reveal">看答案</button>`}
+    </div>`
+    : `<p class="dim">${st.total
+      ? `现在没有该背的。${m.soon ? `接下来 24 小时里还有 ${m.soon} 张到点。` : '都在等着呢。'}`
+      : '还没建过卡。下面加一张——正面写要背的东西，背面写答案，刚建好就会先让你看一遍。'}</p>`
+
+  const mods = (state && state.map && state.map.modules) || []
+  const pointOpts = ['<option value="">不挂单元</option>']
+    .concat(mods.flatMap((mod) => (mod.points || []).map(
+      (p) => `<option value="${esc(p.id)}"${p.id === ui.cardDraft.pointId ? ' selected' : ''}>${esc(p.id)} ${esc(p.title || '')}</option>`,
+    )))
+    .join('')
+  const kindOpts = ['<option value="">其他</option>']
+    .concat(CARD_KINDS.map((k) => `<option value="${esc(k)}"${k === ui.cardDraft.kind ? ' selected' : ''}>${esc(k)}</option>`))
+    .join('')
+
+  const chips = CARD_FILTERS.map(([key, label]) => {
+    // cardStats 只给 total / due / graduated，「还没到点」得自己减出来
+    const n = key === 'due' ? (st.due || 0)
+      : key === 'graduated' ? (st.graduated || 0)
+        : key === 'waiting' ? Math.max(0, (st.total || 0) - (st.due || 0) - (st.graduated || 0))
+          : (st.total || 0)
+    return `<button class="mini${key === ui.cardStatus ? ' on' : ''}" data-act="card-filter" data-status="${key}">${label} ${n}</button>`
+  }).join('')
+
+  // 列表里只写正面：答案留在复习盒子里，翻答案之前不该先被列表剧透。
+  const rows = (m.items || []).map((c) => `<li>
+    <div class="mat-main">
+      <b>${esc(c.front)}</b>
+      <div class="path">${[
+        esc(c.kind),
+        c.pointId ? esc(c.pointId) : '',
+        c.state === 'due' ? '该背了' : c.state === 'graduated' ? '已经背下来' : esc(c.leftText || ''),
+        c.step ? `第 ${c.step} 级` : '',
+        c.lapses ? `忘过 ${c.lapses} 次` : '',
+      ].filter(Boolean).join(' · ')}</div>
+    </div>
+    <button class="mini" data-act="card-del" data-id="${esc(c.id)}">删</button>
+  </li>`).join('')
+
+  return `<section class="card mem" data-card="memory">
+    <div class="card-head">
+      <h2>记忆卡</h2>
+      <span class="dim">该背 ${st.due || 0} 张 · 一共 ${st.total || 0} 张 · 背下来 ${st.graduated || 0} 张${m.soon ? ` · 24 小时内还有 ${m.soon} 张` : ''}</span>
+    </div>
+    ${box}
+    <form class="form mem-form" data-form="card">
+      <input name="front" placeholder="正面：要背的东西，比如「photosynthesis」" maxlength="200" value="${esc(ui.cardDraft.front)}">
+      <input name="back" placeholder="背面：答案，比如「光合作用」" maxlength="200" value="${esc(ui.cardDraft.back)}">
+      <select name="kind" title="这是哪一类">${kindOpts}</select>
+      <select name="pointId" title="挂到哪个单元上">${pointOpts}</select>
+      <button class="btn" type="submit">加上</button>
+    </form>
+    <div class="chips">${chips}</div>
+    ${rows ? `<ul class="list tight mem-list">${rows}</ul>` : '<p class="dim">这一档里没有卡。</p>'}
+    <p class="hint">卡片按艾宾浩斯那条间隔排：忘了一次 10 分钟后就回来，模糊退一级，记住进一级，秒答进两级，连着三次秒答就不排了。「现在该背几张」是服务端拿到期时刻现算的，所以关掉页面过一天再打开还是准的。</p>
   </section>`
 }
 
@@ -2435,7 +2582,40 @@ document.addEventListener('click', async (event) => {
       }
     } else if (act === 'tool-pick') {
       ui.tool = el.dataset.tool || TOOLS[0].id
+      // 记忆卡这一档要数据才有东西画；切过去那一下补拉，别的工具不吃这趟请求。
+      if (ui.tool === 'memory' && !memory) memory = await loadMemory()
+      // 换工具等于换一张卡：正面翻回去，别把上一张的答案带过来。
+      ui.cardReveal = false
       render()
+    } else if (act === 'card-reveal') {
+      ui.cardReveal = true
+      render()
+    } else if (act === 'card-grade') {
+      const id = el.dataset.id || ''
+      const grade = el.dataset.grade || ''
+      if (!id || !grade) return
+      el.disabled = true
+      const res = await toolPost('/study/api/memory', { action: 'review', id, grade })
+      if (res.ok) {
+        // 背完这一张就翻下一张：正面朝上重新开始，别停在刚背完的那张答案上。
+        ui.cardReveal = false
+        ui.cardId = ''
+        toast(`记上了：${grade}`)
+      }
+      await refreshMemory()
+    } else if (act === 'card-filter') {
+      ui.cardStatus = el.dataset.status || ''
+      ui.cardId = ''
+      ui.cardReveal = false
+      memory = await loadMemory()
+      render()
+    } else if (act === 'card-del') {
+      const id = el.dataset.id || ''
+      if (!id) return
+      el.disabled = true
+      const res = await toolPost('/study/api/memory', { action: 'remove', id })
+      if (res.ok) toast('删掉了')
+      await refreshMemory()
     } else if (act === 'focus-start') {
       const minutes = Number((document.getElementById('focus-min') || {}).value) || ui.focusMinutes
       const breakMin = Number((document.getElementById('break-min') || {}).value) || ui.breakMinutes
@@ -2604,6 +2784,11 @@ document.addEventListener('change', async (event) => {
     }
     return
   }
+  // 记忆卡那几格：改动先记在 ui 上，这样中途重画（翻答案、换筛选）不会把打好的半句冲掉。
+  if (el.name === 'front' || el.name === 'back' || el.name === 'kind' || el.name === 'pointId') {
+    ui.cardDraft = { ...ui.cardDraft, [el.name]: String(el.value || '') }
+    return
+  }
   // 选文件上传：一次把选中的都传上去，一个个来（并发太高容易把内存堆满）。
   if (el.id === 'import-files') {
     const files = Array.from(el.files || [])
@@ -2696,6 +2881,27 @@ document.addEventListener('submit', async (event) => {
         toast('加上了。')
       }
       await refreshToolbox()
+    } else if (kind === 'card') {
+      const front = String(data.get('front') || '').trim()
+      const back = String(data.get('back') || '').trim()
+      const kindOf = String(data.get('kind') || '').trim()
+      const pointId = String(data.get('pointId') || '').trim()
+      // 先把输入框里的字收下来：没填全得重画一次，别把已经打好的半句冲掉。
+      ui.cardDraft = { front, back, kind: kindOf, pointId }
+      if (!front || !back) {
+        toast('正面、背面都得写', true)
+        render()
+        return
+      }
+      const res = await toolPost('/study/api/memory', { action: 'add', front, back, kind: kindOf, pointId })
+      if (res.ok) {
+        ui.cardDraft = { front: '', back: '', kind: '', pointId: '' }
+        form.reset()
+        const box = form.querySelector('input[name="front"]')
+        if (box && box.focus) box.focus()
+        toast('记下了，先看一遍。')
+      }
+      await refreshMemory()
     } else if (kind === 'chat') {
       const text = String(data.get('text') || '').trim()
       if (!text) {
@@ -2845,4 +3051,21 @@ document.addEventListener('visibilitychange', () => {
 })
 
 openFirstCard(page)
+applyToolParam()
 load()
+
+/**
+ * 地址上带 `?tool=memory` 就默认开那个小工具。
+ *
+ * 放在这里而不是 ui 初始化那儿：`TOOLS` 是后面才定义的 const，在 ui 那儿引用它
+ * 会踩 TDZ。顺带也让「哪个工具」能收藏、能直连——不然只能靠手点二级菜单。
+ */
+function applyToolParam() {
+  let asked = ''
+  try {
+    asked = new URLSearchParams((window.location && window.location.search) || '').get('tool') || ''
+  } catch {
+    /* 没有 location（测试里）就当没问 */
+  }
+  if (asked && TOOLS.some((t) => t.id === asked)) ui.tool = asked
+}

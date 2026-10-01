@@ -102,6 +102,7 @@ const PROBE_PATHS = [
   '/study/api/review',
   '/study/api/materials',
   '/study/api/toolbox',
+  '/study/api/memory',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -198,6 +199,28 @@ const TOOLBOX = {
   },
 }
 
+/**
+ * 记忆卡：一张该背的、一张还没到点的、一张背下来的。
+ *
+ * `dueItems` 就是 `listCards(status='due')` 的结果，路由里两份一起给，
+ * 所以夹具也照这个形状造。
+ */
+const MEMORY = {
+  stats: { total: 3, due: 1, graduated: 1, learning: 1, byKind: { 单词: 1, 公式: 1, 定义: 1, 其他: 0 } },
+  soon: 1,
+  dueTotal: 1,
+  dueItems: [
+    { id: 'c-1', front: 'contingency', back: '列联表', kind: '单词', pointId: 'M1.1', state: 'due', step: 2, dueAt: '2026-10-01T09:00:00.000Z', left: 0, leftText: '现在', lapses: 1 },
+    { id: 'c-3', front: 'F = ma', back: '牛顿第二定律', kind: '公式', pointId: '', state: 'due', step: 0, dueAt: '2026-10-01T09:00:00.000Z', left: 0, leftText: '现在', lapses: 0 },
+  ],
+  total: 3,
+  items: [
+    { id: 'c-1', front: 'contingency', back: '列联表', kind: '单词', pointId: 'M1.1', state: 'due', step: 2, dueAt: '2026-10-01T09:00:00.000Z', left: 0, leftText: '现在', lapses: 1 },
+    { id: 'c-3', front: 'F = ma', back: '牛顿第二定律', kind: '公式', pointId: '', state: 'due', step: 0, dueAt: '2026-10-01T09:00:00.000Z', left: 0, leftText: '现在', lapses: 0 },
+    { id: 'c-2', front: '独立事件', back: 'P(AB) = P(A)P(B)', kind: '定义', pointId: 'M1.1', state: 'graduated', step: 6, dueAt: '', left: 0, leftText: '', lapses: 0 },
+  ],
+}
+
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
 async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null } = {}) {
   const list = !chat ? [] : sessions === null ? SESSIONS : sessions
@@ -245,6 +268,12 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     if (path.includes('/api/toolbox')) body = { ok: true, ...TOOLBOX }
     else if (path.includes('/api/focus')) body = { ok: true, action: 'start', ...TOOLBOX }
     else if (path.includes('/api/todo')) body = { ok: true, action: 'add', item: TOOLBOX.todos.items[0], todos: TOOLBOX.todos }
+    // 记忆卡：读的时候按 status 把 items 换成对应那一档，写的时候回一张卡。
+    else if (path.includes('/api/memory')) {
+      const status = new URL('http://x' + path).searchParams.get('status') || ''
+      const items = status ? MEMORY.items.filter((c) => c.state === status) : MEMORY.items
+      body = { ok: true, ...MEMORY, items, total: items.length }
+    }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
     if (path.includes('/api/chat/sessions')) {
@@ -309,7 +338,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     })
     return { jumped }
   }
-  return { html, calls, posts, clickAct, clickNav, changeAct, submitForm, listeners, window, documentElement: document.documentElement }
+  return { html, calls, posts, boxes, clickAct, clickNav, changeAct, submitForm, listeners, window, documentElement: document.documentElement }
 }
 
 function fixture() {  return {
@@ -909,4 +938,71 @@ test('工具页：二级菜单切小工具，番茄钟照服务端的绝对时�
   await page.clickAct({ act: 'focus-stop' })
   assert.equal(page.posts.at(-1).path, '/study/api/focus')
   assert.deepEqual(page.posts.at(-1).body, { action: 'stop' })
+})
+
+test('记忆卡：正面朝上不给答案；背完自己翻下一张，排期由服务端算', async () => {
+  const page = await boot(fixture(), { path: '/study/toolbox' })
+
+  // 默认是番茄钟，看钟的时候不该白跑一趟记忆卡。
+  // 探针那条 alive('/study/api/memory') 也是这个路径，所以只数带查询串的。
+  assert.equal(page.calls.filter((g) => g.includes('/api/memory?')).length, 0)
+  assert.doesNotMatch(page.html(), /class="mem-face"/)
+
+  // 切到记忆卡：补拉一次，二级菜单跟着挪
+  await page.clickAct({ act: 'tool-pick', tool: 'memory' })
+  assert.match(page.html(), /class="sub-item on" data-act="tool-pick" data-tool="memory"/)
+  assert.equal(page.calls.at(-1), '/study/api/memory?status=due&limit=200')
+  assert.match(page.html(), /class="card mem" data-card="tool"/)
+
+  // 概览
+  assert.match(page.html(), /该背 1 张 · 一共 3 张 · 背下来 1 张 · 24 小时内还有 1 张/)
+  // 筛子：四档都列出来，现在停在「该背了」；「还没到点」是减出来的
+  assert.match(page.html(), /data-act="card-filter" data-status="due">该背了 1/)
+  assert.match(page.html(), /data-act="card-filter" data-status="waiting">还没到点 1/)
+  assert.match(page.html(), /data-act="card-filter" data-status="graduated">已经背下来 1/)
+  assert.match(page.html(), /class="mini on" data-act="card-filter" data-status="due"/)
+
+  // 正面朝上：只给正面，答案和四个自评都不在
+  assert.match(page.html(), /<b class="mem-front">contingency<\/b>/)
+  assert.match(page.html(), /data-act="card-reveal"/)
+  assert.doesNotMatch(page.html(), /列联表/)
+  assert.doesNotMatch(page.html(), /data-act="card-grade"/)
+
+  // 翻过来：答案和四档自评都出来
+  await page.clickAct({ act: 'card-reveal' })
+  assert.match(page.html(), /class="mem-back">列联表</)
+  for (const g of ['忘了', '模糊', '记住', '秒答']) {
+    assert.match(page.html(), new RegExp(`data-act="card-grade" data-grade="${g}" data-id="c-1"`))
+  }
+
+  // 自评一次：打的是 review，回来重拉，并且翻回正面等下一张
+  await page.clickAct({ act: 'card-grade', grade: '记住', id: 'c-1' })
+  assert.equal(page.posts.at(-1).path, '/study/api/memory')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'review', id: 'c-1', grade: '记住' })
+  assert.equal(page.calls.at(-1), '/study/api/memory?status=due&limit=200')
+  assert.match(page.html(), /data-act="card-reveal"/)
+  assert.doesNotMatch(page.html(), /data-act="card-grade"/)
+  assert.match(page.boxes.get('toast').textContent, /记上了：记住/)
+
+  // 切到「已经背下来」那一档：只画那一档的卡。
+  // 复习盒子跟筛子无关——该背的还是照背，换筛子不该把手上这张抽走。
+  await page.clickAct({ act: 'card-filter', status: 'graduated' })
+  assert.equal(page.calls.at(-1), '/study/api/memory?status=graduated&limit=200')
+  assert.match(page.html(), /独立事件/)
+  assert.match(page.html(), /class="mem-front">contingency</)
+  assert.doesNotMatch(page.html(), /data-act="card-grade"/)
+
+  // 加一张：正面、背面都得写；写全了才打接口
+  const before = page.posts.length
+  await page.submitForm({ form: 'card' }, { front: '   ', back: '', kind: '', pointId: '' })
+  assert.equal(page.posts.length, before, '正面背面没写全不该打接口')
+  assert.match(page.boxes.get('toast').textContent, /正面、背面都得写/)
+  await page.submitForm({ form: 'card' }, { front: 'P(AB)', back: '联合概率', kind: '公式', pointId: 'M1.1' })
+  assert.equal(page.posts.at(-1).path, '/study/api/memory')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'add', front: 'P(AB)', back: '联合概率', kind: '公式', pointId: 'M1.1' })
+
+  // 删一张
+  await page.clickAct({ act: 'card-del', id: 'c-3' })
+  assert.equal(page.posts.at(-1).path, '/study/api/memory')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'remove', id: 'c-3' })
 })

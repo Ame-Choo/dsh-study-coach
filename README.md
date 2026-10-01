@@ -119,10 +119,11 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_book` | 整本书拆成页级索引：`action=info` 数页数、读书签 / `action=build` 后台把每一页渲成 `p0007.png` / `action=pages` 查某个单元在哪些教辅的哪几页 |
 | `study_focus` | 番茄钟：`action=start` 起一轮（`minutes` / `kind=work\|break` / `taskId` / `label`）/ `action=stop` 停掉 / `action=status` 看还剩多久。**存的是绝对时刻不是倒计时**，所以起完就别管了，别轮询等它 |
 | `study_todo` | 清单：`action=add` / `toggle` / `patch` / `remove` / `list`（可按 `status=open\|today\|done` 筛）。这是学生自己想办的事，跟 `study_plan` 排的学习任务是两码事 |
+| `study_card` | 记忆卡：`action=add`（`front` / `back` / `kind` / `pointId`）/ `due` 拿该背的 / `review`（`id` + `grade=忘了\|模糊\|记住\|秒答`）/ `patch` / `remove` / `list`。排期由服务端按艾宾浩斯算，**跟掌握度是两套账** |
 | `study_guide` | 在面板顶上放一句指引，把学生叫回对话 |
 | `study_inbox` | 读学生在面板上的留言，读完标掉 |
 
-这 19 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
+这 20 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
 
 「先把整本教辅读一遍、分析它教什么」这件事不是靠谁记得，是写死在随包 SKILL.md 第 2 节里的：材料登记完就得通读，结论写进 `study_analysis`，画地图和排任务都从这份结论里取。册子厚就分批喂 `chapters`，或者拉几个子 agent 并行读——同一个 `no` 会覆盖，读到哪写到哪。
 
@@ -140,14 +141,15 @@ pnpm add link:/绝对路径/dsh-study-coach
 读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
 `/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
-`/study/api/point/pages`、`/study/api/toolbox`。
+`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`。
 
 写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
 `/study/api/mastery`、`/study/api/ability`、`/study/api/library`、`/study/api/task`、
 `/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
 `/study/api/practice/ask`、`/study/api/reset`、`/study/api/materials/import`、
-`/study/api/materials/build`、`/study/api/material/upload`、`/study/api/focus`、`/study/api/todo`。
+`/study/api/materials/build`、`/study/api/material/upload`、`/study/api/focus`、`/study/api/todo`、
+`/study/api/memory`。
 
 还有两条不走 router 的：`/study/page?path=…` 把拆出来的页图发出去（只放行数据根 `pages/` 底下的文件），
 `/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」）。
@@ -582,6 +584,60 @@ const own = (html.slice(0, at).match(/class="card([^"]*)"/) || ['', ''])[1]
 ```
 
 `open` 掉进了 `data-card` 里 —— 卡永远折着，点折叠按钮还拿错误的 `dataset.card` 去 toggle。症状是「浏览器模式好好的，一侧栏就展不开」。
+
+## 补：记忆卡 —— 让要背的东西按艾宾浩斯回来
+
+工具页的第三个格子。管的是「背没背下来」，跟 `mastery`（会不会做题）是两张表：`memory.json` 里只有卡片，挂不挂 `pointId` 都不影响排期。挂了的话，做题页和知识地图能顺着找到相关的卡。
+
+#### 一、阶梯是固定的七级
+
+```js
+export const CARD_STEPS = [10, 60, 540, 1440, 2880, 8640, 44640]  // 分钟
+```
+
+10 分 / 1 时 / 9 时 / 1 天 / 2 天 / 6 天 / 31 天，就是艾宾浩斯那条曲线最常用的复现点。`step` 记的是**已经走完几级**，不是等级编号。
+
+四档自评怎么挪：
+
+| 自评 | 结果 |
+| --- | --- |
+| 忘了 | 退回 0 级，10 分钟后再来（记一次 lapse） |
+| 模糊 | 退一级，按退到那级的时间回来 |
+| 记住 | 进一级 |
+| 秒答 | 进两级；**连着三次秒答直接毕业** |
+
+走到头（`minutes` 为 `null`）或者 `streak >= 3` 就毕业：`dueAt = null`，不再排。
+
+#### 二、新卡是「立刻到期」的
+
+`addCard` 给的 `step` 是 0、`dueAt` 是现在——写下来那一下本来就该看一遍。所以 10 分钟那一级**不是**靠「记住」走出来的，它是「忘了 / 模糊」之后的回来间隔。这条容易搞反：新卡的第一次复习就在当下。
+
+#### 三、复习盒子和筛子互不干涉
+
+`GET /study/api/memory` 一次回三样：全库统计（`stats` / `soon` / `dueTotal`）、**该背的那一队**（`dueItems`，永远是不带筛子的）、以及按 `status` 筛出来的列表（`items`）。
+
+面板上复习盒子只认 `dueItems`，所以换筛子不会把手上这张卡抽走——学生正在背，顺手点一下「已经背下来」看看清单，卡不该没。列表里**只写正面**：翻答案之前不该先被列表剧透。
+
+`listCards` 先数全库、再筛、再排，所以 `due` / `waiting` / `graduated` 是全库计数；面板上「还没到点」那一档的数是 `total - due - graduated` 减出来的（`cardStats` 不给 waiting）。
+
+#### 四、改内容不许动排期
+
+`patchCard` 拿 `normalizeCard` 过一遍之后，**显式把 `step / dueAt / graduatedAt / lapses / streak / reviews / at` 从原卡恢复**。不这么写的话，`normalizeCard` 的默认值会把一张背到第 5 级的卡悄悄打回 0 级——学生只是改了个错别字。
+
+```js
+const next = normalizeCard(patch, card, card.id)
+next.step = card.step; next.dueAt = card.dueAt; /* … */
+```
+
+#### 五、四档自评别只给两颗上底色
+
+一开始给「记住 / 秒答」加了实心底色，截图一看像已经选中了。现在四颗一律不填充，只按记得牢不牢改字色和边框（红 → 琥珀 → 主色 → 绿），像一把尺子。
+
+#### 六、测试
+
+`test/memory.test.js`（7 条）：阶梯四档、建卡校验（正反面必填、类型白名单、超 200 字）、复习与 lapse、毕业的两条路（走完七级 / 连三次秒答）、清单排序与筛选与 `limit`、`leftText` 与 `cardStats` 与 `memoryBody`、改内容不重置排期、删除。
+
+面板那条在 `test/panel.test.js`：正面朝上不给答案、翻过来四档都在、自评打的是 `review`、换筛子不抽走手上这张、空正面背面本地拦下不打接口。
 
 
 

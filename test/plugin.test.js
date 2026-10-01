@@ -63,10 +63,10 @@ test('注册了 /study 前缀路由，并且真的落在 profiles/default 里', 
   assert.ok(existsSync(join(home, 'analysis.json')))
 })
 
-test('注册了 19 个工具', () => {
-  assert.equal(tools.length, 19)
+test('注册了 20 个工具', () => {
+  assert.equal(tools.length, 20)
   const names = tools.map((t) => t.name ?? (t.spec && t.spec.name) ?? '').filter(Boolean)
-  assert.equal(names.length, 19, `拿不到工具名，实际 keys: ${JSON.stringify(tools[0] && Object.keys(tools[0]))}`)
+  assert.equal(names.length, 20, `拿不到工具名，实际 keys: ${JSON.stringify(tools[0] && Object.keys(tools[0]))}`)
   for (const expected of [
     'study_report',
     'study_goal',
@@ -85,6 +85,7 @@ test('注册了 19 个工具', () => {
     'study_tool_level',
     'study_focus',
     'study_todo',
+    'study_card',
     'study_guide',
     'study_inbox',
   ]) {
