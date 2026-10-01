@@ -90,7 +90,7 @@ function clear(host) {
 function emptyState(host) {
   const box = document.createElement('div')
   box.className = 'kg-empty'
-  box.textContent = '还没有知识点'
+  box.textContent = '暂无知识点'
   host.appendChild(box)
 }
 
@@ -295,7 +295,7 @@ export function renderGraph(host, options) {
     const g = svgEl('g', attrs)
 
     const tip = svgEl('title')
-    tip.textContent = node.title + (kidCount ? `（${kidCount} 项，点一下${isOpen(node) ? '收起' : '展开'}）` : '（空的）')
+    tip.textContent = node.title + (kidCount ? `（${kidCount} 项，点一下${isOpen(node) ? '收起' : '展开'}）` : '（空）')
     g.appendChild(tip)
 
     g.appendChild(svgEl('rect', { class: 'kg-box', x, y: y - h / 2, width: w, height: h, rx: 10 }))
@@ -311,7 +311,7 @@ export function renderGraph(host, options) {
 
     if (node.kind === 'group') {
       const sub = svgEl('text', { class: 'kg-sub', x: x + w / 2, y: y + 13, 'text-anchor': 'middle' })
-      sub.textContent = kidCount ? `${kidCount} 个模块` : '空的'
+      sub.textContent = kidCount ? `${kidCount} 个模块` : '空'
       g.appendChild(sub)
     } else if (kidCount) {
       const sub = svgEl('text', { class: 'kg-sub', x: x + w / 2, y: y + 13, 'text-anchor': 'middle' })
@@ -412,7 +412,7 @@ export function renderGraph(host, options) {
 
   if (unitCount === 0) {
     const hint = svgEl('text', { class: 'kg-hint', x: vw / 2, y: vh - 16, 'text-anchor': 'middle' })
-    hint.textContent = '点开大类，再点开模块，就能看到一节一节的网课单元'
+    hint.textContent = '展开大类与模块，即可查看各单元网课'
     view.appendChild(hint)
   }
 

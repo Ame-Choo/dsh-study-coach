@@ -94,7 +94,7 @@ test('讲义拆到页之后，做题页给出一排「第 N 页」，点了带 #
   const html = page.html()
 
   // 这一节本身的两条路
-  assert.match(html, /看这一节网课/)
+  assert.match(html, /观看本节网课/)
   assert.match(html, /打开配套练习/)
   assert.match(html, /第 1\.1 章/)
 
@@ -109,9 +109,9 @@ test('讲义拆到页之后，做题页给出一排「第 N 页」，点了带 #
   assert.doesNotMatch(html, /还没到「第几页」/)
 
   // 三块「练什么你定」
-  assert.match(html, /刷现成的/)
-  assert.match(html, /让 AI 出题/)
-  assert.match(html, /自己安排/)
+  assert.match(html, /使用现有材料/)
+  assert.match(html, /由教练出题/)
+  assert.match(html, /自行安排/)
 })
 
 test('没拆过页的时候，页面直说只到「哪一份」，别装', async () => {
@@ -124,9 +124,9 @@ test('没拆过页的时候，页面直说只到「哪一份」，别装', async
   const html = page.html()
   assert.equal((html.match(/class="pg-btn"/g) || []).length, 0)
   assert.match(html, /还没到「第几页」/)
-  assert.match(html, /这一章还没拆到页/, '每一章都要自己说清楚，别让学生以为按钮被吃了')
+  assert.match(html, /本章尚未按页拆解/, '每一章都要自己说清楚，别让学生以为按钮被吃了')
   // 章还是翻得开的，别把整块藏起来
-  assert.match(html, /翻开/)
+  assert.match(html, /打开/)
 })
 
 test('点「让 AI 出几道」把这一节和补的话一起递过去', async () => {
@@ -143,5 +143,5 @@ test('点「让 AI 出几道」把这一节和补的话一起递过去', async (
   const ask = page.calls.find((c) => c.path === '/study/api/practice/ask')
   assert.ok(ask, '得往 /study/api/practice/ask 发一条')
   assert.deepEqual(ask.body, { pointId: 'M1.4', mode: 'ai', text: '来点带参数的' })
-  assert.match(page.boxes.get('toast').textContent || '', /递过去了|先存下了/)
+  assert.match(page.boxes.get('toast').textContent || '', /已提交|已暂存/)
 })

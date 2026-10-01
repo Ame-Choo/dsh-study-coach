@@ -60,13 +60,13 @@ function readyItems() {
     seen.add(value)
     out.push({ label, target: value, note: String(note || '') })
   }
-  add('这一节的讲义', data.point.practice, baseName(data.point.practice))
+  add('本节讲义', data.point.practice, baseName(data.point.practice))
   for (const ch of data.chapters || []) {
     if (ch.file) add((ch.no ? '第 ' + ch.no + ' 章' : '章节') + ' · ' + (ch.title || ''), ch.file, ch.exercises ? '习题 ' + ch.exercises : '')
   }
   for (const m of data.materials || []) {
     if (m.kind !== 'past') continue
-    add(m.title || '真题', m.path, '整份都在里面')
+    add(m.title || '真题', m.path, '整份材料')
   }
   return out
 }
@@ -89,15 +89,15 @@ function chapterRow(ch) {
       <div class="ch-head">
         <span class="ch-no">${ch.no ? '第 ' + esc(ch.no) + ' 章' : '章节'}</span>
         <span class="ch-title">${esc(ch.title) || esc(ch.material)}</span>
-        ${path ? `<a class="open-link" href="${esc(openLink(path))}" target="_blank" rel="noopener">翻开</a>` : ''}
+        ${path ? `<a class="open-link" href="${esc(openLink(path))}" target="_blank" rel="noopener">打开</a>` : ''}
       </div>
       ${ch.topics ? `<div class="ch-topics">${esc(ch.topics)}</div>` : ''}
       ${bits.length ? `<div class="ch-meta">${bits.join(' · ')}</div>` : ''}
       ${marks.length
         ? `<div class="pg">${marks.map((m) => path
-            ? `<a class="pg-btn" href="${esc(openLink(path, m.page))}" target="_blank" rel="noopener">${esc(m.label) || '这一节'}<b>第 ${esc(m.page)} 页</b></a>`
-            : `<span class="pg-btn">${esc(m.label) || '这一节'}<b>第 ${esc(m.page)} 页</b></span>`).join('')}</div>`
-        : (path ? '<div class="pg none">这一章还没拆到页，现在只能翻开整份 PDF</div>' : '')}
+            ? `<a class="pg-btn" href="${esc(openLink(path, m.page))}" target="_blank" rel="noopener">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} 页</b></a>`
+            : `<span class="pg-btn">${esc(m.label) || '本节'}<b>第 ${esc(m.page)} 页</b></span>`).join('')}</div>`
+        : (path ? '<div class="pg none">本章尚未按页拆解，仅能打开整份 PDF</div>' : '')}
       ${ch.role ? `<div class="ch-role">${esc(ch.role)}</div>` : ''}
     </div>`
 }
@@ -111,7 +111,7 @@ function pageHint() {
   const total = (data.materials || []).reduce((n, m) => n + (m.pagedCount || 0), 0)
   if (total > 0) return ''
   return `<p class="dim">这几章现在只到「哪一份文件」，还没到「第几页」。
-    让我把这份讲义拆成一页一页看一遍，就能按知识点直接跳到页码。</p>`
+    将这份讲义逐页拆解后，即可按知识点直接跳转到页码。</p>`
 }
 
 function pickBlock() {
@@ -121,33 +121,33 @@ function pickBlock() {
 
   return `
   <section class="card">
-    <h2>练什么，你定</h2>
+    <h2>选择练习方式</h2>
     <div class="pick">
       <div class="pick-block">
-        <b>刷现成的</b>
+        <b>使用现有材料</b>
         ${ready.length
           ? `<div class="quick">${ready.map((r) => `
               <a class="btn alt" href="${esc(openLink(r.target))}" target="_blank" rel="noopener" title="${esc(r.target)}">
                 ${esc(r.label)}${r.note ? `<span class="sub">${esc(r.note)}</span>` : ''}
               </a>`).join('')}</div>`
-          : '<p class="dim">这一节还没挂上现成的材料。翻完教辅我就能把页码题号摆在这儿。</p>'}
+          : '<p class="dim">本节尚未关联现成材料。读完教辅后即可在此显示页码与题号。</p>'}
       </div>
 
       <div class="pick-block">
-        <b>让 AI 出题</b>
-        <p class="dim">我照着这一节另出几道。写完回对话里找我，题就给你。</p>
+        <b>由教练出题</b>
+        <p class="dim">我会依据本节另行出题。完成后在对话中告知，即可获取题目。</p>
         <textarea id="ask-text" rows="2" placeholder="想专挑哪种？比如「来三道这一类的」「基础题为主」">${esc(ui.askText)}</textarea>
-        <button class="btn" data-act="ask-ai" ${busy('ai')}>${label('ai', '让 AI 出几道')}</button>
+        <button class="btn" data-act="ask-ai" ${busy('ai')}>${label('ai', '请教练出题')}</button>
       </div>
 
       <div class="pick-block">
-        <b>自己安排</b>
-        <p class="dim">想重做错题、想背公式、想专练某一类，都行——写一句，我排进今天的任务。</p>
+        <b>自行安排</b>
+        <p class="dim">重做错题、背诵公式或专项练习均可。写下需求，我会排入今日任务。</p>
         <div class="two">
           <input id="self-title" type="text" placeholder="今天练什么" value="${esc(ui.selfTitle)}">
           <input id="self-minutes" type="number" min="0" step="5" value="${esc(ui.selfMinutes)}">
         </div>
-        <button class="btn" data-act="ask-self" ${busy('self')}>${label('self', '排进今天的任务')}</button>
+        <button class="btn" data-act="ask-self" ${busy('self')}>${label('self', '排入今日任务')}</button>
       </div>
     </div>
   </section>`
@@ -155,7 +155,7 @@ function pickBlock() {
 
 function render() {
   const app = document.querySelector('#app')
-  if (!data) { app.className = 'loading'; app.textContent = '正在读这一节…'; return }
+  if (!data) { app.className = 'loading'; app.textContent = '读取中…'; return }
   app.className = ''
 
   const p = data.point
@@ -166,7 +166,7 @@ function render() {
 
   app.innerHTML = `
   <header class="pr-head">
-    <a class="back" href="/study">← 回面板</a>
+    <a class="back" href="/study">← 返回面板</a>
     <div class="crumb">${crumbs.map((c) => `<span>${esc(c)}</span>`).join('<i>›</i>')}</div>
     <div class="pr-stage" style="--c:${esc(STAGE_COLOR[data.stage] || 'var(--stage-1)')}">${esc(data.stage)}</div>
   </header>
@@ -175,23 +175,23 @@ function render() {
     <h2>这一节</h2>
     ${p.why ? `<p class="why">${esc(p.why)}</p>` : ''}
     <div class="quick">
-      ${videoLink ? `<a class="btn" href="${esc(videoLink)}" target="_blank" rel="noopener">看这一节网课</a>` : `<span class="btn ghost">这一节还没挂网课</span>`}
+      ${videoLink ? `<a class="btn" href="${esc(videoLink)}" target="_blank" rel="noopener">观看本节网课</a>` : `<span class="btn ghost">本节尚未关联网课</span>`}
       ${practiceLink ? `<a class="btn" href="${esc(practiceLink)}" target="_blank" rel="noopener">打开配套练习</a>` : ''}
       ${p.source ? `<span class="src">${esc(p.source)}</span>` : ''}
     </div>
   </section>
 
   <section class="card">
-    <h2>教辅里对应哪儿</h2>
+    <h2>教辅对应位置</h2>
     ${chapters.length
       ? chapters.map(chapterRow).join('') + pageHint()
-      : '<p class="dim">还没读过教辅，或者这一节还没对上哪一章。翻完材料我就能把页码题号摆在这儿。</p>'}
+      : '<p class="dim">尚未通读教辅，或本节未匹配到章节。通读材料后即可在此显示页码与题号。</p>'}
   </section>
 
   ${pickBlock()}
 
   <section class="card">
-    <h2>我现在到哪一档了</h2>
+    <h2>当前掌握程度</h2>
     <div class="stages">
       ${STAGES.map((s) => `
         <button class="stage-btn${s === data.stage ? ' on' : ''}" data-act="rate" data-stage="${esc(s)}"
@@ -200,7 +200,7 @@ function render() {
     <div class="note-row">
       <input id="note" type="text" placeholder="凭什么这么判？比如「今天做了 5 道，3 道自己会的」" value="${esc(ui.note)}">
     </div>
-    <p class="dim">点档位就记下了。一次只往前走一档，跳级我会给你压回来。</p>
+    <p class="dim">点击档位即可记录。每次仅可前进一档，跳级会被驳回。</p>
   </section>
   `
 }
@@ -209,7 +209,7 @@ async function load() {
   const pointId = new URLSearchParams(location.search).get('point') || ''
   if (!pointId) {
     document.querySelector('#app').className = 'loading'
-    document.querySelector('#app').textContent = '没说要练哪一节'
+    document.querySelector('#app').textContent = '未指定练习章节'
     return
   }
   try {
@@ -235,7 +235,7 @@ document.addEventListener('click', async (event) => {
     const which = act === 'ask-ai' ? 'ai' : 'self'
     if (ui.busy) return
     if (which === 'self' && !ui.selfTitle.trim()) {
-      toast('先写一句今天打算练什么')
+      toast('请先填写今天打算练习的内容')
       return
     }
     ui.busy = which
@@ -253,12 +253,12 @@ document.addEventListener('click', async (event) => {
       if (which === 'self') {
         ui.selfTitle = ''
         render()
-        toast('排进今天的任务了，面板上能看到')
+        toast('已排入今日任务，可在面板查看')
       } else {
         ui.askText = ''
         render()
         // 投递成没成是两回事：成了我立刻就被叫起来，没成他得回对话里说一声。
-        toast(out.pushed ? '递过去了，回对话里等我出题' : '先存下了（没递进对话：' + (out.pushError || '通道没通') + '），回对话里跟我说一声')
+        toast(out.pushed ? '已提交，请在对话中等待出题' : '已暂存（未送达对话：' + (out.pushError || '通道未通') + '），请回到对话中说明')
       }
     } catch (error) {
       ui.busy = ''
@@ -276,7 +276,7 @@ document.addEventListener('click', async (event) => {
       data.stage = stage
       ui.note = ''
       render()
-      toast('记下了')
+      toast('已记录')
     } catch (error) {
       toast(String(error.message || error))
     }

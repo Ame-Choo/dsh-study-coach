@@ -309,19 +309,19 @@ test('今天页：任务能跳转、能改能删；看课的任务先看再练�
   assert.match(html(), /data-card="today"/)
   assert.match(html(), /data-act="task-toggle"/)
   assert.match(html(), /\/study\/file\?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C01\.%E7%AC%AC%E4%B8%80%E8%8A%82/)
-  assert.match(html(), /看这节网课/)
-  assert.match(html(), /这一节的讲义/)
+  assert.match(html(), /观看本节网课/)
+  assert.match(html(), /本节讲义/)
   assert.match(html(), /\/study\/practice\?point=M1\.1/)
-  assert.match(html(), /看完去做练习/)
-  assert.ok(html().indexOf('看这节网课') < html().indexOf('看完去做练习'), '看课按钮要排在练习前面')
-  assert.doesNotMatch(html(), /做题 \/ 看掌握度/, '看课任务的按钮说的是「看完去做练习」')
+  assert.match(html(), /看完后做题/)
+  assert.ok(html().indexOf('观看本节网课') < html().indexOf('看完后做题'), '看课按钮要排在练习前面')
+  assert.doesNotMatch(html(), /做题 \/ 查看掌握度/, '看课任务的按钮说的是「看完后做题」')
 
   assert.match(html(), /data-act="task-edit"/)
   assert.match(html(), /data-act="task-remove"/)
   await clickAct({ act: 'task-remove', id: 'task-1' })
-  assert.match(html(), /确定删掉/)
+  assert.match(html(), /确认删除/)
   await clickAct({ act: 'task-cancel' })
-  assert.doesNotMatch(html(), /确定删掉/)
+  assert.doesNotMatch(html(), /确认删除/)
 })
 
 test('能力页：大盘、卡住的地方、每级档案按键，点开是那一级的细账', async () => {
@@ -329,7 +329,7 @@ test('能力页：大盘、卡住的地方、每级档案按键，点开是那�
 
   assert.match(html(), /card ability/)
   assert.match(html(), /底子还行，先把没碰过的补上。/)
-  assert.match(html(), /该复习了/)
+  assert.match(html(), /待复习/)
   assert.match(html(), /最近七天/)
 
   // 每级都有「档案」小按键：大类、单元总览里就有，模块级得在地图页展开大类才露出来
@@ -419,7 +419,7 @@ test('地图还是草稿时，地图页给出定稿按钮；没数据的能力�
 
   const map = await boot(data, { path: '/study/map' })
   assert.match(map.html(), /data-act="map-confirm"/)
-  assert.match(map.html(), /地图还是草稿/)
+  assert.match(map.html(), /地图尚未定稿/)
 
   // 能力卡没数据就不该渲染
   const ability = await boot(data, { path: '/study/ability' })
@@ -439,7 +439,7 @@ test('服务端是旧代码时，面板把话说清楚，而不是让人对着�
   assert.match(home.html(), /每级掌握档案/)
   assert.match(home.html(), /做题页/)
   assert.match(home.html(), /打开网课 \/ 讲义/)
-  assert.match(home.html(), /重启一次 DSH/)
+  assert.match(home.html(), /重启 DSH/)
 
   // 东西还是照常渲染，不是一屏错误
   const ability = await boot(fixture(), { stale: true, path: '/study/ability' })
@@ -526,7 +526,7 @@ test('多科目：今天页按科目分组，能只看一门，也能直接给�
 
   // 删一条也要带上它属于哪门课
   await clickAct({ act: 'task-remove', id: 'task-9', profile: 'p2' })
-  assert.match(html(), /确定删掉/)
+  assert.match(html(), /确认删除/)
   await clickAct({ act: 'task-del', id: 'task-9', profile: 'p2' })
   assert.equal(posts.at(-1).path, '/study/api/task/remove')
   assert.equal(posts.at(-1).body.profileId, 'p2')
@@ -538,7 +538,7 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   // 侧栏模式：每张卡头顶一条折叠按钮，卡身折起来
   assert.match(narrow.html(), /class="fold"[^>]*data-act="card-toggle"/)
   assert.match(narrow.html(), /data-card="today"/)
-  assert.match(narrow.html(), /今天要做的/)
+  assert.match(narrow.html(), /今日任务/)
   // 「今天」默认是开着的
   assert.match(narrow.html(), /class="card open" data-card="today"/)
 

@@ -29,9 +29,9 @@ const STAGE_COLOR = {
 
 const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', other: '其他' }
 const TASK_KIND = { watch: '看课', read: '读教材', practice: '练习', review: '复习', other: '其他' }
-const GUIDE_KIND = { ask: '要你回对话里回答问题', self: '去下面自评', plan: '看今天的任务', done: '' }
+const GUIDE_KIND = { ask: '需在对话中回答', self: '请在下方自评', plan: '查看今日任务', done: '' }
 
-const BACK_HINT = '想改目标、加材料、重画地图，回对话里跟我说一声就行。这儿只给你看。'
+const BACK_HINT = '本页仅供查看。修改学习目标、登记材料、重画知识地图，请在对话中提出。'
 
 /**
  * 服务端是不是新代码。
@@ -94,8 +94,8 @@ const ui = {
  */
 const MODE_KEY = 'study-coach:mode'
 const MODES = [
-  { id: 'sidebar', label: '侧栏', hint: '挤在 DSH 边上，只看今天' },
-  { id: 'browser', label: '浏览器', hint: '占满一页，全景与编辑' },
+  { id: 'sidebar', label: '侧栏', hint: '窄栏模式，聚焦今日任务' },
+  { id: 'browser', label: '浏览器', hint: '整页模式，总览与编辑' },
 ]
 let mode = resolveMode()
 
@@ -301,8 +301,8 @@ function staleCard() {
   if (!miss) return ''
   return `<section class="card stale">
     <div><b>服务端还是旧代码</b>：${esc(miss.join('、'))} 这几样点下去会 404。</div>
-    <div class="hint">页面本身是从磁盘现读的，所以看着是新的；路由是 DSH 启动时加载的，改不掉。
-    重启一次 DSH 就全好了。这期间想用，回对话里跟我说，我直接给你办。</div>
+    <div class="hint">页面内容直接从磁盘读取，因此显示为新版；路由在 DSH 启动时加载，无法热更新。
+    重启 DSH 后即可全部恢复。此期间如需使用，请在对话中提出，由教练代为处理。</div>
   </section>`
 }
 
@@ -327,7 +327,7 @@ async function load() {
     render()
   } catch (error) {
     app.className = 'loading'
-    app.innerHTML = `<div class="card error">读不到档案：${esc(error.message)}</div>`
+    app.innerHTML = `<div class="card error">读取档案失败：${esc(error.message)}</div>`
   }
 }
 
@@ -368,12 +368,12 @@ async function loadLibrary() {
  * 都发同一份 panel.html，认页的事在下面 resolvePage()。
  */
 const PAGES = [
-  { id: 'home', path: '/study', label: '主页', hint: '一眼看现在什么情况' },
-  { id: 'today', path: '/study/today', label: '今天', hint: '今天要做的，一条条勾掉' },
-  { id: 'map', path: '/study/map', label: '知识地图', hint: '一门课的全貌，逐个单元自评' },
-  { id: 'ability', path: '/study/ability', label: '能力', hint: '大盘、薄弱点、该复习的' },
+  { id: 'home', path: '/study', label: '主页', hint: '当前进度与下一步' },
+  { id: 'today', path: '/study/today', label: '今天', hint: '今日任务，逐条完成' },
+  { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
+  { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
-  { id: 'coach', path: '/study/coach', label: '对话', hint: '留句话，我回来就办' },
+  { id: 'coach', path: '/study/coach', label: '对话', hint: '留言给教练，由对话处理' },
 ]
 
 let page = resolvePage()
@@ -424,15 +424,15 @@ function resolvePage() {
  * 矮卡不会把高卡顶出一个洞来。
  */
 const PAGE_CARDS = {
-  today: { main: [['today', '今天要做的', tasksCard]] },
+  today: { main: [['today', '今日任务', tasksCard]] },
   map: { main: [['map', '知识地图', mapCard]] },
   ability: { main: [['ability', '总体能力', abilityCard]] },
   library: {
-    main: [['library', '我的学习档案', libraryCard], ['materials', '材料', materialsCard]],
+    main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
   },
   coach: {
-    main: [['inbox', '跟教练说话', inboxCard]],
+    main: [['inbox', '给教练留言', inboxCard]],
     aside: [['guide', '教练的指引', guideCard]],
   },
 }
@@ -485,12 +485,12 @@ function homePage() {
   const hour = new Date().getHours()
   const hello = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
   const lead = !built
-    ? '地图还是空的。把教辅或者网课目录丢进对话里，我给你解一遍、画出来。'
+    ? '知识地图尚未建立。在对话中提供教辅或网课目录，我会解析并生成初稿。'
     : day.length === 0
-      ? '今天还没排任务。自己加一条，或者在对话里说一声今天有多少时间。'
+      ? '今日暂无任务。可手动添加，或在对话中说明今天可用的时间。'
       : left > 0
-        ? `今天还有 ${left} 条没做。做完一条勾一条，回来我照着进度给你排明天。`
-        : '今天的任务全勾完了。'
+        ? `今天还有 ${left} 条未完成。完成后逐条勾选，我会据此安排明天。`
+        : '今日任务已全部完成。'
 
   const stat = (value, label, sub) => `<div class="stat">
       <b>${esc(String(value))}</b>
@@ -499,11 +499,11 @@ function homePage() {
     </div>`
 
   const entries = [
-    { id: 'today', title: '今天要做的', hint: '一条条勾掉，做完回来说一声', count: day.length ? `${done}/${day.length}` : '还没排' },
-    { id: 'map', title: '知识地图', hint: '这门课的全貌，点到哪个单元就自评', count: built ? `${points} 个单元` : '还没画' },
-    { id: 'ability', title: '总体能力', hint: '大盘数字、卡住的地方、什么时候该复习', count: total ? `碰过 ${pct}%` : '还没数据' },
-    { id: 'library', title: '学习档案', hint: '换一门课、加材料、记基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
-    { id: 'coach', title: '跟教练说', hint: '看不懂、想换教材、今天没空，都写这儿', count: '' },
+    { id: 'today', title: '今日任务', hint: '逐条勾选完成情况', count: day.length ? `${done}/${day.length}` : '还没排' },
+    { id: 'map', title: '知识地图', hint: '课程全貌，可逐单元自评', count: built ? `${points} 个单元` : '还没画' },
+    { id: 'ability', title: '总体能力', hint: '总体数据、薄弱环节、复习安排', count: total ? `碰过 ${pct}%` : '还没数据' },
+    { id: 'library', title: '学习档案', hint: '切换目标、登记材料、记录基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
+    { id: 'coach', title: '与教练对话', hint: '有疑问、想更换材料、时间有变，都可留言', count: '' },
   ]
 
   return `
@@ -512,16 +512,16 @@ function homePage() {
     <h1>${esc(hello)}</h1>
     <p class="lede">${esc(lead)}</p>
     <div class="hero-actions">
-      <a class="btn primary" href="/study/today" data-nav="today">今天要做的</a>
-      <a class="btn" href="/study/map" data-nav="map">${built ? '看知识地图' : '开始画地图'}</a>
+      <a class="btn primary" href="/study/today" data-nav="today">查看今日任务</a>
+      <a class="btn" href="/study/map" data-nav="map">${built ? '查看知识地图' : '建立知识地图'}</a>
     </div>
   </section>
 
   <section class="stats">
-    ${stat(day.length ? `${done}/${day.length}` : '—', '今天的任务', day.length ? (left > 0 ? `还剩 ${left} 条` : '都做完了') : '还没排')}
-    ${stat(total || '—', '地图上的单元', modules.length ? `${modules.length} 个模块` : '还没画')}
-    ${stat(total ? `${pct}%` : '—', '碰过的比例', total ? `${touched} / ${total}` : '')}
-    ${stat(goal.deadline || '—', '最晚到', goal.subject ? goal.subject : '目标还没定')}
+    ${stat(day.length ? `${done}/${day.length}` : '—', '今天的任务', day.length ? (left > 0 ? `还剩 ${left} 条` : '已全部完成') : '暂无')}
+    ${stat(total || '—', '地图上的单元', modules.length ? `${modules.length} 个模块` : '尚未建立')}
+    ${stat(total ? `${pct}%` : '—', '已接触比例', total ? `${touched} / ${total}` : '')}
+    ${stat(goal.deadline || '—', '最晚到', goal.subject ? goal.subject : '尚未设定')}
   </section>
 
   <section class="entries">
@@ -558,9 +558,9 @@ function topBar() {
     <nav class="nav" aria-label="页面">${nav}</nav>
     <div class="top-right">
       ${progress}
-      <span class="dim">${map.status === 'confirmed' ? '地图已定稿' : '地图还是草稿'}</span>
+      <span class="dim">${map.status === 'confirmed' ? '地图已定稿' : '地图尚未定稿'}</span>
       <span class="segmented" role="group" aria-label="界面模式">${seg}</span>
-      <button class="seg-icon" data-act="theme" title="${theme === 'light' ? '换成暗色' : '换成亮色'}" aria-label="换配色">${theme === 'light' ? '☾' : '☀'}</button>
+      <button class="seg-icon" data-act="theme" title="${theme === 'light' ? '切换为暗色' : '切换为亮色'}" aria-label="切换配色">${theme === 'light' ? '☾' : '☀'}</button>
     </div>
   </header>`
 }
@@ -644,9 +644,9 @@ function openMaterial(kind, point) {
     return
   }
   const name = `${point.id} ${point.title || ''}`.trim()
-  api('/study/api/inbox', { text: `「${name}」这一节还没挂网课，帮我配上` })
-    .then(() => toast('已经跟对话说了，等会儿回你'))
-    .catch((err) => toast('没留上：' + err.message))
+  api('/study/api/inbox', { text: `「${name}」这一节尚未关联网课，请帮忙配置。` })
+    .then(() => toast('已发送到对话'))
+    .catch((err) => toast('发送失败：' + err.message))
 }
 
 /** 顶上那句：要么是教练留的，要么是「回对话里说」的兜底提示。 */
@@ -662,7 +662,7 @@ function guideCard() {
 
 /** 每一级（大类 / 模块 / 单元）后面都有这么一个小按键，点开是那一级的掌握档案。 */
 function archiveBtn(level, key) {
-  return `<button class="mini" data-act="archive-open" data-level="${esc(level)}" data-key="${esc(key)}" title="看这一级的掌握档案">档案</button>`
+  return `<button class="mini" data-act="archive-open" data-level="${esc(level)}" data-key="${esc(key)}" title="查看该级掌握档案">档案</button>`
 }
 
 const LEVEL_NAME = { group: '大类', module: '模块', point: '单元' }
@@ -688,10 +688,10 @@ function archiveModal() {
   if (!a) return ''
   const head = `<div class="modal-head">
       <b>${esc(LEVEL_NAME[a.level] || '')}掌握档案 · ${esc(a.data ? a.data.title : a.key)}</b>
-      <button class="mini" data-act="archive-close">关上</button>
+      <button class="mini" data-act="archive-close">关闭</button>
     </div>`
-  let body = '<p class="dim">正在翻档案…</p>'
-  if (a.error) body = `<p class="dim">读不到：${esc(a.error)}</p>`
+  let body = '<p class="dim">读取中…</p>'
+  if (a.error) body = `<p class="dim">读取失败：${esc(a.error)}</p>`
   else if (a.data) {
     const d = a.data
     const bar = STAGES.filter((st) => (d.byStage[st] || 0) > 0)
@@ -708,8 +708,8 @@ function archiveModal() {
           <div style="flex:1">
             <b>${esc(p.title)}</b>
             <span class="dim"> ${esc(p.stage)} · ${p.evidenceCount} 条证据</span>
-            ${p.lastAt ? `<div class="dim">最后一次：${esc(p.lastAt)} ${esc(p.lastKind)}${p.lastNote ? ' · ' + esc(p.lastNote) : ''}</div>` : ''}
-            ${p.nextReview ? `<div class="dim">下次复习：${esc(p.nextReview)}${p.due ? '（已到）' : ''}</div>` : ''}
+            ${p.lastAt ? `<div class="dim">最近记录：${esc(p.lastAt)} ${esc(p.lastKind)}${p.lastNote ? ' · ' + esc(p.lastNote) : ''}</div>` : ''}
+            ${p.nextReview ? `<div class="dim">下次复习：${esc(p.nextReview)}${p.due ? '（已到期）' : ''}</div>` : ''}
           </div>
           <span class="mini-actions">${archiveBtn('point', p.pointId)}</span>
         </li>`
@@ -722,7 +722,7 @@ function archiveModal() {
               <div class="dim">${esc(e.at)}</div>${e.note ? `<div class="dim">${esc(e.note)}</div>` : ''}</div></li>`,
           )
           .join('')}</ul>`
-      : '<p class="dim">还没有证据。看过课、做过题、自评过，这儿就会长出来。</p>'
+      : '<p class="dim">暂无证据记录。观看课程、完成练习或自评后会自动生成。</p>'
     body = `
       <div class="stats">
         <span><b>${d.progress}%</b> 掌握度</span>
@@ -800,7 +800,7 @@ function abilityCard() {
       <span class="dim">${esc(a.today || '')}</span>
     </div>
     <div class="stats">
-      <span><b>${pct}%</b> 整张图</span>
+      <span><b>${pct}%</b> 整体进度</span>
       <span><b>${a.touched}</b>/${a.total} 碰过</span>
       <span>平均把握 <b>${Math.round((a.avgConfidence || 0) * 100)}%</b></span>
       <span>薄弱 <b>${a.weakTotal}</b></span>
@@ -810,18 +810,18 @@ function abilityCard() {
     <div class="bar"><span class="seg" style="width:${pct}%;background:${STAGE_COLOR['能独立做']}"></span></div>
     ${
       judge
-        ? `<div class="judgement"><span class="tag">判词</span><div>${esc(judge)}</div>
+        ? `<div class="judgement"><span class="tag">总评</span><div>${esc(judge)}</div>
             ${a.judgement.level ? `<div class="dim">${esc(a.judgement.level)}</div>` : ''}</div>`
-        : `<p class="dim">还没让教练给一句总评。回对话里说「我现在什么水平」，他会按上面这些数给你写一段。</p>`
+        : `<p class="dim">尚无总评。可在对话中提问「我现在什么水平」，教练会依据以上数据给出评价。</p>`
     }
     <h3 class="sub">各大类</h3>
-    <ul class="list tight">${groups || '<li class="dim">还没有归类，地图里每个模块写个 group 就有了。</li>'}</ul>
+    <ul class="list tight">${groups || '<li class="dim">尚未分类。在地图中为每个模块填写 group 即可。</li>'}</ul>
     ${
       weak
-        ? `<h3 class="sub">卡住的地方（共 ${a.weakTotal} 个）</h3><ul class="list tight">${weak}</ul>`
-        : '<p class="dim">没有明显卡住的点——要么都上来了，要么还没开始碰。</p>'
+        ? `<h3 class="sub">薄弱环节（共 ${a.weakTotal} 个）</h3><ul class="list tight">${weak}</ul>`
+        : '<p class="dim">暂无明显薄弱环节。</p>'
     }
-    ${due ? `<h3 class="sub">该复习了（共 ${a.dueTotal} 个）</h3><ul class="list tight">${due}</ul>` : ''}
+    ${due ? `<h3 class="sub">待复习（共 ${a.dueTotal} 个）</h3><ul class="list tight">${due}</ul>` : ''}
     <h3 class="sub">最近七天</h3>
     <div class="pace">${pace}</div>
     <p class="dim">完成 ${a.pace.done}/${a.pace.total} 条 · ${a.pace.minutesDone}/${a.pace.minutesTotal} 分钟（${a.pace.completion}%）</p>
@@ -837,7 +837,7 @@ function libraryCard() {
       const pct = Math.round(Number(p.progress) || 0)
       if (ui.renameId === p.id) {
         return `<li><form class="inline-form" data-form="lib-rename" data-id="${esc(p.id)}">
-            <input name="title" value="${esc(p.title)}" placeholder="新名字">
+            <input name="title" value="${esc(p.title)}" placeholder="新的名称">
             <button type="submit" class="primary mini">保存</button>
             <button type="button" class="mini" data-act="lib-cancel">取消</button>
           </form></li>`
@@ -848,20 +848,20 @@ function libraryCard() {
               <div class="dim over">连同 ${p.modules} 模块 / ${p.points} 单元一起挪进回收站，之后还能捞回来。</div>
             </div>
             <span class="mini-actions">
-              <button class="mini danger" data-act="lib-drop" data-id="${esc(p.id)}">确定删掉</button>
-              <button class="mini" data-act="lib-cancel">算了</button>
+              <button class="mini danger" data-act="lib-drop" data-id="${esc(p.id)}">确认删除</button>
+              <button class="mini" data-act="lib-cancel">取消</button>
             </span></li>`
       }
       return `<li class="${p.active ? 'active' : ''}">
         <div style="flex:1">
           <b>${esc(p.title)}</b>${p.active ? ' <span class="tag">在用</span>' : ''}
-          <div class="dim">${esc(p.subject || '没写学什么')} · ${p.modules} 模块 / ${p.points} 单元 · ${pct}%</div>
+          <div class="dim">${esc(p.subject || '未填写科目')} · ${p.modules} 模块 / ${p.points} 单元 · ${pct}%</div>
         </div>
         <span class="gc-bar"><i style="width:${pct}%"></i></span>
         <span class="mini-actions">
-          ${p.active ? '' : `<button class="mini" data-act="lib-select" data-id="${esc(p.id)}">切过去</button>`}
+          ${p.active ? '' : `<button class="mini" data-act="lib-select" data-id="${esc(p.id)}">切换</button>`}
           <button class="mini" data-act="lib-rename" data-id="${esc(p.id)}">改名</button>
-          <button class="mini" data-act="lib-remove" data-id="${esc(p.id)}">删掉</button>
+          <button class="mini" data-act="lib-remove" data-id="${esc(p.id)}">删除</button>
         </span>
       </li>`
     })
@@ -869,15 +869,15 @@ function libraryCard() {
 
   const form = ui.newProfile
     ? `<form class="form" data-form="lib-new">
-        <label>名字<input name="title" placeholder="比如「高等数学（上册）」" required></label>
+        <label>名字<input name="title" placeholder="例如：高等数学（上册）" required></label>
         <div class="two">
-          <label>学什么<input name="subject" placeholder="这门课叫什么"></label>
+          <label>科目<input name="subject" placeholder="课程名称"></label>
           <label>每天多久（分钟）<input name="minutesPerDay" type="number" min="0" placeholder="60"></label>
         </div>
-        <label>到什么程度<textarea name="outcome" rows="2" placeholder="用你自己的话说"></textarea></label>
-        <label>最晚哪天<input name="deadline" placeholder="YYYY-MM-DD"></label>
+        <label>目标程度<textarea name="outcome" rows="2" placeholder="用自己的话描述"></textarea></label>
+        <label>截止日期<input name="deadline" placeholder="YYYY-MM-DD"></label>
         <div class="row">
-          <button type="submit" class="primary">建好，切过去</button>
+          <button type="submit" class="primary">创建并切换</button>
           <button type="button" class="mini" data-act="lib-cancel">取消</button>
         </div>
       </form>`
@@ -885,7 +885,7 @@ function libraryCard() {
 
   const root = state.libraryRoot || state.root || ''
   const where = root
-    ? `<p class="path">档案都在这台机器上的 ${esc(root)}——插件本体只有代码，学习目标 / 知识地图 / 掌握度 / 任务全都是那个目录里的数据。</p>`
+    ? `<p class="path">档案保存在本机 ${esc(root)}。插件本身只有代码，学习目标、知识地图、掌握度与任务均为该目录下的数据。</p>`
     : ''
 
   /* 回收站：删掉的学习目标在这儿躺着，能一件件捞回来。
@@ -898,7 +898,7 @@ function libraryCard() {
           (t) => `<li>
             <div style="flex:1">
               <b>${esc(t.title || t.id)}</b>
-              <div class="dim">${esc(t.subject || '没写学什么')} · ${t.modules} 模块 / ${t.points} 单元${t.at ? ' · ' + esc(String(t.at).slice(0, 10)) + ' 删的' : ''}</div>
+              <div class="dim">${esc(t.subject || '未填写科目')} · ${t.modules} 模块 / ${t.points} 单元${t.at ? ' · ' + esc(String(t.at).slice(0, 10)) + ' 删除于' : ''}</div>
             </div>
             <button class="mini" data-act="trash-restore" data-entry="${esc(t.entry)}">恢复</button>
           </li>`,
@@ -907,8 +907,8 @@ function libraryCard() {
     : ''
 
   return `<section class="card">
-    <div class="card-head"><h2>我的学习档案</h2><span class="dim">一个目标一份，互不打扰</span></div>
-    <p class="dim">换目标（比如换一门课）、清掉不学的，都在这儿。删掉是挪进回收站，不是真删；最后一个删不掉。</p>
+    <div class="card-head"><h2>学习档案</h2><span class="dim">一个目标一份档案</span></div>
+    <p class="dim">切换或删除学习目标均在此处。删除为移入回收站，可恢复；最后一个档案不可删除。</p>
     <ul class="list">${rows}</ul>
     ${binBlock}
     ${where}
@@ -920,17 +920,17 @@ function libraryCard() {
 /** 学习目标。主路径是对话，这儿只在你要动手改的时候兜一下。 */
 function goalCard() {
   const g = (state.profile && state.profile.goal) || {}
-  const empty = '<span class="dim">还没定</span>'
+  const empty = '<span class="dim">未设定</span>'
   const form = ui.editGoal
     ? `<form class="form" data-form="goal">
-        <label>学什么<input name="subject" value="${esc(g.subject)}" placeholder="这门课叫什么"></label>
-        <label>到什么程度<textarea name="outcome" rows="2" placeholder="用你自己的话说">${esc(g.outcome)}</textarea></label>
+        <label>学什么<input name="subject" value="${esc(g.subject)}" placeholder="课程名称"></label>
+        <label>到什么程度<textarea name="outcome" rows="2" placeholder="用自己的话描述">${esc(g.outcome)}</textarea></label>
         <div class="two">
           <label>每天多久（分钟）<input name="minutesPerDay" type="number" min="0" value="${esc(g.minutesPerDay || '')}"></label>
           <label>最晚哪天<input name="deadline" value="${esc(g.deadline)}" placeholder="YYYY-MM-DD"></label>
         </div>
         <div class="row">
-          <button type="submit" class="primary">存下来</button>
+          <button type="submit" class="primary">保存</button>
           <button type="button" class="mini" data-act="goal-cancel">取消</button>
         </div>
       </form>`
@@ -941,10 +941,10 @@ function goalCard() {
       ${ui.editGoal ? '' : '<button class="mini" data-act="goal-edit">改</button>'}
     </div>
     <div class="goal">
-      <div class="goal-line"><span class="k">学什么</span><span class="v">${esc(g.subject) || empty}</span></div>
-      <div class="goal-line"><span class="k">到什么程度</span><span class="v">${esc(g.outcome) || empty}</span></div>
-      <div class="goal-line"><span class="k">每天多久</span><span class="v">${g.minutesPerDay ? esc(g.minutesPerDay) + ' 分钟' : empty}</span></div>
-      <div class="goal-line"><span class="k">最晚</span><span class="v">${esc(g.deadline) || empty}</span></div>
+      <div class="goal-line"><span class="k">科目</span><span class="v">${esc(g.subject) || empty}</span></div>
+      <div class="goal-line"><span class="k">目标程度</span><span class="v">${esc(g.outcome) || empty}</span></div>
+      <div class="goal-line"><span class="k">每日时长</span><span class="v">${g.minutesPerDay ? esc(g.minutesPerDay) + ' 分钟' : empty}</span></div>
+      <div class="goal-line"><span class="k">截止日期</span><span class="v">${esc(g.deadline) || empty}</span></div>
     </div>
     ${g.note ? `<p class="dim">${esc(g.note)}</p>` : ''}
     ${form}
@@ -959,7 +959,7 @@ function mapCard() {
   if (modules.length === 0) {
     return `<section class="card">
       <div class="card-head"><h2>知识地图</h2></div>
-      <p class="dim">还没有地图。把教辅和网课目录丢进对话里，我解析完给你出草稿，你在这儿看就行。</p>
+      <p class="dim">尚未建立知识地图。在对话中提供教辅与网课目录，解析后会生成草稿。</p>
     </section>`
   }
 
@@ -974,10 +974,10 @@ function mapCard() {
     <div class="card-head">
       <h2>知识地图</h2>
       <span class="badge ${map.status === 'confirmed' ? 'confirmed' : ''}">${map.status === 'confirmed' ? '已定稿' : '草稿'}</span>
-      ${map.status === 'confirmed' ? '' : '<button class="ghost" data-act="map-confirm">看过了，就这样</button>'}
+      ${map.status === 'confirmed' ? '' : '<button class="ghost" data-act="map-confirm">确认定稿</button>'}
     </div>
     <div class="bar">${bar}</div>
-    <p class="dim">共 ${s.total} 个知识点，接触过 ${s.touched} 个，平均把握 ${Math.round((s.avgConfidence || 0) * 100)}%。图上就三层：大类、模块、最小单元——点大类、再点模块，一层层展开；画布能拖、能滚轮缩放。单元上两个按钮，「看课」开那一节网课，「做题」进那一节的练习页。下面这份也按大类折着，点开一层层往下钻，每层后面是掌握度。</p>
+    <p class="dim">共 ${s.total} 个知识点，已接触 ${s.touched} 个，平均把握 ${Math.round((s.avgConfidence || 0) * 100)}%。图谱分三层：大类、模块、最小单元，逐层展开；画布可拖动与缩放。每个单元设「看课」「做题」两个入口。下方列表按大类折叠，逐层展开后显示掌握度。</p>
     <div class="graph-host" id="graph-host"></div>
     ${groupedBlocks(modules)}
   </section>`
@@ -1049,9 +1049,9 @@ function pointRow(p) {
               (x) =>
                 `<button class="stage-btn ${x === stage ? 'on' : ''}" style="--c:${STAGE_COLOR[x]}" data-act="rate" data-point="${esc(p.id)}" data-stage="${x}">${x}</button>`,
             ).join('')}</div>
-            <input class="note-input" data-note-for="${esc(p.id)}" placeholder="依据：哪天、哪份材料、什么表现（可以不填）">
-            ${p.why ? `<p class="dim">为什么要学：${esc(p.why)}</p>` : ''}
-            ${p.source ? `<p class="dim">哪来的：${esc(p.source)}</p>` : ''}
+            <input class="note-input" data-note-for="${esc(p.id)}" placeholder="依据：日期、材料、具体表现（选填）">
+            ${p.why ? `<p class="dim">学习目的：${esc(p.why)}</p>` : ''}
+            ${p.source ? `<p class="dim">来源：${esc(p.source)}</p>` : ''}
             ${rec && rec.nextReview ? `<p class="dim">下次复习：${esc(rec.nextReview)}</p>` : ''}
           </div>`
         : ''
@@ -1119,10 +1119,10 @@ function taskRow(t, profileId, showSubject) {
   }
   const confirmDel =
     ui.pendingDel === t.id
-      ? `<button class="mini danger" data-act="task-del" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">确定删掉</button>
-         <button class="mini" data-act="task-cancel">算了</button>`
+      ? `<button class="mini danger" data-act="task-del" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">确认删除</button>
+         <button class="mini" data-act="task-cancel">取消</button>`
       : `<button class="mini" data-act="task-edit" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">改</button>
-         <button class="mini" data-act="task-remove" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">删</button>`
+         <button class="mini" data-act="task-remove" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">删除</button>`
   return `<li class="${t.done ? 'done' : ''}">
     <label class="check"><input type="checkbox" data-act="task-toggle" data-id="${esc(t.id)}" data-profile="${esc(profileId)}" ${t.done ? 'checked' : ''}><span>${esc(t.title)}</span></label>
     <span class="dim">${showSubject ? `<span class="tag">${esc(showSubject)}</span> ` : ''}${TASK_KIND[t.kind] || esc(t.kind || '')}${t.minutes ? ' · ' + t.minutes + ' 分' : ''}${t.pointTitle ? ' · ' + esc(t.pointTitle) : ''}</span>
@@ -1134,28 +1134,28 @@ function taskRow(t, profileId, showSubject) {
 /** 加任务的表单。多门课的时候能直接指定排给哪一门，不用先切过去。 */
 function taskAddForm(groups) {
   if (!ui.newTask) {
-    return `<button class="ghost" data-act="task-new">＋ 加一条任务</button>`
+    return `<button class="ghost" data-act="task-new">＋ 新建任务</button>`
   }
   const pick = groups.length > 1
-    ? `<label>排给<select name="profileId">${groups
+    ? `<label>指派给<select name="profileId">${groups
         .map((g) => `<option value="${esc(g.id)}" ${g.id === activeProfileId() ? 'selected' : ''}>${esc(g.title)}</option>`)
         .join('')}</select></label>`
     : ''
   return `<form class="form" data-form="task-add">
-    <label>干什么<input name="title" placeholder="看第 3 讲，做课后 1-5 题" required></label>
+    <label>任务内容<input name="title" placeholder="例如：看第 3 讲，做课后 1-5 题" required></label>
     <div class="two">
       ${pick}
-      <label>哪一类<select name="kind">${Object.keys(TASK_KIND)
+      <label>类型<select name="kind">${Object.keys(TASK_KIND)
         .map((k) => `<option value="${k}" ${k === 'watch' ? 'selected' : ''}>${TASK_KIND[k]}</option>`)
         .join('')}</select></label>
     </div>
     <div class="two">
       <label>分钟<input name="minutes" type="number" min="0" step="5" placeholder="30"></label>
-      <label>知识点（可不填）<input name="target" placeholder="比如 M1.4"></label>
+      <label>知识点（可不填）<input name="target" placeholder="例如 M1.4"></label>
     </div>
     <label>要打开的文件 / 链接（可不填）<input name="open" placeholder="F:\\…\\讲义.pdf"></label>
     <div class="row">
-      <button type="submit" class="primary">加进去</button>
+      <button type="submit" class="primary">添加</button>
       <button type="button" class="mini" data-act="task-cancel">取消</button>
     </div>
   </form>`
@@ -1192,7 +1192,7 @@ function tasksCard() {
              <span class="dim">${g.day.filter((t) => t.done).length}/${g.day.length}</span>
            </div>`
         : ''
-      const empty = `<p class="dim">这门今天没排活儿。</p>`
+      const empty = `<p class="dim">该课程今日无任务。</p>`
       return `${head}${rows ? `<ul class="list tasks">${rows}</ul>` : empty}`
     })
     .join('')
@@ -1202,7 +1202,7 @@ function tasksCard() {
       views.length ? `<span class="dim ${over ? 'over' : ''}">完成 ${done}/${views.length} · ${total} 分钟${budget ? ' / ' + budget : ''}</span>` : ''
     }</div>
     ${chips}
-    ${views.length || multi ? body : '<p class="dim">今天还没排任务。自己加一条，或者回对话里说一声。</p>'}
+    ${views.length || multi ? body : '<p class="dim">今日暂无任务。可手动添加，或在对话中说明。</p>'}
     ${taskAddForm(groups)}
   </section>`
 }
@@ -1231,14 +1231,14 @@ function taskView(t) {
   }
   const watching = String(t.kind || '') === 'watch'
   // 看课为主线：先看，再去做练习。顺序反了学生一点就跳过课直接做题。
-  if (watching) addLink('video', '看这节网课', point && point.video)
+  if (watching) addLink('video', '观看本节网课', point && point.video)
   if (t.open) addLink('open', '打开', t.open)
   if (point) {
-    if (!watching) addLink('video', '看这节网课', point.video)
-    addLink('practice', '这一节的讲义', point.practice)
+    if (!watching) addLink('video', '观看本节网课', point.video)
+    addLink('practice', '本节讲义', point.practice)
     links.push({
       kind: 'point',
-      label: watching ? '看完去做练习' : '做题 / 看掌握度',
+      label: watching ? '看完后做题' : '做题 / 查看掌握度',
       url: '/study/practice?point=' + encodeURIComponent(point.id),
     })
   }
@@ -1271,13 +1271,13 @@ function materialsCard() {
           </li>`,
         )
         .join('')}</ul>`
-    : '<p class="dim">还没有材料。教辅、网课目录、真题，丢进对话里我就登记。</p>'
+    : '<p class="dim">暂无材料。教辅、网课目录、真题可在对话中登记。</p>'
 
   // 说明太长就压三行，想看全文再点开——不然这一张卡能铺满整屏
   const more = long ? `<button class="mini" data-act="mat-more">${ui.matMore ? '收起说明' : '展开说明'}</button>` : ''
 
   return `<section class="card">
-    <div class="card-head"><h2>材料</h2><span class="dim">对话里登记</span>${more}</div>
+    <div class="card-head"><h2>材料</h2><span class="dim">在对话中登记</span>${more}</div>
     ${items}
   </section>`
 }
@@ -1287,7 +1287,7 @@ function toolsCard() {
   if (!list.length) return ''
   return `<section class="card">
     <div class="card-head"><h2>基本工具</h2></div>
-    <p class="dim">运算、查资料、画图这类本事，不属于哪个知识点，但决定学得多快。</p>
+    <p class="dim">运算、查资料、画图等能力不属于具体知识点，但影响学习效率。</p>
     <ul class="list">${list
       .map(
         (t) => `<li>
@@ -1306,17 +1306,17 @@ function inboxCard() {
   const items = (state.inbox && state.inbox.items) || []
   const recent = items.slice(-3).reverse()
   return `<section class="card">
-    <div class="card-head"><h2>跟教练说话</h2></div>
-    <p class="dim">这儿写的会直接送到对话里，他看到就回。断线的时候先存着，等你下回开口我再看。</p>
+    <div class="card-head"><h2>给教练留言</h2></div>
+    <p class="dim">此处内容会直接发送到对话。连接中断时会先保存，待下次对话处理。</p>
     <form data-form="inbox" class="form">
-      <label>说点什么<textarea name="text" rows="3" placeholder="这块我看不懂 / 想换个教材 / 今天没空"></textarea></label>
-      <div class="row"><button type="submit" class="primary">发给他</button></div>
+      <label>说点什么<textarea name="text" rows="3" placeholder="例如：这一部分没看懂 / 想更换教材 / 今天没有时间"></textarea></label>
+      <div class="row"><button type="submit" class="primary">发送</button></div>
     </form>
     ${
       recent.length
         ? `<ul class="list">${recent
             .map(
-              (i) => `<li class="${i.read ? 'done' : ''}"><span style="flex:1">${esc(i.text)}</span><span class="dim">${i.read ? '已看' : '没看'}</span></li>`,
+              (i) => `<li class="${i.read ? 'done' : ''}"><span style="flex:1">${esc(i.text)}</span><span class="dim">${i.read ? '已读' : '未读'}</span></li>`,
             )
             .join('')}</ul>`
         : ''
@@ -1365,12 +1365,12 @@ document.addEventListener('click', async (event) => {
       const noteEl = document.querySelector(`[data-note-for="${pointId}"]`)
       const note = noteEl ? noteEl.value.trim() : ''
       await api('/study/api/mastery', { pointId, stage: el.dataset.stage, note, kind: 'self' })
-      toast(`记到「${el.dataset.stage}」`)
+      toast(`已记录为「${el.dataset.stage}」`)
       ui.openPoint = null
       await load()
     } else if (act === 'map-confirm') {
       await api('/study/api/map/confirm', {})
-      toast('地图定稿了')
+      toast('地图已定稿')
       await load()
     } else if (act === 'archive-open') {
       await openArchive(el.dataset.level, el.dataset.key)
@@ -1408,7 +1408,7 @@ document.addEventListener('click', async (event) => {
       render()
     } else if (act === 'task-del') {
       await api('/study/api/task/remove', { date: today(), id: el.dataset.id, profileId: el.dataset.profile || '' })
-      toast('删掉了')
+      toast('已删除')
       ui.pendingDel = null
       ui.pendingProfile = ''
       await load()
@@ -1429,7 +1429,7 @@ document.addEventListener('click', async (event) => {
       ui.openPoint = null
       ui.openGroups.clear()
       ui.openModules.clear()
-      toast('切过去了')
+      toast('已切换')
       await load()
     } else if (act === 'lib-rename') {
       ui.renameId = el.dataset.id
@@ -1441,7 +1441,7 @@ document.addEventListener('click', async (event) => {
       render()
     } else if (act === 'lib-drop') {
       const r = await api('/study/api/library', { action: 'remove', id: el.dataset.id })
-      toast(`删掉了，现在用「${(r.profiles.find((p) => p.active) || {}).title || ''}」`)
+      toast(`已删除，当前使用「${(r.profiles.find((p) => p.active) || {}).title || ''}」`)
       ui.pendingDropProfile = null
       await load()
     } else if (act === 'lib-new') {
@@ -1455,7 +1455,7 @@ document.addEventListener('click', async (event) => {
     } else if (act === 'trash-restore') {
       const entry = el.dataset.entry
       await api('/study/api/library/restore', { entry })
-      toast('捞回来了')
+      toast('已恢复')
       await load()
     }
   } catch (error) {
@@ -1489,11 +1489,11 @@ document.addEventListener('submit', async (event) => {
     if (kind === 'inbox') {
       const text = String(data.get('text') || '').trim()
       if (!text) {
-        toast('没写东西', true)
+        toast('内容为空', true)
         return
       }
       const out = await api('/study/api/inbox', { text })
-      toast(out.pushed ? '发出去了，他马上就能看到' : '先存下了（' + (out.pushError || '通道没通') + '），回对话里跟我说一声')
+      toast(out.pushed ? '已发送' : '已暂存（' + (out.pushError || '通道未通') + '），请回到对话中说明')
     } else if (kind === 'task-edit') {
       const id = form.dataset.id
       await api('/study/api/task/update', {
@@ -1506,11 +1506,11 @@ document.addEventListener('submit', async (event) => {
       })
       ui.editTask = null
       ui.editProfile = ''
-      toast('改好了')
+      toast('已保存')
     } else if (kind === 'task-add') {
       const title = String(data.get('title') || '').trim()
       if (!title) {
-        toast('总得写一句干什么', true)
+        toast('请填写任务内容', true)
         return
       }
       const minutes = Number(data.get('minutes') || 0)
@@ -1524,7 +1524,7 @@ document.addEventListener('submit', async (event) => {
         ...(Number.isFinite(minutes) && minutes > 0 ? { minutes } : {}),
       })
       ui.newTask = false
-      toast('加上了')
+      toast('已添加')
     } else if (kind === 'goal') {
       const minutes = Number(data.get('minutesPerDay') || 0)
       await api('/study/api/goal', {
@@ -1534,7 +1534,7 @@ document.addEventListener('submit', async (event) => {
         ...(Number.isFinite(minutes) && minutes > 0 ? { minutesPerDay: minutes } : {}),
       })
       ui.editGoal = false
-      toast('存下了')
+      toast('已保存')
     } else if (kind === 'lib-new') {
       const minutes = Number(data.get('minutesPerDay') || 0)
       await api('/study/api/library', {
@@ -1549,7 +1549,7 @@ document.addEventListener('submit', async (event) => {
       ui.openPoint = null
       ui.openGroups.clear()
       ui.openModules.clear()
-      toast('建好了，已经切过去')
+      toast('已创建并切换')
     } else if (kind === 'lib-rename') {
       await api('/study/api/library', {
         action: 'rename',
@@ -1557,7 +1557,7 @@ document.addEventListener('submit', async (event) => {
         title: String(data.get('title') || '').trim(),
       })
       ui.renameId = null
-      toast('改好名字了')
+      toast('名称已更新')
     } else {
       return
     }
