@@ -143,6 +143,7 @@ function pill(label, extraClass, onClick) {
   text.textContent = label
   node.appendChild(text)
   node.addEventListener('click', (event) => {
+    if (draggedFromPress(event)) return
     event.stopPropagation()
     onClick()
   })
@@ -153,6 +154,32 @@ function pill(label, extraClass, onClick) {
     onClick()
   })
   return { node, w }
+}
+
+/*
+ * 手抖不算点。
+ *
+ * 画布本身早就不跟着鼠标拖了（见 renderGraph 末尾），可「在板块/单元上按住挪一下
+ * 再松手」照样会发一枚 click，把那一块折叠掉——布局一收，看起来就像地图自己动了。
+ * 所以：画布上记下按下的位置，松手时（同一处）挪过 4px 就让这一枚 click 失效。
+ * 只在「按下的元素就是点中的元素」时才算数——按在这儿松手在那儿，本来就点不到东西；
+ * 键盘派发的 click 前面没有 pointerdown，也不受影响。
+ */
+let pressAt = null
+function watchDrag(node) {
+  node.addEventListener('pointerdown', (event) => {
+    pressAt = { x: event.clientX || 0, y: event.clientY || 0, at: Date.now(), target: event.target || null }
+  })
+}
+function draggedFromPress(event) {
+  const from = pressAt
+  pressAt = null
+  if (!from) return false
+  if (from.target && event && event.target && event.target !== from.target) return false
+  if (Date.now() - from.at > 1500) return false
+  const dx = (event && event.clientX ? event.clientX : 0) - from.x
+  const dy = (event && event.clientY ? event.clientY : 0) - from.y
+  return Math.hypot(dx, dy) > 4
 }
 
 /**
@@ -468,9 +495,10 @@ export function renderGraph(host, options) {
     }
 
     /* 整块板块都能点：不必非得戳中左边那块小牌子。画布已经不跟着鼠标拖了（见文末），
-       所以这里没有「拖过的那一发不算点」要挡。 */
+       但按住挪一下再松手还是会发一枚 click——那一下被 draggedFromPress() 挡掉。 */
     const hit = svgEl('rect', { class: 'kg-band-hit', x: BAND_X, y: boardTop, width: bandW, height: boardH })
-    hit.addEventListener('click', () => {
+    hit.addEventListener('click', (event) => {
+      if (draggedFromPress(event)) return
       toggleNode(group)
     })
     bands.appendChild(hit)
@@ -660,6 +688,7 @@ export function renderGraph(host, options) {
     }
 
     g.addEventListener('click', (event) => {
+      if (draggedFromPress(event)) return
       event.stopPropagation()
       toggleNode(node)
     })
@@ -730,6 +759,7 @@ export function renderGraph(host, options) {
       if (onPick) onPick(point.id)
     }
     g.addEventListener('click', (event) => {
+      if (draggedFromPress(event)) return
       event.stopPropagation()
       pick()
     })
@@ -827,6 +857,7 @@ export function renderGraph(host, options) {
       renderGraph(host, opt)
     }
     btn.addEventListener('click', (event) => {
+      if (draggedFromPress(event)) return
       event.stopPropagation()
       act()
     })
@@ -841,13 +872,16 @@ export function renderGraph(host, options) {
   }
   svg.appendChild(tools)
   applyView()
+  watchDrag(svg)
 
   /* ── 缩放 ─────────────────────────────────────────────────────────────
-     画布**不再跟着鼠标拖**（用户说「知识地图的拖动可以关掉」）：早先拖一下就整幅
-     `translate` 走位，手指擦过板块还会误触，索性把平移整条路去掉——`复位视图`
-     和滚轮缩放都还在，看得到的地方够用。别再往这里加回 pointerdown/move 平移。 */
+     画布**不跟着鼠标动**（用户说「知识地图的拖动可以关掉」，后来的原话是「改成不可动的」）：
+     早先拖一下就整幅 `translate` 走位，手指擦过板块还会误触，索性把平移整条路去掉。
+     滚轮也不接管了——普通滚轮照旧滚页面，**要缩放按住 Ctrl/⌘** 才吃。`复位视图` / `全部收起`
+     这两个按钮是唯一会改视图的入口。别再往这里加回 pointerdown/move 平移。 */
 
   svg.addEventListener('wheel', (event) => {
+    if (!event.ctrlKey && !event.metaKey) return
     event.preventDefault()
     const next = Math.min(MAX_K, Math.max(MIN_K, state.view.k * Math.exp(-event.deltaY * 0.0015)))
     if (next === state.view.k) return

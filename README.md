@@ -289,7 +289,7 @@ node --test
 - 面板上的知识地图是画出来的**三层折叠树**：大类 → 模块 → 最小单元。默认只摆大类（一科就那么几个），点大类展开模块，点模块展开单元——不是一上来全摊平。
 - 最小单元旁边挂着两个小按钮：「看课」开那一节网课，「做题」进那一节的**做题页**。单元本身点一下还是自评，跟下面的列表联动（会滚到那一条）。
 - 没挂网课的「看课」按钮是灰的，点了不会干瞪眼——它会替你往 `inbox.json` 留一句（「M1.1 xxx 这一节还没挂网课，帮我配上」），下次对话读到就补路径。
-- 画布能拖（按住空白处拖）、能滚轮缩放（0.4x 到 2.4x）。右上角两个按钮：复位视图、全部收起。
+- 画布**不跟着鼠标动**（用户先说「拖动可以关掉」，后来又催「不是让你改成不可动的吗」）：整条平移路都拆了，普通滚轮也不再接管（照旧滚页面），**要缩放按住 Ctrl／⌘ 滚轮**（0.4x 到 2.4x）。右上角两个按钮：复位视图、全部收起。**「按住板块挪一下再松手」也不算点**——拖过 4px 就让松开时那一发 click 失效，免得手一滑把板块折叠掉、看着像地图自己动了。
 - 实现在 `assets/graph.js` + `assets/graph.css`。布局是确定性递归——子树高度求和、父节点摆在这块高度的中间，没有力导向、没有动画循环，所以好测。窗口大小变了会重排（防抖 160ms）。
 - 展开状态和视图位置存在模块级的 `state` 里，跨调用保留：自评一下不会把画布弹回原位。
 - 面板是**动态** import 它的——图谱模块没了或者写坏了，顶多少画一张图，自评那些按钮不受影响。
@@ -1074,6 +1074,16 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **老地址不能 404**：`lib/handler.js` 的 `PANEL_PAGES` 里 `'ability'` 留着（服务端继续发 panel.html），`resolvePage()` 里加一张 `alias = { '/study/ability': 'map' }` 把它落到地图页。`test/pages-consistency.test.js` 从「两边一模一样」改成「PAGES 里的每一项都必须在 PANEL_PAGES 里；PANEL_PAGES 多出来的只能是 `LEGACY_PAGES` 里写明理由的老地址，而且 alias 表要对得上」。
 - 顺手改口的地方：主页入口卡 `总体能力` → `掌握度`（指 `/study/map`）；`STALE_NEED` 里那两句描述、体检卡那两处 `data-nav`；`lib/client.js` 的设置页链接表（去掉「能力」、补上「学习」）。
 - **这一批不用重启 DSH**：`PANEL_PAGES` 只删不增，`lib/client.js` 每次页面加载现读，`assets/*` 刷新即可。
+
+
+## 补：知识地图彻底不可动；掌握度也挂到档案页
+
+- **还剩下两条「会动」的路，这一轮也堵上了**（用户原话：「不是让你把知识图谱改成不可动的吗」）：
+  · **拖过的那一下不算点。** 平移早拆了，但在板块/单元上按住挪一段再松手，浏览器照样发一枚 `click`，把那一块折叠掉——布局一收，看着就像地图自己动。现在 `assets/graph.js` 记下按下的位置（模块级 `pressAt`、`watchDrag(svg)`），松手时算一次 `draggedFromPress(event)`：**按下的元素就是点中的元素**、距按下 ≤1500ms、位移 >4px，三个都成立才让这枚 click 失效。五个 click 处理器各在开头挡一下：`.kg-btn`、`.kg-band-hit`、模块/大类节点 `g`、单元节点 `g`、`.kg-tool`（复位视图 / 全部收起）。键盘派发的 click 前面没有 `pointerdown`，不受影响；按下这头、松手那头（点的目标根本不是同一块）也不拦。
+  · **普通滚轮不再缩放。** `svg` 的 `wheel` 头一句 `if (!event.ctrlKey && !event.metaKey) return`——不 `preventDefault`，页面照旧跟着滚；**要缩放按住 Ctrl／⌘ 滚轮**（0.4x–2.4x，锚点逻辑没动）。面板提示语同步改成「画布本身拖不动，要缩放按住 Ctrl 滚轮（左上角那块索引板钉着不跟走）」。
+- **掌握度也挂到档案页**（用户原话：「掌握度在档案页面也要加一个」）：`PAGE_CARDS.library.main` = `[['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`——跟地图页**同一张** `abilityCard()`、同一个展开 id `ability`，不另写一份；`PAGES` 里 library 的 hint 补成「学习目标、材料、基本工具、掌握度」。
+- 测试跟着改口：`test/graph.test.js` 六处 `wheel` 派发补 `ctrlKey: true`，两条用例名改成「滚轮要按住 Ctrl／⌘ 才缩放…；光滚轮不动画面」与「画布不跟鼠标拖（拖动整条路都拆了）；缩放要按住 Ctrl／⌘ 滚轮」，新增「在板块上按住挪一段再松手：那一发 click 不算点，板块不折叠」（**要在同一个节点上派发 `pointerdown` 与 `click`**——判据里比了 `event.target`）；`test/panel.test.js` 的档案页那条补 `data-card="ability"` + `pie-slice` + 「整体掌握度」。全量 **316 pass / 0 fail**。
+- **这一批只动 `assets/*` 与测试**：刷新面板即可，不用重启 DSH。
 
 
 

@@ -813,7 +813,7 @@ const PAGES = [
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'atlas', path: '/study/atlas', label: '学习', hint: '选资料，看它覆盖了哪些单元' },
-  { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
+  { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具、掌握度' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
   { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
@@ -882,7 +882,9 @@ const PAGE_CARDS = {
     aside: [['guide', '教练的指引', guideCard]],
   },
   library: {
-    main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
+    // 档案这一页也挂一份掌握度（用户要的）：翻档案的时候顺眼就能看到整体饼图与各大类。
+    // 它跟地图页那张是同一个 abilityCard()，两处的展开状态也共用同一个 id。
+    main: [['library', '学习档案', libraryCard], ['ability', '掌握度', abilityCard], ['materials', '材料', materialsCard]],
     aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
   },
   // 资料这一页：主栏是书架，边栏是导入入口。
@@ -1810,7 +1812,7 @@ function mapCard() {
       </div>
       <div class="bar">${bar}</div>
       <div class="map-legend">${legend}</div>
-      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；滚轮可缩放（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下面「掌握度」那一节是整体饼图和各大类的细账。</p>
+      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；画布本身拖不动，要缩放按住 Ctrl 滚轮（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下面「掌握度」那一节是整体饼图和各大类的细账。</p>
     </div>
     <div class="graph-host" id="graph-host"></div>
   </section>`

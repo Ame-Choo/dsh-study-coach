@@ -700,8 +700,12 @@ test('档案页：目标库、学习目标、材料、基本工具各就各位�
   // 学习目标也该能改（主路径是对话，这儿只是兜底）
   assert.match(html(), /data-act="goal-edit"/)
 
-  // 主栏放档案与材料，边栏放目标与工具
+  // 主栏放档案与材料，边栏放目标与工具；**掌握度也在这儿**（跟地图页同一张卡）
   assert.match(html(), /<div class="col main">.*data-card="library"/s)
+  assert.match(html(), /<div class="col main">.*data-card="ability"/s)
+  assert.match(html(), /<div class="col main">.*data-card="materials"/s)
+  assert.match(html(), /<circle class="pie-slice"/)
+  assert.match(html(), /整体掌握度/)
   assert.match(html(), /<div class="col aside">.*data-card="goal"/s)
   assert.match(html(), /<div class="col aside">.*data-card="tools"/s)
 })

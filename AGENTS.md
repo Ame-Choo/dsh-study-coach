@@ -149,9 +149,18 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   漏了这步，缩放就会「把东西带乱飘」——测试「滚轮缩放钉在指针底下」盯着（换算助手要拆 `atX` / `atY`，
   一个函数管两轴必错）。
 - **画布不跟鼠标拖**（用户要求关掉）：`assets/graph.js` 里**没有**平移那套 pointer 监听，也别加回去；
-  `.kg-band-hit` 的 click 因此不需要 `panned` 让路（那个状态已经删了）。滚轮缩放 + `.kg-tool` 的
-  `复位视图` / `全部收起` 是全部交互，`test/graph.test.js` 用「按下再挪，`viewTransform` 一动不动」钉着。
+  `.kg-band-hit` 的 click 因此不需要 `panned` 让路（那个状态已经删了）。`test/graph.test.js` 用
+  「按下再挪，`viewTransform` 一动不动」钉着。
   `assets/graph.css` 里 `.kg-svg` 的 `cursor: default` 别再改回 `grab`，也别加 `touch-action: none`。
+- **拖过的那一下不算点**（用户后来追了一句「不是让你改成不可动的吗」——平移拆了，可按住板块挪一下
+  再松手照样会发一枚 click 把板块折叠掉，看着还是像自己动）：`pressAt` + `watchDrag(svg)` 记按下位置，
+  `draggedFromPress(event)` 只在 **同一个 `event.target`**、≤1500ms、位移 >4px 时返回 true；五个 click
+  处理器（`.kg-btn` / `.kg-band-hit` / 模块大类 `g` / 单元 `g` / `.kg-tool`）开头 `if (draggedFromPress(event)) return`。
+  写测试时 `pointerdown` 与 `click` 要派发在**同一个节点**上，不然按 `event.target` 比下来不成立。
+- **普通滚轮不缩放**：`svg` 的 `wheel` 头一句 `if (!event.ctrlKey && !event.metaKey) return`（也**不要**
+  `preventDefault`，页面得照旧滚）；**Ctrl／⌘ + 滚轮**才缩放。`test/graph.test.js` 所有 `wheel` 派发都要带
+  `ctrlKey: true`，另有一条钉「光滚轮不动画面、不 preventDefault」。`.kg-tool` 的
+  `复位视图` / `全部收起` 与 Ctrl 滚轮是全部交互。
 - 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
 - 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
   —— 所以它好测，别往里加 requestAnimationFrame。
@@ -191,6 +200,10 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 
 - **图谱卡里那份大类折叠列表只此一份**：`groupedBlocks(modules)` 现在只由 `abilityCard()` 调用
   （`mapCard()` 末尾不再铺一遍）。图谱卡下面是掌握度卡，两处别各画一套大类。
+- **这张卡还挂在「档案」页**（用户说「掌握度在档案页面也要加一个」）：`PAGE_CARDS.library` 的 main =
+  `[['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`,
+  跟地图页**同一张** `abilityCard()`、同一个展开 id `ability`（别复制一份改改，那会开始漂）。
+  `test/panel.test.js` 的档案页那条钉着 `data-card="ability"` + `pie-slice` + 「整体掌握度」。
 - 饼图是**整体**四档分布：`MASTERY_BANDS`（熟练掌握 = 熟练稳定 + 能讲明白 → `--stage-6`；
   大概掌握 = 能独立做 → `--stage-4`；薄弱 = 能跟做 + 见过 → `--stage-2`；完全不会 = 没接触过 → `--stage-1`），
   `masteryBands(byStage, total)` 把认不出的差额并进最后一档，`masteryPie()` 用

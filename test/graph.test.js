@@ -725,9 +725,9 @@ test('工具按钮：全部收起清空展开，复位视图把 transform 复位
   svg.dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 7 })
   svg.dispatch('pointermove', { clientX: 60, clientY: 30 })
   assert.equal(viewTransform(host), 'translate(0 0) scale(1)', '拖动不许再平移画布')
-  // 用滚轮把视图层真的推走，再看索引板与工具箱有没有被带着跑：它们直接挂在 <svg> 上、
+  // 用 Ctrl+滚轮把视图层真的推走，再看索引板与工具箱有没有被带着跑：它们直接挂在 <svg> 上、
   // 不进视图层，钉在视口上不动。**不许给它们补反向变换**——补了才会跟着鼠标乱飞。
-  svg.dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200 })
+  svg.dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200, ctrlKey: true })
   assert.notEqual(viewTransform(host), 'translate(0 0) scale(1)')
   assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), null)
   assert.equal(byClass(host, 'kg-tools')[0].getAttribute('transform'), null)
@@ -739,23 +739,28 @@ test('工具按钮：全部收起清空展开，复位视图把 transform 复位
   assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), null)
 })
 
-test('滚轮缩放夹在 0.4x–2.4x，并 preventDefault', () => {
+test('滚轮要按住 Ctrl／⌘ 才缩放，夹在 0.4x–2.4x 并 preventDefault；光滚轮不动画面', () => {
   const host = makeHost()
   resetState(host)
   renderGraph(host, baseOpts())
   const svg = svgOf(host)
 
   assert.equal(readScale(host), 1)
-  const zoomIn = svg.dispatch('wheel', { deltaY: -10000, clientX: 450, clientY: 300 })
+  /* 普通滚轮是滚页面用的：画布一动不动，也不许 preventDefault——拦下来页面就滚不动了。 */
+  const plain = svg.dispatch('wheel', { deltaY: -600, clientX: 450, clientY: 300 })
+  assert.equal(plain.defaultPrevented, false, '普通滚轮不该被吃掉')
+  assert.equal(readScale(host), 1, '普通滚轮不许改缩放')
+
+  const zoomIn = svg.dispatch('wheel', { deltaY: -10000, clientX: 450, clientY: 300, ctrlKey: true })
   assert.equal(zoomIn.defaultPrevented, true)
   assert.equal(readScale(host), 2.4)
 
-  const zoomOut = svg.dispatch('wheel', { deltaY: 10000, clientX: 450, clientY: 300 })
+  const zoomOut = svg.dispatch('wheel', { deltaY: 10000, clientX: 450, clientY: 300, ctrlKey: true })
   assert.equal(zoomOut.defaultPrevented, true)
   assert.equal(readScale(host), 0.4)
 
-  // 很小的 delta 也要挪一点点（不是纹丝不动）
-  svg.dispatch('wheel', { deltaY: -100, clientX: 450, clientY: 300 })
+  // 很小的 delta 也要挪一点点（不是纹丝不动）；⌘ 也认（Mac 上按的是 ⌘）
+  svg.dispatch('wheel', { deltaY: -100, clientX: 450, clientY: 300, metaKey: true })
   assert.ok(readScale(host) > 0.4)
 })
 
@@ -783,7 +788,7 @@ test('滚轮缩放钉在指针底下：那一点的画布坐标不动，缩放�
     const before = read()
     const ux = atX(before, screenX)
     const uy = atY(before, screenY)
-    svg.dispatch('wheel', { deltaY, clientX: 300, clientY: 220 })
+    svg.dispatch('wheel', { deltaY, clientX: 300, clientY: 220, ctrlKey: true })
     const after = read()
     assert.notEqual(after.k, before.k, '这一下该真的缩放')
     assert.ok(Math.abs(after.k * ux + after.tx - screenX) < 0.5, `横着飘了：${after.k * ux + after.tx} ≠ ${screenX}`)
@@ -791,7 +796,7 @@ test('滚轮缩放钉在指针底下：那一点的画布坐标不动，缩放�
   }
 })
 
-test('画布不跟鼠标拖（拖动关掉了）；滚轮还是能缩放', () => {
+test('画布不跟鼠标拖（拖动整条路都拆了）；缩放要按住 Ctrl／⌘ 滚轮', () => {
   const host = makeHost()
   resetState(host)
   renderGraph(host, baseOpts())
@@ -816,10 +821,35 @@ test('画布不跟鼠标拖（拖动关掉了）；滚轮还是能缩放', () =>
   point.dispatch('pointermove', { clientX: 200, clientY: 200 })
   assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
 
-  // 缩放没被牵连：滚轮照样能把画布放大，复位按钮照样收得回来
+  // 缩放没被牵连：Ctrl+滚轮照样能把画布放大，复位按钮照样收得回来
   const before = readScale(host)
-  svgOf(host).dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200 })
-  assert.ok(readScale(host) > before, '滚轮还得能放大')
+  svgOf(host).dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200, ctrlKey: true })
+  assert.ok(readScale(host) > before, 'Ctrl+滚轮还得能放大')
   clickTool(host, '复位视图')
   assert.equal(readScale(host), 1)
+})
+
+test('在板块上按住挪一段再松手：那一发 click 不算点，板块不折叠', () => {
+  const host = makeHost()
+  resetState(host)
+  renderGraph(host, baseOpts())
+  assert.equal(byClass(host, 'kg-mod').length, 0, '一开始是收起的')
+
+  // 点一下：该展开
+  let band = byClass(host, 'kg-band-hit')[0]
+  band.dispatch('click', {})
+  assert.ok(byClass(host, 'kg-mod').length > 0, '点一下要展开')
+
+  // 按住挪一段再松手——同一块上发出来的那一发 click 要被吃掉
+  band = byClass(host, 'kg-band-hit')[0]
+  const open = byClass(host, 'kg-mod').length
+  band.dispatch('pointerdown', { clientX: 220, clientY: 300, pointerId: 11 })
+  band.dispatch('click', { clientX: 260, clientY: 340 })
+  assert.equal(byClass(host, 'kg-mod').length, open, '拖过的那一下不许折叠')
+
+  // 手没挪（或者只抖了两像素）：照旧算点
+  band = byClass(host, 'kg-band-hit')[0]
+  band.dispatch('pointerdown', { clientX: 220, clientY: 300, pointerId: 12 })
+  band.dispatch('click', { clientX: 221, clientY: 300 })
+  assert.equal(byClass(host, 'kg-mod').length, 0, '手抖不算拖，该折叠还得折叠')
 })
