@@ -75,7 +75,7 @@ let shelf = null
 let shelfOpen = ''
 /* 摊开那一本的页级索引：{ materialId, toc, spans, pages, chapters } */
 let shelfIndex = null
-/* 对话那份快照：{ available, sessionId, messages, sessions, error } */
+/* 对话那份快照：{ available, sessionId, messages, sessions, filtered, error } */
 let chat = null
 /* 「对话」页开着时的轮询句柄；离开这一页就停 */
 let chatTimer = null
@@ -760,10 +760,19 @@ async function loadChat({ sessionId = ui.chatSession, withSessions = false } = {
       sessionId: out.sessionId || '',
       messages: Array.isArray(out.messages) ? out.messages : [],
       sessions: listed,
+      // 服务端只列学习模式（study-coach）的会话时是 true；老宿主不给预设信息时是 false。
+      filtered: typeof out.filtered === 'boolean' ? out.filtered : Boolean(chat && chat.filtered),
       error: out.error || '',
     }
   } catch (error) {
-    chat = { available: false, sessionId: '', messages: [], sessions: (chat && chat.sessions) || [], error: error.message }
+    chat = {
+      available: false,
+      sessionId: '',
+      messages: [],
+      sessions: (chat && chat.sessions) || [],
+      filtered: Boolean(chat && chat.filtered),
+      error: error.message,
+    }
   }
   return chat
 }
@@ -2585,7 +2594,13 @@ function whenText(at) {
  */
 function chatPicker(snapshot) {
   const list = (snapshot && snapshot.sessions) || []
-  if (!list.length) return ''
+  if (!list.length) {
+    // 一个都没有：要么真没有学习模式的对话，要么这台宿主不给会话预设信息（老 DSH）。
+    const why = snapshot && snapshot.filtered === false
+      ? '没读到会话清单。'
+      : '还没有「学习教练」模式的对话 —— 在 DSH 里新建对话时把预设选成「学习教练」，这一页就接上了。'
+    return `<div class="chat-pick"><span class="dim">${why}</span></div>`
+  }
   const rows = list.map((s) => {
     const name = s.title || (s.blank ? '（新会话）' : s.cwd ? String(s.cwd).split(/[\\/]/).pop() : String(s.sessionId).slice(0, 8))
     const label = [name, whenText(s.updatedAt), s.running ? '进行中' : ''].filter(Boolean).join(' · ')
@@ -2593,13 +2608,15 @@ function chatPicker(snapshot) {
   })
   // 服务端没告诉我们在哪一个（比如清单是后拉回来的）时，就当第一个——列表是倒序的，第一个就是最近那个。
   const current = String((snapshot && snapshot.sessionId) || '') || rows[0].id
+  // 只列学习模式的时候说一句，学生才知道别的会话为什么不在下拉里。
+  const only = snapshot && snapshot.filtered ? '<span class="dim chat-only">只看学习模式</span>' : ''
   if (rows.length === 1) {
-    return `<div class="chat-pick"><span class="dim">当前会话</span><b class="pick-now">${esc(rows[0].label)}</b></div>`
+    return `<div class="chat-pick"><span class="dim">当前会话</span><b class="pick-now">${esc(rows[0].label)}</b>${only}</div>`
   }
   const options = rows
     .map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.label)}</option>`)
     .join('')
-  return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select></div>`
+  return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select>${only}</div>`
 }
 
 function clockOf(time) {

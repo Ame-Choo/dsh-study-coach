@@ -108,3 +108,47 @@ test('bridge：resolve 抛错也算没有服务', async () => {
   const out = await bridge.send('在吗')
   assert.equal(out.ok, false)
 })
+
+test('bridge：清单里有更新的编程会话时，面板的话只投给学习模式那个', async () => {
+  const controller = fakeController({
+    items: [
+      { sessionId: 'code-1', updatedAt: 9, projections: { values: { agentPreset: 'coder' } } },
+      { sessionId: 'sub-1', parentSessionId: 'live-1', origin: 'subagent', updatedAt: 8, projections: { values: { agentPreset: 'study-coach' } } },
+      { sessionId: 'live-1', updatedAt: 5, projections: { values: { agentPreset: 'study-coach' } } },
+    ],
+  })
+  const bridge = createBridge({ resolve: () => controller })
+
+  const out = await bridge.send('这道题再讲一遍')
+  assert.equal(out.ok, true)
+  assert.equal(out.sessionId, 'live-1', '最近那个是编程会话，面板的话不能掉进去')
+  assert.equal(controller.calls.prompt[0].sessionId, 'live-1')
+})
+
+test('bridge：一个学习模式的会话都没有时，宁可不投', async () => {
+  const controller = fakeController({
+    items: [{ sessionId: 'code-1', updatedAt: 9, projections: { values: { agentPreset: 'coder' } } }],
+  })
+  const bridge = createBridge({ resolve: () => controller })
+
+  const out = await bridge.send('在吗')
+  assert.equal(out.ok, false)
+  assert.match(out.error, /学习教练/)
+  assert.equal(controller.calls.prompt.length, 0, '掉进编程会话比不投更糟')
+})
+
+test('bridge：工具 remember() 记下的会话要回清单核一遍', async () => {
+  // 学习工具在编程会话里也调得到，remember() 记的可能就是那个 —— 面板投话不能直接信它
+  const controller = fakeController({
+    items: [
+      { sessionId: 'code-1', updatedAt: 9, projections: { values: { agentPreset: 'coder' } } },
+      { sessionId: 'live-1', updatedAt: 1, projections: { values: { agentPreset: 'study-coach' } } },
+    ],
+  })
+  const bridge = createBridge({ resolve: () => controller })
+  bridge.remember('code-1')
+
+  const out = await bridge.send('在吗')
+  assert.equal(out.ok, true)
+  assert.equal(out.sessionId, 'live-1')
+})

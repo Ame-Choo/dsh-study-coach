@@ -57,3 +57,18 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
    改完刷新设置页就见效。
 
 插件自己那个网页面板（`assets/`）仍然照 `design.md` 走，两套配色体系别互相串。
+
+## 面板那条线只认「学习教练」模式的会话
+
+`lib/chat.js`（读会话）和 `lib/bridge.js`（往会话投话）都以 `agentPreset === PRESET_ID`
+（`lib/preset.js:59`，`'study-coach'`）为准。判据**只在 `lib/session-preset.js` 里写一份**
+（`presetOf` / `hasPresetChannel` / `learningSessions`），别在两边各写一遍。
+
+- 预设只能从**会话投影**里读：`item.projections.values.agentPreset`。`SessionSummary` 上
+  **没有** `agentPreset`（也没有 `title`），DSH 自己也是读投影的。
+- 宿主整份清单都不发投影时**不要筛**：`filtered:false` 说的是「这次没敢筛」，不是「筛完正好没有」。
+  面板据此决定说不说「只看学习模式」，别把老宿主筛成一片空白。
+- `chat.history({sessionId})` 对显式带进来的 id 也要核一遍，不在名单里就直接拒绝、**不去读那条日志**；
+  投递挑不到学习会话时宁可回 `ok:false`（话还在 `inbox.json` 里），也不许掉进别的会话。
+- 这些由 `test/session-preset.test.js` / `test/chat-sessions.test.js` / `test/bridge.test.js` 钉住。
+

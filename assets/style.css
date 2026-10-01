@@ -684,6 +684,9 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 /* 悬浮窗里那一行收一档 */
 .float .chat-pick { margin: 8px 12px 0; gap: 6px; }
 .float .chat-pick label, .float .chat-pick select, .float .pick-now { font-size: 12px; }
+/* 「只看学习模式」贴到右边：下拉拉满宽度之后它是最后一项，不推一下会挤着选区 */
+.chat-only { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.float .chat-only { font-size: 11px; }
 
 .chat-log {
   display: flex;

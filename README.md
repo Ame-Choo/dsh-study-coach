@@ -493,7 +493,7 @@ node --test
 对话那条线（`lib/chat.js`）：
 
 - `sessionController` 是 DSH 的**可选**服务，和 `lib/bridge.js` 一样**不写进 `inject`**，拿不到就 `available:false`，对话页直说「没接通 / 原因 / 重新连接」，绝不白屏。
-- `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单：滤掉子会话，按 `updatedAt` 倒序）、`history({sessionId, maxMessages})`（只用 `sessionController.follow()` 拿第一帧 snapshot 就退订，翻成面板要的 `{seq, time, role, text, tools}`；`CHAT_EVENT_TYPES` 那张白名单之外的事件一律丢，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。**不用 `page()`**——它要 `throughSeq`，得先问 `projections()` 拿 `asOfSeq`，形状没侦察到；`follow` 一次就给窗口化 records + cursor。
+- `createChat({resolve, timeoutMs})` 给三个方法：`available`、`sessions()`（会话清单：滤掉子会话；宿主发会话投影时**只留「学习教练」模式的**，按 `updatedAt` 倒序；回包里 `filtered` 说明这次到底筛没筛）、`history({sessionId, maxMessages})`（只用 `sessionController.follow()` 拿第一帧 snapshot 就退订，翻成面板要的 `{seq, time, role, text, tools}`；`CHAT_EVENT_TYPES` 那张白名单之外的事件一律丢，留最近 `CHAT_MAX_MESSAGES = 60` 条、单条正文截到 `CHAT_MAX_CHARS = 4000` 字）。**不用 `page()`**——它要 `throughSeq`，得先问 `projections()` 拿 `asOfSeq`，形状没侦察到；`follow` 一次就给窗口化 records + cursor。
 - **只画「人说的话」。** 白名单是 `CHAT_EVENT_TYPES = ['user/message', 'assistant/message']`。两个理由都是实测的：①**工具事件是正文的十几倍**——拿正在跑的 DSH 拉一次，173 条里只有 6 条是人话，不筛的话一屏「调用 pwsh（3 步）」把正文冲没；这一轮用了哪些工具，`assistant/message` 自带的 `tools` 已经折成一行「用了 read、edit」，够用。②`user/message` 里混着**宿主注入的整段 `<system-reminder>`**（AGENTS.md 全文），不筛就会当成学生说的话整段画出来。另外**没有正文的 assistant 步**（一轮里只带工具调用的那些）也丢——画出来只有一排「（这一步没有正文）」。要往回加类型，往 `CHAT_EVENT_TYPES` 里写、再在 `toMessages` 里补一段映射。
 - HTTP 三条：`GET /study/api/chat/sessions`、`GET /study/api/chat?sessionId=&max=&sessions=1`、`POST /study/api/chat/send {text, sessionId?, mode?}`（`mode` 只收 `queue` / `steer`，复用 `lib/bridge.js` 的投递通道）。
 - 面板侧：**整页对话**和**右下角悬浮窗**是同一份状态（`chat` 对象）两处渲染，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉。开着对话页或悬浮窗时**每 2.5 秒拉一次快照**，标签页切到后台、或者两者都关掉就把定时器停掉（`syncChatPolling()` + `chatVisible()`）；只有指纹变了才重画，正在输的字和滚到一半的位置都不动。**通道没接通就别开定时器**（会留一个永远停不下来的 interval，`node --test` 会因此跑不完）。
@@ -511,7 +511,7 @@ node --test
 - **悬浮窗和整页共用一份状态。** 同一个 `chat` 对象渲染两处，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉，所以点开悬浮窗就是接着刚才那段说。悬浮窗是简化版：只留消息列表 + 输入框，不显示工具胶囊和时间戳；`×` 或 `Esc` 关掉，`Enter` 发送、`Shift+Enter` 换行。FAB 在主页以外的每一页都在。
 - **定时器判据跟着改。** `syncChatPolling()` 原来只看 `page === 'coach'`，现在看 `chatVisible()`（在对话页**或**悬浮窗开着）；两者都不满足就 `clearInterval`。这条不只是省电：`node --test` 的假 DOM 里，一个停不下来的 interval 会让整个测试进程跑不完。
 - **脱开 DSH 也能看长相。** `DSH_STUDY_PREVIEW_CHAT=1 node scripts/preview.mjs` 会挂一份假对话，不必重启 DSH 就能把对话页和悬浮窗点一遍。真跑起来那段对话仍是 `sessionController` 给的。
-- **顶上能挑会话。** 他那台 DSH 上开着好几个会话时，对话页和悬浮窗顶上那颗下拉就能选——`GET /study/api/chat?sessions=1` 给清单，选中项按 `updatedAt` 倒排的当前会话。只有一条会话时**不给下拉**，改成一行静态的「当前会话：X」（摆一颗只有一个选项、点不动的控件还不如直接写出来）。清单只在**对话页**或**悬浮窗开着**的时候才拉（`loadChat({ withSessions: page === 'coach' || ui.float })`），别的时候省一趟接口。
+- **顶上能挑会话。** 他那台 DSH 上开着好几个会话时，对话页和悬浮窗顶上那颗下拉就能选——`GET /study/api/chat?sessions=1` 给清单，选中项按 `updatedAt` 倒排的当前会话。只有一条会话时**不给下拉**，改成一行静态的「当前会话：X」（摆一颗只有一个选项、点不动的控件还不如直接写出来）。清单只在**对话页**或**悬浮窗开着**的时候才拉（`loadChat({ withSessions: page === 'coach' || ui.float })`），别的时候省一趟接口。清单里**只有「学习教练」模式的会话**（见文末「补：面板里的对话只认『学习教练』模式的会话」）：筛过时行尾标一句「只看学习模式」，一个都没筛出来时写一句「还没有⋯⋯新建对话时把预设选成『学习教练』」，不摆空下拉。
 - **两个容易踩的地方。** ①`loadChat` 收清单时要判空：`Array.isArray(out.sessions) && out.sessions.length ? out.sessions : (chat && chat.sessions) || []`——不判的话，一次没带 `sessions=1` 的请求会用空数组把刚拉到的清单冲掉（悬浮窗一关一开就没得选了）。②点开悬浮窗时得补拉一次：`load()` 跑的那会儿 `ui.float` 还是 `false`，清单是空的。
 - **浮窗能拖着走。** 按住标题栏（`.float-head`）拖，落点记在 `localStorage` 的 `study-coach:float-pos`（`FLOAT_POS_KEY`），拖过的位置**每帧重画都带着**（`ui.floatPos` → 行内 `left/top`，加个 `moved` 类把 `right/bottom` 让开）——不然 2.5 秒刷一次快照，窗子每次都自己跳回右下角。拖动用**指针事件**（鼠标 / 触屏 / 触控笔一套），监听挂在 `document` 而不是窗子自己身上：拖到窗口外面再松手也得收到 `pointerup`，挂元素上会漏，那就变成「手松了它还跟着鼠标跑」。落点由 `clampPos()` 按在视口里（整扇都看得见；视口比窗子还小就贴左上角），窗口 resize 之后会重新按一次，**每次重画也会按一次**（`clampFloatToView()`）——位置可能是在外接屏上拖的，换回笔记本再打开不能让它落在屏幕外。拖动期间**直接改元素样式、不整页重画**——重画会把输入框里的字和消息列表滚到一半的位置弄丢。双击标题栏回右下角，把记的位置也清掉。标题栏上那两颗按钮照旧是按钮（`pointerdown` 里遇到 `button` 直接放行）。
 
@@ -910,17 +910,42 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 **样式走 `--dsw-alias-*` 那一套**（`--dsw-alias-bg-layer-1`、`--dsw-alias-border-l2`、`--dsw-alias-brand-primary`、`--dsw-alias-label-primary` …），**不要**用插件自己面板的 `--ink` / `--card` / `--accent`——那是另一套配色体系，在 DSH 的页面里根本没有值，混进来就是一片透明。`test/client.test.js` 拿一条正则钉住了这件事。
 
-页签里三块：**网页面板**（打开面板 + 今天 / 地图 / 能力 … 每页直达——跳转入口）、**面板服务**（启动 / 停止 / 重启——启动键）、**启动设置**（首选端口 + 加载时自启）。fetch 打的是同源的 `/study/api/panel`（`/study` 也挂在 DSH 自己的 webServer 上，所以没有跨域）。
+页签里三块，**「面板服务」排在最前**（启动 / 停止 / 重启；跑着时多一颗「打开网页面板 ↗」，停着时那颗换成「启动并打开 ↗」）、**「网页面板」**（地址 + 今天 / 地图 / 能力 … 每页直达）、**「启动设置」**（首选端口 + 加载时自启）。主按钮**不实心**：品牌色只用来描边 + 左侧一道信号条——因为填充色之上那层文字色不在公开 token 表里，拿 `--dsw-alias-bg-base` 当文字色的按钮会被别的插件（壁纸那类改写别名层的）变成一片空白。fetch 打的是同源的 `/study/api/panel`（`/study` 也挂在 DSH 自己的 webServer 上，所以没有跨域）。
 
 ### 五、测试
 
 - `test/settings.test.js` 7 条：读宽容（不在 / 半截 JSON / 顶层不是对象 / 字段全乱）、写严格（四类非法值 + 抛了不落盘 + 不提 panel 就当没改）、`createPanelControl`（起停重启、重复 start 不换端口、并发 start 合流到一次、首选端口被占往后挪且 `info().preferred` 还是用户写的那个）、路由层（没控制器时的 GET/POST、状态与开关与存端口、被挡住的不落盘）、独立端口那半端得出面板页面和静态资源。
-- `test/client.test.js` 6 条：只跟平台要 react、bundle id = 包名、`apply` 之后 `settings.plugins.tab` 上真的多一条 `study-coach`、拿不到 slots 也不炸、跳转入口覆盖各页、样式只用 `--dsw-alias-*`。
+- `test/client.test.js` 12 条：只跟平台要 react、bundle id = 包名、`apply` 之后两个座位都挂上、拿不到 slots 也不炸、跳转入口覆盖各页、样式只用 `--dsw-alias-*`（面板那套 `--ink` / `--card` 一条正则钉死）；这一版又加三条：**CSS 里不许出现 `--dsw-alias-bg-base`**（它是背景语义，壁纸那类插件会把它改成 `transparent`，「跳转按钮看不见内容」就是这么来的）、每个别名引用都要带实色兜底、按状态渲染出来的按钮标签与禁用态（跑着时只有一颗 primary 且是「打开网页面板 ↗」，停着时是「启动」，状态没读回来一律禁用）。
 - 网页面板那侧没有新增测试——它压根没多出界面。
 
 ### 六、一个真 bug（顺手修的）
 
 `server.close()` 只等已有连接自己断。浏览器跟面板一直是 keep-alive，**点「停止」或「重启」就会一直转圈**——而浏览器永远不松手。`lib/panel-server.js` 的 `close()` 里先 `server.closeAllConnections()` 再 `close()`。
+
+## 补：面板里的对话只认「学习教练」模式的会话
+
+面板的对话页原来列的是 `sessionController.list()` 里的**每一个**非子会话。同一台机器上开着别的会话（比如我干活那个编程会话），学生一点进来就会先看见它，`lib/bridge.js` 挑会话又是「取最近那个」，面板说出去的话有可能掉进跟你学习无关的会话里。现在这条线只认 `agentPreset === 'study-coach'`（`lib/preset.js:59` 的 `PRESET_ID`）。
+
+- **判据只能从会话投影里拿。** `SessionSummary` 上没有 `agentPreset`（也没有 `title`），DSH 自己也是读投影的（asar 里那句注释写得很直白：*Reconstruction reads the `agentPreset` Session projection, never the header*）——`item.projections.values.agentPreset`。所以不必逐会话 `inspect()`，一次 `list()` 就够。
+- **判据集中在 `lib/session-preset.js`**：`presetOf(item)`（取不到一律回 `''`；宿主写 `null` 就是「没选预设」）、`hasPresetChannel(items)`、`learningSessions(items) → { items, filtered }`。`lib/chat.js` 和 `lib/bridge.js` 都走它，别在两处各写一遍。
+- **老宿主不许被筛成空白。** 整份清单里没有任何 `projections.values` 时 `filtered:false`、原样放行——面板也据此决定说不说「只看学习模式」（`filtered` 才说）。这两件事必须分开：`filtered:false` 是「这次没敢筛」，不是「筛完正好没有」。
+- **`history({sessionId})` 也核一遍。** 面板直接带一个别的会话 id 上来时，先自己拉一次清单，不在名单里就回 `ok:false` + 一句「这个会话不是「学习教练」模式的，面板不读它的对话」，**不去读那条日志**。
+- **投递宁可不投。** `bridge.pickSession()` 现在返回 `{ sessionId, filtered }`；`remember()` 记下的 id 也不直接信了（学习工具在编程会话里照样调得到，`preferredFromList` 标记的才是从筛选后的清单里挑出来的），一个学习会话都没有时回「没有「学习教练」模式的对话，这句话先存着」——话仍然留在 `inbox.json` 里，不掉。
+- **面板那侧**：`chatPicker()` 空清单时不再不吭声，会分两种说法（`filtered === false` → 「没读到会话清单。」；否则 → 「还没有「学习教练」模式的对话 —— 在 DSH 里新建对话时把预设选成「学习教练」，这一页就接上了。」），有清单且筛过时行尾挂一句「只看学习模式」（`.chat-only`）。
+- **测试**：`test/session-preset.test.js` 5 条（判据、六种投影形态、老宿主放行、非数组不炸）、`test/chat-sessions.test.js` 4 条（真 `createChat` + 假 controller：只列学习会话 / 显式塞别的 id 读不到 / 老宿主不拦 / 一个都没有时不读别人日志）、`test/bridge.test.js` 加 3 条（清单里混着更新的编程会话时只投学习会话 / 一个都没有时 `ok:false` 且不 prompt / `remember()` 记的编程会话要回清单核一遍）。全量 285 条。
+- **记账**：`lib/` 改了 → **要重启 DSH 才生效**（`assets/*` 那条刷新即可）。
+- 顺带记一笔没修的：`SessionSummary` 上没有 `title`，`lib/chat.js` 的 `summaryView` 读 `item.title` 永远是空串，清单那行就退化成「cwd 尾段 / 前 8 位」。要真标题得另想门路。
+
+
+### 七、跳转按钮「看不见内容」的病根（壁纸插件 + 别名层）
+
+用户报了「设置 → 学习教练 → 网页面板 那个跳转按钮看不见内容」。不是没渲染，是**按钮有面、字是透明的**：
+
+- 旧样式把主按钮写成 `background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base)`。`--dsw-alias-bg-base` 是**背景**语义（页面底色），不是「填充色之上的文字色」。装了 `dsh-plugin-wallpaper-engine` 之后，它在壁纸激活时把整套别名层改写：`--dsw-alias-bg-base: transparent`（`lib/client.js:183`、`:225`），顺带把 `bg-layer-1/2/3` 换成玻璃配方、`border-l1/l2` 换成 `rgba(180,180,180,.35)`、`brand-primary` 换成 `var(--we-accent,#4f8cff)`（`:708`）。于是 `color: transparent` —— 剩下一个空白方块。
+- **公开的 `--dsw-alias-*` 允许集只有 14 个**（`bg-base / bg-layer-1 / bg-layer-2 / bg-overlay / border-l1 / border-l2 / brand-primary / label-primary / label-secondary / state-{error,idle,success,warn}-primary / specific-sidebar-fill`），**里面没有「填充色之上那层文字色」**，所以这一页干脆不做实心填充：品牌色只描边 + 左侧一道 3px 信号条，文字走 `label-primary`。
+- **每个别名引用都要写实色兜底**：`var(--dsw-alias-brand-primary, #4f8cff)`。别名层不属于我们，谁都可能改写它。
+- 怎么验的（没有 DSH 也能看）：`F:\dshworkingspace(studyplugin\.shot\sc\harness.html` 是个离线壳子——迷你 React + `toDom()` + `window.fetch` 桩，`?bundle=old|new&theme=light|dark&we=0|1&state=running|stopped` 四个开关，两套 token（DSH 正典 / 壁纸插件改写）。旧 bundle 从 git 导出成 `.shot/sc/client-old.js`。壳子里还能直接把 computed style 打到页面上：**旧 bundle 量出 `.sc-btn.primary color = rgba(0, 0, 0, 0)`，新 bundle 是 `rgb(0, 0, 0)`**。截图在 `.shot/sc/`。顺带两条环境经验：Edge 必须用老 `--headless`（`--headless=new` 会报 `Multiple targets are not supported in headless mode`），`--dump-dom` 在它上面零输出、别指望。
+
 
 
 
