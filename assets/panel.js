@@ -230,6 +230,15 @@ function today() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** 周几。复盘图顶上写「2026-10-01 · 周四」，今日任务那页照同一口径，所以两边共用一个助手。 */
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+function weekdayOf(date) {
+  const parts = String(date ?? '').split('-').map(Number)
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return ''
+  const d = new Date(parts[0], parts[1] - 1, parts[2])
+  return Number.isNaN(d.getTime()) ? '' : WEEKDAYS[d.getDay()]
+}
+
 async function api(path, body) {
   const options =
     body === undefined
@@ -542,8 +551,9 @@ async function load() {
     library = await loadLibrary()
     mistakes = await loadMistakes()
     student = await loadStudent()
-    // 复盘图只有「今天」这一页要。其余页不拉，省一趟请求和 9 KB。
-    review = page === 'today' ? await loadReview() : null
+    // 复盘图常驻在「主页」和「今日任务」两页——它是这一屏最值钱的一张图，别让人换页去找。
+    // 其余页不拉，省一趟请求和 9 KB。
+    review = page === 'today' || page === 'home' ? await loadReview() : null
     // 书架只有「资料」这一页要。
     shelf = page === 'materials' ? await loadShelf() : null
     // 工具栏目只有「工具」这一页要。
@@ -630,15 +640,17 @@ async function loadStudent() {
 }
 
 /**
- * 今日复盘图。只有「今天」这一页要，所以别的页不拉——一张图 9 KB，没必要每页都拖。
- * 这一天什么都没动过（服务端回 data: null）时返回 null，卡片自己收起来。
+ * 今日复盘图。常驻在「主页」与「今日任务」两页，别的页不拉——一张图 9 KB，没必要每页都拖。
+ * 服务端这条通道没接上（老版本）才返回 null；「今天什么都没动过」（data / svg 空）照样返回，
+ * 由 reviewCard() 自己写空态——常驻的卡不该自己消失。
  */
 async function loadReview() {
   if (!capabilities || !capabilities.review) return null
   try {
     const out = await api('/study/api/review?date=' + today())
-    if (!out || !out.data || !out.svg) return null
-    return { date: out.date || today(), data: out.data, svg: String(out.svg) }
+    // data / svg 可能是空的（今天什么都没动过）——那不是「没接通」，卡片照样常驻，自己写空态。
+    if (!out || typeof out.svg !== 'string') return null
+    return { date: out.date || today(), data: out.data || null, svg: out.svg }
   } catch {
     return null
   }
@@ -794,7 +806,7 @@ function chatFingerprint(snapshot) {
  */
 const PAGES = [
   { id: 'home', path: '/study', label: '主页', hint: '当前进度与下一步' },
-  { id: 'today', path: '/study/today', label: '今天', hint: '今日任务，逐条完成' },
+  { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
@@ -1124,7 +1136,7 @@ function homePage() {
       .join('')}
   </section>
 
-  <div class="cards">${fold('guide', '教练的指引', guideCard())}</div>`
+  <div class="cards">${fold('review', '今日复盘图', reviewCard())}${fold('guide', '教练的指引', guideCard())}</div>`
 }
 
 /** 顶栏：名字 + 页面导航 + 今天做完几条 + 地图状态 + 换配色 + 两种模式来回切。 */
@@ -1846,14 +1858,20 @@ function taskGroups() {
   ]
 }
 
-/** 一条任务：勾、改、删、跳转。profileId 是它属于哪门课——列在一起时不能认错门。 */
-function taskRow(t, profileId, showSubject) {
+/**
+ * 一条任务：勾、改、删、跳转。profileId 是它属于哪门课——列在一起时不能认错门。
+ * index 是它在今天这一屏里的序号（关卡面那套索引字：01 / 02 …），
+ * isNext 标出「现在该做的那一条」——一屏只给一条青。
+ */
+function taskRow(t, profileId, showSubject, index = 0, isNext = false) {
   const links = (t.links || [])
     .filter((l) => l && l.url)
     .map((l) => `<a class="open-link ${l.kind === 'point' ? 'alt' : ''}" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`)
     .join('')
+  const cls = ['task-item', t.done ? 'done' : '', isNext && !t.done ? 'is-next' : ''].filter(Boolean).join(' ')
+  const ord = `<span class="task-ord" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>`
   if (ui.editTask === t.id) {
-    return `<li class="editing"><form class="inline-form" data-form="task-edit" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">
+    return `<li class="${cls} editing">${ord}<form class="inline-form" data-form="task-edit" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">
         <input name="title" value="${esc(t.title)}" placeholder="任务内容">
         <select name="kind">${Object.keys(TASK_KIND)
           .map((k) => `<option value="${k}" ${k === t.kind ? 'selected' : ''}>${TASK_KIND[k]}</option>`)
@@ -1869,10 +1887,11 @@ function taskRow(t, profileId, showSubject) {
          <button class="mini" data-act="task-cancel">取消</button>`
       : `<button class="mini" data-act="task-edit" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">改</button>
          <button class="mini" data-act="task-remove" data-id="${esc(t.id)}" data-profile="${esc(profileId)}">删除</button>`
-  return `<li class="${t.done ? 'done' : ''}">
+  return `<li class="${cls}">
+    ${ord}
     <label class="check"><input type="checkbox" data-act="task-toggle" data-id="${esc(t.id)}" data-profile="${esc(profileId)}" ${t.done ? 'checked' : ''}><span>${esc(t.title)}</span></label>
-    <span class="dim">${showSubject ? `<span class="tag">${esc(showSubject)}</span> ` : ''}${TASK_KIND[t.kind] || esc(t.kind || '')}${t.minutes ? ' · ' + t.minutes + ' 分' : ''}${t.pointTitle ? ' · ' + esc(t.pointTitle) : ''}</span>
-    ${t.note ? `<div class="dim">${esc(t.note)}</div>` : ''}
+    <span class="dim task-meta">${showSubject ? `<span class="tag">${esc(showSubject)}</span> ` : ''}${TASK_KIND[t.kind] || esc(t.kind || '')}${t.minutes ? ' · ' + t.minutes + ' 分' : ''}${t.pointTitle ? ' · ' + esc(t.pointTitle) : ''}</span>
+    ${t.note ? `<div class="dim task-note">${esc(t.note)}</div>` : ''}
     <span class="task-actions">${links}${confirmDel}</span>
   </li>`
 }
@@ -1928,9 +1947,17 @@ function tasksCard() {
         .join('')}</div>`
     : ''
 
+  // 序号是「关卡面」那套索引字，跨分组一条一条数下去；「现在该做的那条」只给一条青。
+  let seq = -1
+  const nextId = (views.find((t) => !t.done) || {}).id || ''
   const body = shown
     .map((g) => {
-      const rows = g.day.map((t) => taskRow(t, g.id, multi && !ui.filter)).join('')
+      const rows = g.day
+        .map((t) => {
+          seq += 1
+          return taskRow(t, g.id, multi && !ui.filter, seq, t.id === nextId)
+        })
+        .join('')
       const head = multi
         ? `<div class="group-line">
              <b>${esc(g.title)}</b>${g.active ? ' <span class="tag">在用</span>' : ''}
@@ -1943,10 +1970,20 @@ function tasksCard() {
     })
     .join('')
 
-  return `<section class="card">
-    <div class="card-head"><h2>今天 · ${date}</h2>${
-      views.length ? `<span class="dim ${over ? 'over' : ''}">完成 ${done}/${views.length} · ${total} 分钟${budget ? ' / ' + budget : ''}</span>` : ''
-    }</div>
+  // 眉标 + 大标题 + 日期 · 周X + 右上状态 + 进度量尺 —— 跟「今日复盘图」那张图同一套版式。
+  const pct = views.length ? Math.round((done / views.length) * 100) : 0
+  return `<section class="card day">
+    <div class="day-hero">
+      <p class="eyebrow">TODAY · 今日任务</p>
+      <div class="day-title-row">
+        <h2 class="day-title">今日任务</h2>
+        <span class="day-pill${over ? ' over' : ''}">${
+          views.length ? `完成 ${done}/${views.length} · ${total} 分钟${budget ? ' / ' + budget : ''}` : '今天还没排任务'
+        }</span>
+      </div>
+      <p class="day-sub">${esc(date)} · ${esc(weekdayOf(date))}</p>
+      <div class="day-gauge${over ? ' over' : ''}" role="img" aria-label="今日完成度 ${pct}%"><i style="width:${pct}%"></i></div>
+    </div>
     ${chips}
     ${views.length || multi ? body : '<p class="dim">今日暂无任务。可手动添加，或在对话中说明。</p>'}
     ${taskAddForm(groups)}
@@ -1962,10 +1999,19 @@ function tasksCard() {
  * 图里全是短句（版式没有自动换行，服务端已经按字号裁过），细节仍以下面几张卡为准。
  */
 function reviewCard() {
-  if (!review || !review.svg) return ''
+  if (!review) return ''
   const data = review.data || {}
   const branches = Array.isArray(data.branches) ? data.branches : []
   const wrong = Number(data.error_count) || 0
+  // 常驻的卡不能自己消失：今天什么都没动过就没有图，那就把「怎么让它有内容」写出来。
+  if (!review.svg) {
+    return `<section class="card review">
+    <div class="card-head">
+      <h2>今日复盘图</h2>
+    </div>
+    <p class="dim">今天还没记过一笔。勾掉一条今日任务、判一道题、或在知识地图上自评一个单元，这张图立刻就有内容。</p>
+  </section>`
+  }
   return `<section class="card review">
     <div class="card-head">
       <h2>今日复盘图</h2>

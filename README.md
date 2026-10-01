@@ -1008,6 +1008,20 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   · 又多了两个几何常量（`HEAD_BAR_H`、`CELL_RULE_X`）；加装饰照旧**另起 class**，别借 `.kg-box` / `.kg-dot` / `.kg-halo`。
 - **记账**：这一批只动 `assets/graph.js` / `assets/graph.css` / `assets/panel.js` / `assets/style.css`（`lib/` 没碰）→ **刷新页面即可**。视觉验收用离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` + `.graphcheck-server.mjs`（19392），不碰正在跑的 DSH。
 
+## 补：复盘图常驻，今日任务照复盘图那套版式
+
+用户说：「1.今天复盘能不能做成常驻 2.『今天』能不能改成『今日任务』，然后图形设计搞今日复盘的同款，我认为这一块是你图形界面做的一个很完美的案例」。两句都要：**复盘图从「今日任务页下面那张」变成主页与今日任务页都在的常驻卡**；**今日任务页本身照复盘图（`lib/review.js` 那张 SVG）的版式重做**。
+
+**① 常驻。** `loadReview()` 原来只在 `page === 'today'` 时拉（注释写着「省一趟请求和 9 KB」），现在 `page === 'today' || page === 'home'`；主页 `homePage()` 结尾那行 `<div class="cards">` 从只有「教练的指引」改成 `fold('review', '今日复盘图', reviewCard())` 打头。另外把 `loadReview()` 的判据从「`data` 和 `svg` 都得有」放宽成**只要求 `svg` 是字符串**：`lib/review.js` 刻意做到「这一天什么都没动过就返回 `null`」，面板原来因此整张卡不出现——常驻之后不能这样，**空的一天也得有卡**，于是 `reviewCard()` 多了一条空态分支：标题照旧，正文写「今天还没记过一笔。勾掉一条今日任务、判一道题、或在知识地图上自评一个单元，这张图立刻就有内容。」，不放「下载 SVG」（没图可下）。
+
+**② 今日任务页照复盘图重做。** 复盘图的抬头是「眉标 `DAY REVIEW · 今日复盘` / 大字标题 / `2026-10-01 · 周四` / 右上状态药丸」，量尺在标题下面。今日任务页现在是同一套：
+
+- 卡片从 `<section class="card">` 变成 `<section class="card day">`，抬头换成 `.day-hero`：`.eyebrow` 写 `TODAY · 今日任务`，`.day-title-row` 里左边 `<h2 class="day-title">今日任务</h2>`（`font-size: var(--fs-hero)`，与复盘图的大标题同一档）、右边方角状态块 `.day-pill`（`完成 1/1 · 25 分钟 / 60`；一门课都没排时写「今天还没排任务」；超预算 `.over` 转 `--warn`），下面 `.day-sub` 写 `2026-10-01 · 周四`，再下面一条 7px 方角量尺 `.day-gauge`（轨道 `--line-2` 压半透明、填充 `--accent`、超预算转 `--warn`，`role="img"` + `aria-label="今日完成度 P%"`）。
+- **周几是面板自己算的**：`panel.js` 原来没有这个助手，新加 `WEEKDAYS` 与 `weekdayOf(date)`（按 `YYYY-MM-DD` 拆段后 `new Date(y, m-1, d)`，非法回空串）。别拿 `new Date('2026-10-01')` 直接啃——那是 UTC 解析，东八区会差一天。
+- 任务行从 `<li class="done">` 变成三栏网格 `<li class="task-item …">`：`grid-template-areas: "ord title meta" / "ord note note" / "ord act act"`，第一栏是两位序号 `.task-ord`（Rajdhani、等宽数字、`--faint`），左侧一条 2px 信号条——**`is-next`（第一条没做完的）给 `--accent`，其余 `--line-2`、做完的 `--line`，一屏只有一条青**。序号是**全页连续**的（`tasksCard()` 里一个 `seq` 计数器），不是每门课从 01 重来。侧栏模式那套媒体查询把网格换成两栏（`"ord title" / "ord meta" / "ord note" / "ord act"`），元信息改左对齐。
+- **记账**：只动 `assets/panel.js` / `assets/style.css` / `test/panel.test.js`（`lib/` 没碰）→ **刷新页面即可**。测试 `test/panel.test.js` 27 条、全量 309 条；harness 多了一个 `review` 选项（`review: null` 才测得到空态分支）。
+- 顺手记一笔**既有**毛病（不是这批改出来的）：窄屏 420px 下整页有横向溢出，体检卡右端那颗按钮会被切在视口外。用**没动过**的 `/study/ability` 在同一宽度截图，溢出位置一模一样 → 病根在共用部分（顶栏或体检卡），跟今日任务这张卡无关，留待下一轮定位。
+
 
 
 ### 七、跳转按钮「看不见内容」的病根（壁纸插件 + 别名层）

@@ -138,6 +138,24 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - 视觉验收别拿正在跑的 DSH 折腾：离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` +
   `.graphcheck-server.mjs`（19392），asset 全走 `process.cwd()`（手写绝对路径容易踩工作区那个括号）。
 
+## 今日任务页与今日复盘图是一家（`assets/panel.js` 的 `.day-*` / `.day-hero`）
+
+复盘图的版式（`lib/review.js`：眉标 + 大字标题 + `日期 · 周X` + 右上状态药丸 + 一条量尺 + 行首信号条）
+现在也是**今日任务页抬头**的版式，改这一页时别另起一套：
+
+- 卡片类是 `card day`（不是只有 `card`），抬头整块是 `.day-hero`：`.eyebrow` 写 `TODAY · 今日任务`、
+  `.day-title` 用 `var(--fs-hero)`、`.day-pill` 是方角状态块（**不是胶囊**）、`.day-sub` 写 `日期 · 周X`、
+  `.day-gauge` 是 7px 方角量尺（`role="img"` + `aria-label="今日完成度 P%"`；超预算转 `--warn`）。
+- **周几自己算**（`WEEKDAYS` + `weekdayOf(date)`）。别 `new Date('2026-10-01')`——那是 UTC 解析，东八区差一天。
+- 任务行是 `li.task-item` 三栏网格，第一栏两位序号 `.task-ord`（全页连续，不是每门课重来），
+  左侧 2px 信号条**只给第一条没做完的** `is-next` 上 `--accent`——一屏一条青的账要继续算。
+  侧栏模式有单独的 `grid-template-areas`，改网格记得两边一起改。
+- **复盘图常驻主页与今日任务两页**：`loadReview()` 的触发条件是 `page === 'today' || page === 'home'`；
+  它只要求 `svg` 是字符串（`data` 可以是 `null`），`reviewCard()` 因此有空态分支——**这一天什么都没动过
+  也要出卡**，写清「怎么让它有内容」，但别放「下载 SVG」。
+- `test/panel.test.js` 的 harness 用 `review` 选项喂图（`review: null` 才走得到空态分支）；
+  断言别拿 `/api/review` 当条件——探活也会打这个路径，要写 `/api/review?date=`。
+
 
 
 

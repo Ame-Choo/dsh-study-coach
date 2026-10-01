@@ -465,6 +465,70 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .check input { width: auto; accent-color: var(--accent); }
 .tasks li.done span { text-decoration: line-through; color: var(--dim); }
 
+/*
+ * ── 今日任务：照「今日复盘图」那张图的版式来 ──────────────────────────────
+ * 眉标（索引字）→ 大标题 + 右上状态 → 日期 · 周X → 一条细规 + 进度量尺。
+ * 复盘图是服务端拼的 SVG，这一页是同一个版式的 DOM 版，两边看着得是一家。
+ */
+.day-hero {
+  position: relative;
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line-2);
+}
+.day-hero .eyebrow { margin: 0 0 6px; font-size: var(--fs-micro); font-weight: 500; color: var(--dim); }
+.day-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.day-title { margin: 0; font-size: var(--fs-hero); line-height: 1.2; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+/* 状态是方角的，不是胶囊；数字等宽，扫一眼就能比 */
+.day-pill {
+  flex: none; padding: 3px 9px;
+  font-size: var(--fs-micro); color: var(--dim);
+  background: var(--card-2); border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.day-pill.over { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.day-sub { margin: 4px 0 var(--sp-3); font-size: var(--fs-micro); color: var(--dim); font-variant-numeric: tabular-nums; }
+.day-gauge { height: 7px; background: color-mix(in srgb, var(--line-2) 55%, transparent); }
+.day-gauge > i { display: block; height: 100%; background: var(--accent); }
+.day-gauge.over > i { background: var(--warn); }
+
+/*
+ * 任务行：序号索引字 | 勾 + 标题 | 元信息 |（换行）备注 |（换行）操作。
+ * 左边一道 2px 信号条——「现在该做的那条」是青的，做过的压暗，一屏只给一条青。
+ */
+.list.tasks li.task-item {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "ord title meta"
+    "ord note  note"
+    "ord act   act";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 6px;
+  padding: 9px 12px 9px 10px;
+  border-left: 2px solid var(--line-2);
+}
+.list.tasks li.task-item.is-next { border-left-color: var(--accent); }
+.list.tasks li.task-item.done { border-left-color: var(--line); }
+.task-ord { grid-area: ord; font-family: var(--font-display); font-size: 15px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.task-item.is-next > .task-ord { color: var(--accent); }
+.task-item > .check { grid-area: title; }
+.task-item > .task-meta { grid-area: meta; text-align: right; font-size: var(--fs-label); }
+.task-item > .task-note { grid-area: note; font-size: var(--fs-label); }
+.task-item > .task-actions { grid-area: act; }
+/* 侧栏窄：元信息与操作各占一行，序号那列留着 */
+html[data-mode="sidebar"] .list.tasks li.task-item {
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-areas:
+    "ord title"
+    "ord meta"
+    "ord note"
+    "ord act";
+  row-gap: 4px;
+}
+html[data-mode="sidebar"] .list.tasks li.task-item > .task-meta { text-align: left; }
+
 .tag { font-size: var(--fs-micro); color: var(--dim); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 6px; flex: none; }
 .badge { font-size: 12px; border-radius: var(--radius-sm); padding: 1px 7px; border: 1px solid var(--line); color: var(--dim); }
 .badge.confirmed { color: var(--ok); border-color: var(--ok); }

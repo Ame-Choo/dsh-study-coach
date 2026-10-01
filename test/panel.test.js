@@ -277,7 +277,7 @@ const STUDENT = {
 }
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null, messages = CHAT_MESSAGES } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null, messages = CHAT_MESSAGES, review = REVIEW } = {}) {
   const list = !chat ? [] : sessions === null ? SESSIONS : sessions
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
@@ -334,7 +334,11 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         ? { ok: true, date: agenda.date, all: true, profiles: agenda.profiles }
         : { ok: true, state: fixture }
     }
-    if (path.includes('/api/review')) body = { ok: true, date: '2026-10-01', data: REVIEW.data, svg: REVIEW.svg }
+    if (path.includes('/api/review')) {
+      body = review
+        ? { ok: true, date: '2026-10-01', data: review.data, svg: review.svg }
+        : { ok: true, date: '2026-10-01', data: null, svg: '' }
+    }
     // 学生画像：读回夹具那份（带已兑的证据），删一条就回空一份。
     if (path.includes('/api/student')) {
       body = { ok: true, ...STUDENT }
@@ -854,13 +858,13 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   assert.match(narrow.html(), /class="fold"[^>]*data-act="card-toggle"/)
   assert.match(narrow.html(), /data-card="today"/)
   assert.match(narrow.html(), /今日任务/)
-  // 「今天」默认是开着的
-  assert.match(narrow.html(), /class="card open" data-card="today"/)
+  // 「今日任务」默认是开着的（这张卡还多带一个 day 类：它照复盘图的版式重排过）
+  assert.match(narrow.html(), /class="card day open" data-card="today"/)
 
   await narrow.clickAct({ act: 'card-toggle', card: 'today' })
-  assert.doesNotMatch(narrow.html(), /class="card open" data-card="today"/)
+  assert.doesNotMatch(narrow.html(), /class="card day open" data-card="today"/)
   await narrow.clickAct({ act: 'card-toggle', card: 'today' })
-  assert.match(narrow.html(), /class="card open" data-card="today"/)
+  assert.match(narrow.html(), /class="card day open" data-card="today"/)
 
   // 切成浏览器模式：折叠按钮消失
   await narrow.clickAct({ act: 'mode', mode: 'browser' })
@@ -1151,7 +1155,7 @@ test('消息正文走 markdown + 数学；表情包画成图（图片通道）�
   assert.equal(page.sources[0].closed, true)
 })
 
-test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() 靠它拼 class', async () => {
+test('今日复盘图：常驻在主页与今日任务两页；今天没动过就说清怎么让它有内容', async () => {
   const today = await boot(fixture(), { path: '/study/today' })
   assert.match(today.html(), /<section class="card review" data-card="review">/)
   assert.match(today.html(), /今日复盘图/)
@@ -1160,6 +1164,41 @@ test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() �
   // 卡片工厂吐的是 <div> 的话，fold() 会把 class 属性拼成 class="card<div class="review""
   // ——这一条就是上次那个 bug 的看门狗。
   assert.doesNotMatch(today.html(), /class="card[^"]*</, 'fold() 拿到非卡片 HTML 了')
+
+  // 常驻：主页上也有同一张图，不用换页去找
+  const home = await boot(fixture(), { path: '/study' })
+  assert.match(home.html(), /<section class="card review" data-card="review">/)
+  assert.match(home.html(), /<svg viewBox="0 0 2048 1180"/)
+
+  // 今天什么都没动过（服务端回 data:null / svg:''）：卡片不消失，改成写清楚怎么让它有内容
+  const blank = await boot(fixture(), { path: '/study/today', review: null })
+  assert.match(blank.html(), /<section class="card review" data-card="review">/)
+  assert.match(blank.html(), /今天还没记过一笔/)
+  assert.doesNotMatch(blank.html(), /data-act="review-save"/)
+
+  // 别的页不拉这张图（一张 9 KB，没必要每页都拖）。
+  // 注意 `probeCapabilities()` 会拿 `/api/review` 探一下路由在不在——那是探活、不带 date，不算「拉图」。
+  const ability = await boot(fixture(), { path: '/study/ability' })
+  assert.doesNotMatch(ability.html(), /data-card="review"/)
+  assert.ok(!ability.calls.some((c) => c.includes('/api/review?date=')), '能力页不该真去拉复盘图')
+})
+
+test('今日任务页：眉标 / 大标题 / 日期 · 周X / 状态 / 量尺，任务行带序号，只给一条青', async () => {
+  const page = await boot(fixture(), { path: '/study/today' })
+
+  // 版式照「今日复盘图」那张图来：眉标 + 大标题 + 右上状态 + 日期 · 周X + 细规下的量尺
+  assert.match(page.html(), /<section class="card day" data-card="today">/)
+  assert.match(page.html(), /<p class="eyebrow">TODAY · 今日任务<\/p>/)
+  assert.match(page.html(), /<h2 class="day-title">今日任务<\/h2>/)
+  assert.match(page.html(), /<span class="day-pill">完成 0\/1 · 40 分钟 \/ 60<\/span>/)
+  assert.match(page.html(), /<p class="day-sub">\d{4}-\d{2}-\d{2} · 周[日一二三四五六]<\/p>/)
+  assert.match(page.html(), /class="day-gauge" role="img" aria-label="今日完成度 0%"><i style="width:0%"><\/i>/)
+
+  // 任务行：序号是索引字（01 起），「现在该做的那条」全页只标一条
+  assert.match(page.html(), /<li class="task-item is-next">\s*<span class="task-ord" aria-hidden="true">01<\/span>/)
+  assert.match(page.html(), /<span class="dim task-meta">看课 · 40 分 · 第一个单元<\/span>/)
+  assert.equal((page.html().match(/is-next/g) || []).length, 1, '「现在该做的那条」只许一条')
+  assert.doesNotMatch(page.html(), /今天 · \d{4}-\d{2}-\d{2}/, '旧那个「今天 · 日期」的抬头换掉了')
 })
 
 test('资料页：书架列出每本拆到哪、归到哪，点开能看见页码并能跳过去', async () => {
