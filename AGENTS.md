@@ -91,4 +91,24 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   `node --test` 卡着不退出（`test/panel.test.js` 里那些 `hidden: true` 就是为这条）。
 - 图片字节由 `lib/handler.js` 的 `sendRaw(res, raw)` 发：路由回 `{ code, raw: { type, body, cache } }`。
 
+## 正文一律走 `assets/md.js`（markdown + 数学）
+
+- **全仓只此一份渲染器**：读卷页、做题页、面板都用它，别再写第二份，也别引 marked
+  （`assets/vendor/marked/` 已经被删掉了）。调用方要自己那套记号就给 `extras`。
+- `inline()` 的次序是**安全边界**：① 抠代码段 → ② 抠数学 → ③ `extras` → ④ `escapeHtml` →
+  ⑤ 链接 → ⑥ 粗/斜/删除线 → ⑦ 回填 `\u0000N\u0000` 插槽。**转义不许提前**（提前了 `\frac` 就废了），
+  `extras` 的产物也不再过转义 —— 它自己负责转义（面板的 `MEME_EXTRA` 里就用 `esc()`）。
+- 数学只有一条路：`renderMath(tex, display)`。KaTeX 不在场（或排不出来）就退回
+  `<code class="md-math">` 源码，**绝不把 `$` 原样吐给用户**。`throwOnError: false` 会用它自带的
+  内联红标错，`.katex-error` 那一条才需要 `!important`。
+- **反斜杠是雷区**：真实消息里 Windows 路径是常态（`C:\Users\zongy\.dsh\…`），markdown 的
+  转义规则会把 `\.` 吃掉 —— 所以抠数学必须赶在转义之前，别再加一条会动 `\` 的规则。
+- 加一种新写法，`startsBlock()` 与 `renderMarkdown()` 主循环**两处都要改**（判据不一致会死循环）。
+- 样式：气泡里的块级样式（`.chat-text .md-*`）收在 `assets/style.css`，标题在气泡里不放大；
+  `.md-math` / `.md-block-math` / `.katex` 是三个页面共用的，也放 `style.css` 而不是各页的 css 里。
+  动 `assets/*.css` 之前先读 `design.md`（这条在最上面）。
+- 三个页面外壳（`panel.html` / `read.html` / `practice.html`）各自挂一次 katex 的 `<link>` 与
+  `<script>`（UMD → `window.katex`，随包发在 `assets/vendor/katex/`）。装不上不致命，只是公式退回源码。
+
+
 

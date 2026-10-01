@@ -156,7 +156,7 @@ test('认不出来的写法当字面量往下走，别卡住也别吞内容', ()
     '- 嵌套：',
     '  - 里层一项',
     '',
-    '$$ x^2 $$',
+    '脚注[^1]这种写法不认',
     '',
     '|只有一个竖线',
     '',
@@ -164,7 +164,67 @@ test('认不出来的写法当字面量往下走，别卡住也别吞内容', ()
     '',
   ].join('\n'))
   assert.match(html, /里层一项/)
-  assert.match(html, /\$\$ x\^2 \$\$/)
+  assert.match(html, /脚注\[\^1\]这种写法不认/)
   assert.match(html, /\|只有一个竖线/)
   assert.match(html, /结尾一句。/)
+})
+
+test('数学：没装 KaTeX 也认得出来，退回等宽源码而不是原样的美元号', () => {
+  const { html } = renderMarkdown('当 $x^2 + y^2 = 1$ 时，最小值是 1。\n')
+  assert.match(html, /<code class="md-math"[^>]*>x\^2 \+ y\^2 = 1<\/code>/)
+  assert.doesNotMatch(html, /\$/, '美元号被吃掉了，没留在正文里')
+  // `\$` 转义过的不是公式；贴着数字的也不是（「花了 $5 到 $8」）
+  assert.match(inline('价格 \\$5 起步'), /\\\$5/, '转义过的美元号按字面量留着')
+  assert.equal(inline('花了 $5 到 $8'), '花了 $5 到 $8')
+  // Windows 路径里的反斜杠不会被当公式或转义吃掉
+  assert.equal(inline('看 C:\\Users\\zongy\\.dsh\\study-coach'), '看 C:\\Users\\zongy\\.dsh\\study-coach')
+  // 公式源码也要转义：认不出来的是数学，不是标签
+  assert.doesNotMatch(inline('$<img src=x onerror=alert(1)>$'), /<img/)
+})
+
+test('数学：KaTeX 在场就交给它排；行内的归行内，独立成行的归块', () => {
+  const calls = []
+  globalThis.katex = {
+    renderToString: (tex, options) => {
+      calls.push({ tex, display: options.displayMode })
+      return '<span class="katex">' + tex + '</span>'
+    },
+  }
+  try {
+    const { html } = renderMarkdown([
+      '先说一句 $a+b$ 再解释。',
+      '',
+      '$$',
+      '\\frac{1}{2}',
+      '$$',
+      '',
+      '还有 $$c+d$$ 和 \\(e\\) 这两种行内写法。',
+      '',
+    ].join('\n'))
+    assert.deepEqual(calls[0], { tex: 'a+b', display: false })
+    assert.deepEqual(calls[1], { tex: '\\frac{1}{2}', display: true }, '独立成行的按行间排')
+    assert.deepEqual(calls[2], { tex: 'c+d', display: false })
+    assert.deepEqual(calls[3], { tex: 'e', display: false })
+    assert.equal(calls.length, 4)
+    assert.match(html, /<div class="md-block-math"><span class="katex">/) 
+    assert.match(html, /先说一句 <span class="katex">a\+b<\/span> 再解释。/)
+    assert.match(html, /<p class="md-p">还有 <span class="katex">c\+d<\/span> 和 <span class="katex">e<\/span> 这两种行内写法。<\/p>/)
+  } finally {
+    delete globalThis.katex
+  }
+})
+
+test('extras：调用方自己的记号（面板的 `[表情: …]`）也过一遍，产物不进转义', () => {
+  const meme = {
+    re: /\[表情:\s*([^\]\n]{1,200})\]/g,
+    html: (whole, desc) => '<img class="chat-meme" alt="' + escapeHtml(desc) + '">',
+  }
+  assert.equal(
+    inline('<b>[表情: 得意 拳头]</b>', [meme]),
+    '&lt;b&gt;<img class="chat-meme" alt="得意 拳头">&lt;/b&gt;',
+    '记号本身不转义，可别的字照样转义',
+  )
+  const { html } = renderMarkdown('好耶 [表情: 得意] 就这样\n', { extras: [meme] })
+  assert.match(html, /<p class="md-p">好耶 <img class="chat-meme" alt="得意"> 就这样<\/p>/)
+  assert.doesNotMatch(html, /\[表情:/)
 })

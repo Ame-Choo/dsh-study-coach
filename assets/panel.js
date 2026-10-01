@@ -17,6 +17,7 @@ try {
 }
 
 import { STAGES, STAGE_COLOR } from './stages.js'
+import { inline as mdInline, renderMarkdown } from './md.js'
 import { openPath } from './urls.js'
 
 /* 与 lib/store.js 的 MISTAKE_STATUS 同序：待验证 → 已订正 → 已复做对 */
@@ -1454,9 +1455,9 @@ function mistakesCard() {
     .map((m) => {
       const cls = MS_CLASS[m.status] || 'ms-todo'
       const why = [
-        m.step ? `错步：${esc(m.step)}` : '',
-        m.cause ? `错因：${esc(m.cause)}` : '',
-        m.fix ? `订正：${esc(m.fix)}` : '',
+        m.step ? `错步：${mdInlineText(m.step)}` : '',
+        m.cause ? `错因：${mdInlineText(m.cause)}` : '',
+        m.fix ? `订正：${mdInlineText(m.fix)}` : '',
         m.redoAt ? `复做：${esc(m.redoAt)}` : '',
       ]
         .filter(Boolean)
@@ -2684,32 +2685,32 @@ function clockOf(time) {
 }
 
 /**
- * 消息正文里的 `[表情: 描述]` 要出成图。
+ * 消息正文：markdown（含数学）交给 `assets/md.js`，`[表情: 描述]` 这一条是本面板自己的记号，
+ * 当 `extras` 递进去 —— 它同时也是全仓唯一一处把那条记号换成图的地方。
  *
  * 斗图插件在 Web 模式只回一行候选文字（`send_meme` 明说「不要加网址」），面板原来照原样画方括号，
  * 学生看见的就是「什么也加载不出来」。服务端 `/study/api/meme?q=<描述>` 会去盘上的图库找那一张
- * （见 lib/memes.js），这里换成 `<img>`；`alt` 就是那句描述——图挂了浏览器会把描述文字显示出来，
- * 不会留个破图，所以老机器上没装图库也能看。
+ * （见 lib/memes.js）；`alt` 就是那句描述——图挂了浏览器会把描述文字显示出来，不会留个破图，
+ * 所以老机器上没装图库也能看。
  */
 const CHAT_MEME_RE = /\[表情:\s*([^\]\n]{1,200})\]/g
+const MEME_EXTRA = {
+  re: CHAT_MEME_RE,
+  html: (whole, desc) => {
+    const text = String(desc || '').trim()
+    const alt = esc(text)
+    return `<img class="chat-meme" src="/study/api/meme?q=${encodeURIComponent(text)}" alt="${alt}" title="${alt}" loading="lazy">`
+  },
+}
 
+/** 一段 AI 写的长文字 → HTML。面板里凡是要按 markdown 画的地方都走它。 */
 function chatText(text) {
-  const raw = String(text ?? '')
-  const out = []
-  let last = 0
-  CHAT_MEME_RE.lastIndex = 0
-  let hit = CHAT_MEME_RE.exec(raw)
-  while (hit) {
-    out.push(esc(raw.slice(last, hit.index)))
-    const desc = String(hit[1] || '').trim()
-    out.push(
-      `<img class="chat-meme" src="/study/api/meme?q=${encodeURIComponent(desc)}" alt="${esc(desc)}" title="${esc(desc)}" loading="lazy">`,
-    )
-    last = hit.index + hit[0].length
-    hit = CHAT_MEME_RE.exec(raw)
-  }
-  out.push(esc(raw.slice(last)))
-  return out.join('')
+  return renderMarkdown(String(text ?? ''), { extras: [MEME_EXTRA] }).html
+}
+
+/** 一句话（错步 / 错因 / 订正这种）：只认行内标记，不套 `<p>`。 */
+function mdInlineText(text) {
+  return mdInline(String(text ?? ''), [MEME_EXTRA])
 }
 
 /**

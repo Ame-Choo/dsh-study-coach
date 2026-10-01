@@ -962,6 +962,33 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **测试**：`test/memes.test.js` 6 条（折字、两个根、认图顺序、TTL 缓存、图被删、HTTP 段发真字节）、`test/events.test.js` 5 条（头与帧、心跳、退订、真 SSE 流读到 hello 与 tick、没接通道 503）、`test/panel.test.js` 加 1 条（`[表情: …]` 渲成 `<img class="chat-meme">` + 推一帧就拉一次 + 离开这一页把长连接收掉）。全量 303 条。
 - **记账**：`lib/` 与路由都改了 → **要重启 DSH**（新路由是启动时注册的）；`assets/*` 刷新即可。重启前面板里表情包还是文字（`/study/api/meme` 404），消息也还得手动刷。
 
+## 补：正文走 markdown，数学交给 KaTeX
+
+用户报的：**「web 端数学语言是 markdown 格式显示，你需要让 markdown 在 web 端正常显示」**。面板原来把教练的话当纯文本画，`**判据**`、`- 先配方`、`$x^2+y^2=1$` 全是源码。
+
+**没有引 marked，用的是我们自己那份 `assets/md.js`。** 它本来是给读卷页写的（commit `acfafa7`），全仓只此一份渲染器 —— 读卷页、做题页、面板共用，多写一份就等于以后三处各修一遍。这一批只给它加了数学与一个 `extras` 钩子。
+
+**KaTeX 随包发，不走 CDN、也不依赖别人装的包。** `assets/vendor/katex/`（25 个文件 / 561KB）：
+
+- `katex.min.js`（katex 0.16.47，MIT）；`katex.min.css`（**改写过的**：20 个 `@font-face` 的 `src` 从 woff2/woff/ttf 三个源只留 `url(fonts/X.woff2) format("woff2")`，省掉 20 个 woff、20 个 ttf）；`fonts/*.woff2` 20 个。
+- **许可分两份**：代码 MIT（`LICENSE`），**字体是 SIL OFL 1.1**（`FONTS-OFL.txt`；npm 包里没有单独的字体许可文件，是从 OFL 官方那份取的全文），`NOTICE.md` 里把两者分开写清。随包发（`package.json` 的 `files` 已含 `assets`）。
+- 为什么不从 CDN 拉：这台机器不保证联网，而面板是本地服务 —— 拉了就等于把「能不能看数学」押在网上。为什么不 `import` profile 里那份 `katex`：pnpm 布局下它是别的插件带进来的传递依赖，哪天那个插件没了它就没了。
+
+**机制（`assets/md.js`）**：
+
+- 数学认四种写法：行内 `$…$`、`\(…\)`，独立成行 `$$…$$`、`\[…\]`（`INLINE_MATH_RE` 里 `$` 前后不许贴数字，`\$` 不算钱）。
+- 有 KaTeX 就 `renderToString(tex, { displayMode, throwOnError: false, strict: 'ignore', trust: false })`；**没装上或排不出来就退回一段等宽 `<code class="md-math">` 源码，绝不把 `$` 原样吐出来**（装不上也看得懂）。
+- `inline()` 的顺序是**安全边界**：① 代码段 → ② 数学 → ③ `extras` → ④ `escapeHtml` → ⑤ 链接 → ⑥ 粗/斜/删除线 → ⑦ 回填插槽（`\u0000N\u0000` 占位）。**数学必须赶在转义之前抠出来**，`\frac` 的反斜杠才是给 KaTeX 的；`extras` 的产物进插槽、不再过转义（它自己负责转义）。
+- **反斜杠保护**：markdown 会把 `\`+标点当转义吃掉，而真实消息里 Windows 路径是常态（实测线上 11 条消息里就有 `C:\Users\zongy\.dsh\study-coach\pages\…`）——所以抠完数学才转义，`\.` 不会被吞掉（截图里那条路径原样出来了）。
+- `extras` 是给调用方的钩子：面板的 `[表情: 描述]` 走它（`MEME_EXTRA`），`chatText()` 内部就是 `renderMarkdown(text, { extras: [MEME_EXTRA] })` —— 这样「表情包出图」与「markdown 排版」不会互相踩。
+
+**接线**：三个页面外壳（`assets/panel.html` / `read.html` / `practice.html`）各加一行 katex 的 `<link>` 与 `<script>`（UMD，装成 `window.katex`）；`assets/panel.js` 加 `import { inline as mdInline, renderMarkdown } from './md.js'`，`chatText()` 改走 `renderMarkdown`，错题本那三行（错步 / 错因 / 订正）走 `mdInlineText()`（行内，不套 `<p>`）。`.chat-text` 的 `white-space` 从 `pre-wrap` 改成 `normal`——**md.js 吐的 HTML 块之间带换行，`pre-wrap` 会把它画成空行**，段落里的单换行由 md.js 自己转 `<br>`。气泡里的块级样式（`.chat-text .md-*`）收在 `assets/style.css`，标题在气泡里不放大、外边距收窄；`.md-math` / `.md-block-math` / `.katex` 是三个页面共用的，也放在 `style.css` 里。KaTeX 的 `throwOnError:false` 会用**它自己的红**（内联 `#cc0000`）标认不出的公式，深色底上跟这套配色打架 → 一条 `.katex-error { color: var(--bad) !important; }` 压回去（压内联样式只能用 `!important`）。
+
+**测试**：`test/md.test.js` 15 条（新增三条：没装 KaTeX 时退回源码且不吐 `$`、`\$` 与「花了 $5 到 $8」不当公式、Windows 路径的反斜杠不动、`$<img …>$` 被转义；KaTeX 在场时四次调用的 `display` 档；`extras` 的产物不进转义），`test/panel.test.js` 那条加了粗体 / 列表 / 公式三条断言。全量 **306** 条。视觉上是拿一个离线样张（`.mdcheck.html` + `.mdcheck-server.mjs`，起在 19391）在 headless 浏览器里截的图：`x²+y²=1`、`∫₀¹`、`lim (1+1/n)ⁿ` 都排出来了，Windows 路径原样。
+
+- **记账**：只动了 `assets/*` 与三个 html（`lib/` 没碰）→ **刷新页面即可**，不必重启 DSH。
+
+
 
 ### 七、跳转按钮「看不见内容」的病根（壁纸插件 + 别名层）
 

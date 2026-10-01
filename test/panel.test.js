@@ -1107,11 +1107,19 @@ test('会话选择旁边那颗「＋ 新建」：清单空着也能自己开一�
   assert.match(many.html(), /class="dim chat-only">只看学习模式<\/span><button class="mini chat-new"/)
 })
 
-test('表情包画成图（走图片通道）；新消息靠广播通道自己冒出来', async () => {
+test('消息正文走 markdown + 数学；表情包画成图（图片通道）；新消息靠广播通道自己冒出来', async () => {
   const CAPTION = '得意闭眼拳头，好耶，小鲸鱼娘很满意'
   const messages = [
     ...CHAT_MESSAGES,
     { id: 'c3', seq: 20, role: 'bot', text: `[表情: ${CAPTION}] 就照这个来`, time: 1759300120000, tools: [] },
+    {
+      id: 'c4',
+      seq: 21,
+      role: 'bot',
+      text: '**判据**：当 $x^2+y^2=1$ 时，最小值是 1。\n\n- 先配方\n- 再看端点',
+      time: 1759300180000,
+      tools: [],
+    },
   ]
   const page = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true, messages })
 
@@ -1120,6 +1128,12 @@ test('表情包画成图（走图片通道）；新消息靠广播通道自己�
   assert.match(page.html(), new RegExp(`alt="${CAPTION}"`), 'alt 就是那句描述，图挂了也不会留破图')
   assert.doesNotMatch(page.html(), /\[表情:/, '那条记号不是给学生看的正文')
   assert.match(page.html(), /就照这个来/, '同一句里别的字还得在')
+
+  // ①' markdown：粗体、列表、公式都画出来了（这一份假 DOM 里没有 KaTeX，公式落回等宽源码）
+  assert.match(page.html(), /<b>判据<\/b>/, '粗体不再是两个星号')
+  assert.match(page.html(), /<div class="md-list"><ul><li>先配方<\/li><li>再看端点<\/li><\/ul><\/div>/)
+  assert.match(page.html(), /<code class="md-math"[^>]*>x\^2\+y\^2=1<\/code>/, '数学走渲染器，不是原样的美元号')
+  assert.doesNotMatch(page.html(), /\*\*判据\*\*/)
 
   // ② 广播通道开着——而且页面在后台也开着（推送正是给后台准备的）
   assert.equal(page.sources.length, 1)
