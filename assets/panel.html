@@ -6,25 +6,7 @@
 <title>学习教练</title>
 <link rel="stylesheet" href="/study/assets/style.css">
 <link rel="stylesheet" href="/study/assets/graph.css">
-<script>
-/* 页面一上来就定模式与配色，省得先按一种画完再跳成另一种。规则跟 panel.js 里一致。 */
-(function () {
-  try {
-    var asked = new URLSearchParams(location.search).get('mode')
-    var saved = asked === 'sidebar' || asked === 'browser' ? asked : localStorage.getItem('study-coach:mode')
-    var mode = saved === 'sidebar' || saved === 'browser'
-      ? saved
-      : ((window.self !== window.top || window.innerWidth < 680) ? 'sidebar' : 'browser')
-    document.documentElement.dataset.mode = mode
-    var t = new URLSearchParams(location.search).get('theme')
-    if (t !== 'light' && t !== 'dark') t = localStorage.getItem('study-coach:theme')
-    document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light'
-  } catch (e) {
-    document.documentElement.dataset.mode = 'browser'
-    document.documentElement.dataset.theme = 'light'
-  }
-})()
-</script>
+<script src="/study/assets/boot.js"></script>
 </head>
 <body>
 <div id="app" class="loading">读取中…</div>

@@ -155,82 +155,27 @@ const ui = {
  * 侧栏模式：挤在 DSH 右边那条里，窄、短、只想看「现在干什么」。卡片折叠，
  *          图谱收起来，任务优先。
  * 浏览器模式：占满一整个页签，铺开看全景，能改能管。
- * 怎么定：地址上 ?mode= 说了算（说了就记住）；没说过就看环境——嵌在框里
- * 或者屏很窄，按侧栏来。
+ *
+ * 「怎么算出来的」不在这儿：规则在 assets/boot.js 里，HTML 的 <head> 引它，
+ * 第一次绘制之前就跑完了（不然会先按一种模式画、再跳成另一种）。这里只把
+ * 它算好的结果读出来，别在这儿再抄一遍阈值。
  */
-const MODE_KEY = 'study-coach:mode'
+const boot = window.StudyBoot
+if (!boot) throw new Error('assets/boot.js 没跑到：panel.js 指望它在 <head> 里先把模式和配色定下来')
+
+const MODE_KEY = boot.MODE_KEY
 const MODES = [
   { id: 'sidebar', label: '侧栏', hint: '窄栏模式，聚焦今日任务' },
   { id: 'browser', label: '浏览器', hint: '整页模式，总览与编辑' },
 ]
-let mode = resolveMode()
-
-function resolveMode() {
-  let asked = ''
-  try {
-    asked = new URLSearchParams((window.location && window.location.search) || '').get('mode') || ''
-  } catch {
-    /* 没有 location（测试里）就当没问 */
-  }
-  if (asked === 'sidebar' || asked === 'browser') {
-    try {
-      window.localStorage.setItem(MODE_KEY, asked)
-    } catch {
-      /* 存不下就算了 */
-    }
-    return asked
-  }
-  let saved = ''
-  try {
-    saved = window.localStorage.getItem(MODE_KEY) || ''
-  } catch {
-    /* 同上 */
-  }
-  if (saved === 'sidebar' || saved === 'browser') return saved
-  let framed = false
-  try {
-    framed = window.self !== window.top
-  } catch {
-    framed = true // 跨域读 top 会抛，那就是嵌着的
-  }
-  const narrow = Number(window.innerWidth) > 0 && Number(window.innerWidth) < 680
-  return framed || narrow ? 'sidebar' : 'browser'
-}
+let mode = boot.mode
 
 /* ── 两套配色 ─────────────────────────────────────────────────────────────
  * 亮色（暖骨白 + 鼠尾草）是默认，暗色是同色系的暖暗版，晚上看。
  * 选择存在本机，换页面也还在。定在 <html data-theme> 上，颜色全在 style.css 的变量里。
  */
-const THEME_KEY = 'study-coach:theme'
-let theme = resolveTheme()
-
-function resolveTheme() {
-  let asked = ''
-  try {
-    asked = new URLSearchParams((window.location && window.location.search) || '').get('theme') || ''
-  } catch {
-    /* 测试里没有 location，就当没问 */
-  }
-  if (asked === 'light' || asked === 'dark') {
-    saveTheme(asked)
-    return asked
-  }
-  let saved = ''
-  try {
-    saved = window.localStorage.getItem(THEME_KEY) || ''
-  } catch {
-    /* 存不下就算了 */
-  }
-  return saved === 'dark' ? 'dark' : 'light'
-}
-
-function saveTheme(next) {
-  try {
-    window.localStorage.setItem(THEME_KEY, next)
-  } catch {
-    /* 记不住就这次算数 */
-  }
-}
+const THEME_KEY = boot.THEME_KEY
+let theme = boot.theme
 
 function applyTheme() {
   const root = document.documentElement
@@ -240,7 +185,7 @@ function applyTheme() {
 /** 换配色：记住它再重画——颜色是 CSS 变量，本来不用重画，但按钮上的图标要跟着翻。 */
 function setTheme(next) {
   theme = next === 'light' ? 'light' : 'dark'
-  saveTheme(theme)
+  boot.save(THEME_KEY, theme)
   applyTheme()
   render()
 }
@@ -258,11 +203,7 @@ function applyMode() {
 function setMode(next) {
   if (next !== 'sidebar' && next !== 'browser') return
   mode = next
-  try {
-    window.localStorage.setItem(MODE_KEY, next)
-  } catch {
-    /* 记不住就这次算数 */
-  }
+  boot.save(MODE_KEY, next)
   if (!isSidebar()) ui.open.clear()
   else if (!ui.open.size) ui.open.add('today')
   render()
@@ -2703,12 +2644,52 @@ function chatLog(snapshot) {
   return out.join('') + tail
 }
 
+/**
+ * 通道没接通时那段话。
+ *
+ * 「对话」页和浮窗各说各的措辞是有意的：浮窗只有 320px 宽，长句读不下去。
+ * 但「为什么要重启」是同一个原因，所以只在这里写一次。
+ */
+function chatOffText(shell) {
+  const why = '路由是 DSH 启动时加载的，改完代码不重启就还是旧的'
+  return shell === 'float'
+    ? `对话通道未接通。重启 DSH 之后点上面的 ↻ 再试（${why}）。`
+    : `未接通对话通道。这一页要等 DSH 重启之后才能用 —— ${why}。`
+}
+
+/**
+ * 聊天窗口的正文：会话选择 + 气泡 + 输入框。
+ *
+ * 「对话」页整屏那个和右下角浮窗那个是**同一个东西的两种壳**，只差三处：
+ * 日志容器的类名与 id、输入框的行数与提示词、发送按钮要不要跟一行说明排在一排。
+ * 以前这两处各写了一遍，谁改了一边另一边就悄悄落后 —— 收成这一份。
+ */
+function chatBody(snapshot, shell) {
+  const wide = shell === 'card'
+  const log = wide ? 'chat-log' : 'float-log'
+  const placeholder = wide
+    ? '跟教练说一句，例如：这节的含参讨论没跟上 / 换个教材 / 今天只剩 30 分钟'
+    : '跟教练说一句…'
+  const button = `<button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${
+    ui.chatSending ? (wide ? '发送中…' : '…') : '发送'
+  }</button>`
+  const row = wide
+    ? `<div class="row">${button}<span class="dim">Enter 发送，Shift + Enter 换行。回复会自己出现在上面。</span></div>`
+    : button
+  return `${chatPicker(snapshot)}
+    <div class="${log}" id="${log}" data-chat-log>${chatLog(snapshot)}</div>
+    <form data-form="chat" class="${wide ? 'form chat-form' : 'chat-form float-form'}">
+      <textarea name="text" rows="${wide ? 2 : 1}" placeholder="${placeholder}"></textarea>
+      ${row}
+    </form>`
+}
+
 function chatCard() {
   const snapshot = chat
   if (!snapshot || !snapshot.available) {
     return `<section class="card">
       <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}</div>
-      <p class="dim">未接通对话通道。这一页要等 DSH 重启之后才能用——路由是进程启动时加载的，改完代码不重启就还是旧的。</p>
+      <p class="dim">${chatOffText('card')}</p>
       ${snapshot && snapshot.error ? `<p class="dim">原因：${esc(snapshot.error)}</p>` : ''}
       <div class="row"><button class="mini" data-act="chat-reload">重新连接</button>
       <span class="dim">重启 DSH 之后点这里，不用刷新整页。</span></div>
@@ -2718,15 +2699,7 @@ function chatCard() {
   return `<section class="card">
     <div class="card-head"><h2>与教练对话</h2>${chatStatus(snapshot)}
       <button class="mini" data-act="chat-reload" title="重新读取">刷新</button></div>
-    ${chatPicker(snapshot)}
-    <div class="chat-log" id="chat-log" data-chat-log>${chatLog(snapshot)}</div>
-    <form data-form="chat" class="form chat-form">
-      <textarea name="text" rows="2" placeholder="跟教练说一句，例如：这节的含参讨论没跟上 / 换个教材 / 今天只剩 30 分钟"></textarea>
-      <div class="row">
-        <button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${ui.chatSending ? '发送中…' : '发送'}</button>
-        <span class="dim">Enter 发送，Shift + Enter 换行。回复会自己出现在上面。</span>
-      </div>
-    </form>
+    ${chatBody(snapshot, 'card')}
   </section>`
 }
 
@@ -2752,16 +2725,11 @@ function floatChat() {
   </header>`
   if (!on) {
     return `<section class="float" role="dialog" aria-label="与教练对话">${head}
-      <p class="dim float-off">对话通道未接通。等 DSH 重启之后点上面的 ↻ 再试。</p>
+      <p class="dim float-off">${chatOffText('float')}</p>
     </section>`
   }
   return `<section class="float" role="dialog" aria-label="与教练对话">${head}
-    ${chatPicker(snapshot)}
-    <div class="float-log" id="float-log" data-chat-log>${chatLog(snapshot)}</div>
-    <form data-form="chat" class="chat-form float-form">
-      <textarea name="text" rows="1" placeholder="跟教练说一句…"></textarea>
-      <button type="submit" class="primary"${ui.chatSending ? ' disabled' : ''}>${ui.chatSending ? '…' : '发送'}</button>
-    </form>
+    ${chatBody(snapshot, 'float')}
   </section>`
 }
 

@@ -13,6 +13,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -344,6 +345,16 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     }
     return { ok: true, status: 200, json: async () => body }
   }
+  // 真页面里 assets/boot.js 在 <head> 先跑完，panel.js 只读它的结果。
+  // 测试里也得照这个顺序来，否则测到的就不是线上那条路径，而且 panel.js
+  // 找不到 window.StudyBoot 会直接抛。
+  const bootSrc = readFileSync(join(HERE, '..', 'assets', 'boot.js'), 'utf8')
+  new Function('window', 'document', 'location', 'URLSearchParams', bootSrc)(
+    window,
+    document,
+    window.location,
+    URLSearchParams,
+  )
   await import(`${PANEL}?v=${Math.random().toString(36).slice(2)}`)
   for (let i = 0; i < 60 && !boxes.get('app').innerHTML; i += 1) await sleep(5)
 
