@@ -39,6 +39,9 @@ const ROUTES = [
   // 会把 `pages` 当成单元 id 接住，回 200，新旧分不出来。
   ['/study/materials', '资料页'],
   ['/study/api/materials', '书架'],
+  // 工具栏目那批
+  ['/study/toolbox', '工具页'],
+  ['/study/api/toolbox', '工具数据'],
 ]
 
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
@@ -50,6 +53,8 @@ const MARKS = [
   ['mistakesCard', '错题本'],
   ['reviewCard', '今日复盘图'],
   ['shelfCard', '资料书架'],
+  ['pomodoroCard', '番茄钟'],
+  ['checklistCard', '清单'],
 ]
 
 let bad = 0

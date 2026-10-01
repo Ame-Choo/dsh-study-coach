@@ -811,6 +811,106 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .import-log:empty { display: none; }
 .preview { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 
+/* ── 工具栏目 ──────────────────────────────────────────────────────────────
+ * 一格二级菜单横在两栏上面，下面才是选中的那个小工具。
+ * 这一页是少数几个「学生自己动手」的地方，按钮要显眼，别做成一眼看不出的链接。
+ */
+.sub-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.sub-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--dim); margin-right: 4px; }
+.sub-item {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--card-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.sub-item:hover { border-color: var(--accent); }
+.sub-item.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.sub-hint { margin-left: auto; font-size: 12.5px; color: var(--dim); }
+
+/* 番茄钟那一面 */
+.focus-face {
+  margin: 4px 0 14px;
+  padding: 20px 18px 16px;
+  border-radius: var(--radius);
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+.focus-face[data-phase="break"] { background: color-mix(in srgb, var(--ok) 12%, var(--card-2)); }
+.focus-phase { font-size: 12.5px; font-weight: 700; letter-spacing: .14em; color: var(--dim); }
+.focus-clock {
+  display: block;
+  margin: 6px 0 2px;
+  font-size: 54px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  line-height: 1.1;
+}
+/* 轨道要跟底下的 .focus-face 拉开：两个都是 --card-2 的话，看不见还剩多少。 */
+.focus-bar { margin: 12px auto 0; max-width: 420px; height: 10px; background: var(--line); }
+.focus-bar i { display: block; height: 100%; background: var(--accent); transition: width .4s linear; }
+.focus-set {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.focus-set label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.focus-set .grow { flex: 1 1 220px; }
+.focus-set input[type="number"] { width: 62px; font: inherit; padding: 4px 6px; }
+.focus-set select { font: inherit; padding: 4px 6px; max-width: 100%; flex: 1 1 auto; min-width: 0; }
+.focus-log li { align-items: flex-start; }
+.focus-log .tag { margin-left: 0; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--dim); line-height: 1.6; }
+
+/* 清单 */
+.todo-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.todo-form input[name="text"] { flex: 1 1 220px; min-width: 0; font: inherit; padding: 7px 9px; }
+.todo-form .due-in { font: inherit; padding: 6px 8px; }
+.todos-list li { align-items: center; gap: 9px; }
+.todos-list li.done b { color: var(--dim); text-decoration: line-through; }
+.todos-list .mat-main { min-width: 0; }
+.todos-list .spread { cursor: pointer; font-size: 15px; opacity: .55; flex: none; padding: 0 2px; }
+.todos-list .spread:hover { opacity: 1; }
+.tick {
+  flex: none;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.tick:hover { border-color: var(--accent); }
+.tick.on { background: var(--ok); border-color: var(--ok); }
+
+/* 侧栏里那一格菜单横不下，让它换行，别把页面撑宽 */
+html[data-mode="sidebar"] .sub-nav { padding: 7px 9px; }
+html[data-mode="sidebar"] .sub-hint { display: none; }
+html[data-mode="sidebar"] .focus-clock { font-size: 42px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

@@ -53,6 +53,7 @@ const STALE_NEED = [
   ['mistakes', '错题本'],
   ['review', '今日复盘图'],
   ['shelf', '资料书架'],
+  ['toolbox', '工具栏目'],
   ['file', '打开网课 / 讲义'],
 ]
 
@@ -78,6 +79,10 @@ let chat = null
 let chatTimer = null
 /* 上一份快照的指纹，用来判断要不要重画消息列表 */
 let chatStamp = ''
+/* 工具栏目那一份：{ focus, todos }；只有「工具」页拉 */
+let toolbox = null
+/* 番茄钟那个每秒走动的句柄；离开这一页、或者钟停了就清掉 */
+let focusTimer = null
 const ui = {
   openPoint: null,
   openGroups: new Set(),
@@ -118,6 +123,17 @@ const ui = {
   importLog: '',
   /* 「只看文件夹里有什么」的结果 */
   importPreview: null,
+  /* 工具栏目：正看着哪个小工具（二级菜单选中的那个） */
+  tool: 'pomodoro',
+  /* 清单只看哪一类：open / today / done，空串 = 全看 */
+  todoStatus: 'open',
+  /* 这一轮番茄钟挂在清单哪一条上 */
+  focusTask: '',
+  /* 番茄钟时长输入框里那两格 */
+  focusMinutes: 25,
+  breakMinutes: 5,
+  /* 正等哪条清单/番茄钟的响应，别让人连点 */
+  toolBusy: '',
 }
 
 /* ── 两种用法 ─────────────────────────────────────────────────────────────
@@ -328,7 +344,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, review, shelfAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, review, shelfAlive, toolboxAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -336,8 +352,19 @@ async function probeCapabilities() {
     alive('/study/api/mistakes'),
     alive('/study/api/review'),
     alive('/study/api/materials'),
+    alive('/study/api/toolbox'),
   ])
-  return { ability, archive, library, practice, mistakes, review, shelf: shelfAlive, file: await fileAlive() }
+  return {
+    ability,
+    archive,
+    library,
+    practice,
+    mistakes,
+    review,
+    shelf: shelfAlive,
+    toolbox: toolboxAlive,
+    file: await fileAlive(),
+  }
 }
 
 /**
@@ -397,6 +424,8 @@ async function load() {
     review = page === 'today' ? await loadReview() : null
     // 书架只有「资料」这一页要。
     shelf = page === 'materials' ? await loadShelf() : null
+    // 工具栏目只有「工具」这一页要。
+    toolbox = page === 'toolbox' ? await loadToolbox() : null
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
     // 只有「对话」页才顺带多要一份会话清单。
     await loadChat({ withSessions: page === 'coach' })
@@ -505,6 +534,41 @@ async function loadShelfIndex(materialId) {
 }
 
 /**
+ * 工具栏目那一份数据：番茄钟 + 清单。
+ *
+ * 番茄钟的时间以服务端的 `endsAt` 为准——不是浏览器里数出来的。
+ * 所以页面刷新、换设备、DSH 重启，钟都在同一个位置上。
+ */
+async function loadToolbox() {
+  if (!capabilities || !capabilities.toolbox) return null
+  try {
+    const out = await api('/study/api/toolbox')
+    if (!out.focus) return null
+    return { focus: out.focus, todos: out.todos || { items: [], total: 0, open: 0, done: 0 } }
+  } catch {
+    return null
+  }
+}
+
+/** 清单和番茄钟写完之后都用这个收口：重拉一份，重画。 */
+async function refreshToolbox() {
+  const next = await loadToolbox()
+  if (next) toolbox = next
+  render()
+}
+
+/** 打一次写接口；失败就把服务端那句中文原样 toast 出来。 */
+async function toolPost(path, body) {
+  try {
+    const out = await api(path, body)
+    return { ok: true, out }
+  } catch (error) {
+    toast(error.message)
+    return { ok: false, out: null }
+  }
+}
+
+/**
  * 读一份对话快照。
  *
  * 走插件自己的 `/study/api/chat`，那一头拿的是 DSH 的 sessionController，
@@ -547,6 +611,7 @@ const PAGES = [
   { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
+  { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
   { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
 ]
 
@@ -616,8 +681,20 @@ const PAGE_CARDS = {
     main: [['shelf', '书架', shelfCard]],
     aside: [['import', '导入资料', importCard], ['guide', '教练的指引', guideCard]],
   },
+  // 工具这一页：主栏是「二级菜单里选中的那个小工具」，边栏放清单的搭档。
+  // 菜单本身不走 PAGE_CARDS——它得横在两栏上面，所以 render() 单独插。
+  toolbox: {
+    main: [['tool', '小工具', currentToolCard]],
+    aside: [['guide', '教练的指引', guideCard]],
+  },
   // 对话页不放别的：这一页就是那个聊天窗口，整屏给它。
   coach: { main: [['chat', '与教练对话', chatCard]] },
+}
+
+/** 「工具」页主栏那张卡：跟着二级菜单走。 */
+function currentToolCard() {
+  const t = TOOLS.find((x) => x.id === ui.tool) || TOOLS[0]
+  return t.card()
 }
 
 /* ── 渲染 ─────────────────────────────────────────────────────────────── */
@@ -628,12 +705,13 @@ function render() {
   app.innerHTML = `
     ${topBar()}
     ${staleCard()}
-    ${page === 'home' ? homePage() : pageCards()}
+    ${page === 'home' ? homePage() : `${page === 'toolbox' ? toolMenu() : ''}${pageCards()}`}
     ${archiveModal()}
     ${floatChat()}
   `
   mountGraph()
   syncChatPolling()
+  syncFocusTicker()
 }
 
 /* ── 对话轮询 ─────────────────────────────────────────────────────────────
@@ -855,7 +933,15 @@ function fold(id, label, html, span = '') {
   const open = isOpenCard(id)
   const at = html.indexOf('>')
   // 卡片自己的额外类：`<section class="card stale">` → ` stale`
-  const own = html.slice(0, at).replace(/^<section class="card/, '').replace(/"$/, '')
+  //
+  // 只从 class 属性里取。以前是「砍到第一个 > 再去掉头尾引号」，那套只有
+  // `<section class="card xxx">` 这种单个属性的卡才成立：卡片工厂一旦多带一个属性
+  // （比如 `<section class="card focus" data-card="focus">`），砍出来的就是
+  // ` focus" data-card="focus`，拼进 class 之后变成
+  // `<section class="card focus" data-card="focus open" data-card="tool">`
+  // ——`open` 掉进了 data-card 里，侧栏那张卡永远折着，点折叠按钮也是拿错误的
+  // `dataset.card` 去 toggle。只认 class 里的那段就没这毛病。
+  const own = (html.slice(0, at).match(/class="card([^"]*)"/) || ['', ''])[1]
   // open 只在侧栏模式有意义：浏览器模式一律铺开，不带这个类
   const cls = `card${own}${span ? ' ' + span : ''}${isSidebar() && open ? ' open' : ''}`
   const inner = html.slice(at + 1).replace(/<\/section>\s*$/, '')
@@ -1760,6 +1846,199 @@ function shelfCard() {
   </section>`
 }
 
+/* ── 工具栏目（/study/toolbox）─────────────────────────────────────────────
+ *
+ * 一格二级菜单 + 一个小工具。这一页跟别处不一样：**它是给学生自己动手的**
+ * （按时钟、勾清单），不是「教练写、学生看」。所以它是面板里除了自评和勾任务
+ * 之外，第三样他自己能改的东西——加小工具的时候记住这条。
+ *
+ * 加新工具就三步：往 TOOLS 里塞一条、写一个返回 <section class="card …"> 的工厂、
+ * 在 click 分支里接上它的按钮。菜单位置和折页都由这里统一管。
+ */
+const TOOLS = [
+  {
+    id: 'pomodoro',
+    label: '番茄钟',
+    hint: '坐下去专注一段，到点休息',
+    card: () => pomodoroCard(),
+  },
+  {
+    id: 'checklist',
+    label: '清单',
+    hint: '今天想办的那几件，勾掉一件算一件',
+    card: () => checklistCard(),
+  },
+]
+
+function toolMenu() {
+  const tabs = TOOLS.map(
+    (t) => `<button class="sub-item${t.id === ui.tool ? ' on' : ''}" data-act="tool-pick" data-tool="${t.id}" title="${esc(t.hint)}">${esc(t.label)}</button>`,
+  ).join('')
+  const cur = TOOLS.find((t) => t.id === ui.tool) || TOOLS[0]
+  return `<nav class="sub-nav" aria-label="工具">
+    <span class="sub-title">工具</span>
+    ${tabs}
+    <span class="sub-hint">${esc(cur.hint)}</span>
+  </nav>`
+}
+
+/** 把秒数写成 25:00。超过一小时写成 1:05:30，别让人数不清。 */
+function clockText(seconds) {
+  const s = Math.max(0, Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  const two = (n) => String(n).padStart(2, '0')
+  return h ? `${h}:${two(m)}:${two(ss)}` : `${two(m)}:${two(ss)}`
+}
+
+function pomodoroCard() {
+  const f = (toolbox && toolbox.focus) || null
+  if (!f) {
+    return `<section class="card focus" data-card="focus">
+      <div class="card-head"><h2>番茄钟</h2></div>
+      <p class="dim">读不到工具数据。这一页要等 DSH 重启之后才能用——路由是进程启动时加载的。</p>
+    </section>`
+  }
+  const open = ((toolbox && toolbox.todos && toolbox.todos.items) || []).filter((t) => !t.done)
+  const taskOptions = ['<option value="">不挂清单，就单纯坐一会儿</option>']
+    .concat(open.map((t) => `<option value="${esc(t.id)}"${t.id === (ui.focusTask || f.taskId) ? ' selected' : ''}>${esc(t.text)}</option>`))
+    .join('')
+  const pct = f.running && f.roundMinutes ? Math.max(0, Math.min(100, 100 - (f.left / (f.roundMinutes * 60)) * 100)) : 0
+  const log = (f.log || []).slice().reverse().slice(0, 6)
+  return `<section class="card focus" data-card="focus">
+    <div class="card-head">
+      <h2>番茄钟</h2>
+      <span class="dim">今天 ${f.todayRounds} 个 · ${f.todayMinutes} 分钟</span>
+    </div>
+
+    <div class="focus-face" data-phase="${esc(f.phase)}">
+      <span class="focus-phase">${esc(f.phaseLabel)}</span>
+      <b class="focus-clock" id="focus-clock" data-ends="${esc(f.endsAt)}" data-total="${esc(String(f.roundMinutes * 60))}">${clockText(f.running ? f.left : f.workMinutes * 60)}</b>
+      <div class="bar focus-bar"><i id="focus-bar" style="width:${pct}%"></i></div>
+      ${f.label ? `<p class="dim">这一轮：${esc(f.label)}</p>` : ''}
+    </div>
+
+    <div class="focus-set">
+      <label class="dim">专注<input type="number" min="1" max="180" id="focus-min" value="${esc(String(ui.focusMinutes || f.workMinutes))}"> 分钟</label>
+      <label class="dim">休息<input type="number" min="1" max="180" id="break-min" value="${esc(String(ui.breakMinutes || f.breakMinutes))}"> 分钟</label>
+      <label class="dim grow">挂在<select id="focus-task" data-act="focus-task">${taskOptions}</select></label>
+    </div>
+
+    <div class="row-acts">
+      <button class="btn primary" data-act="focus-start">${f.running ? '重新起一轮（会先停掉现在的）' : '开始专注'}</button>
+      ${f.running ? `<button class="mini" data-act="focus-stop">停掉</button>` : ''}
+      ${!f.running && f.phase === 'break' ? `<button class="mini" data-act="focus-break">只休息 ${esc(String(f.breakMinutes))} 分钟</button>` : ''}
+    </div>
+
+    ${f.longBreakDue ? '<p class="hint">背够一轮了，这次可以休息久一点。</p>' : ''}
+    <p class="hint">时间是存在档案里的绝对时刻，不是页面上的倒计时——刷新、关页面、重启 DSH 都不影响。到点它会自己停下，不会自动接着下一轮。</p>
+
+    ${log.length
+      ? `<h3 class="sub">最近的番茄</h3><ul class="list tight focus-log">${log
+          .map((r) => `<li><span class="tag">${r.kind === 'break' ? '息' : '专'}</span><div class="mat-main"><b>${esc(String(r.minutes))} 分钟${r.partial ? '（中途停的）' : ''}</b><div class="path">${esc(clockOf(r.at))}${r.label ? ' · ' + esc(r.label) : ''}</div></div></li>`)
+          .join('')}</ul>`
+      : ''}
+  </section>`
+}
+
+const TODO_FILTERS = [
+  ['open', '没做完'],
+  ['today', '今天到期'],
+  ['done', '做完了'],
+  ['', '全部'],
+]
+
+function checklistCard() {
+  const t = (toolbox && toolbox.todos) || null
+  if (!t) {
+    return `<section class="card todos" data-card="todos">
+      <div class="card-head"><h2>清单</h2></div>
+      <p class="dim">读不到工具数据。这一页要等 DSH 重启之后才能用。</p>
+    </section>`
+  }
+  const all = t.items || []
+  const done = all.filter((x) => x.done).length
+  const chips = TODO_FILTERS.map(
+    ([key, label]) => `<button class="mini${key === ui.todoStatus ? ' on' : ''}" data-act="todo-filter" data-status="${key}">${label}${key === 'done' ? ` ${done}` : key === 'open' ? ` ${all.length - done}` : ''}</button>`,
+  ).join('')
+  const rows = all
+    .map((x) => `<li class="${x.done ? 'done' : ''}">
+      <button class="tick${x.done ? ' on' : ''}" data-act="todo-toggle" data-id="${esc(x.id)}" aria-label="${x.done ? '取消勾选' : '勾掉'}">${x.done ? '✓' : ''}</button>
+      <div class="mat-main">
+        <b>${esc(x.text)}</b>
+        <div class="path">${[x.due ? `${esc(x.due)} 前` : '', x.spent ? `花了 ${x.spent} 分钟` : '', x.pointId ? esc(x.pointId) : '', x.doneAt ? `勾于 ${esc(String(x.doneAt).slice(0, 10))}` : ''].filter(Boolean).join(' · ') || '&nbsp;'}</div>
+      </div>
+      <div class="spread" data-act="todo-timer" data-id="${esc(x.id)}" data-text="${esc(x.text)}" title="给这条起一个番茄钟" role="button" tabindex="0">🍅</div>
+      <button class="mini" data-act="todo-del" data-id="${esc(x.id)}">删</button>
+    </li>`)
+    .join('')
+  return `<section class="card todos" data-card="todos">
+    <div class="card-head">
+      <h2>清单</h2>
+      <span class="dim">没做完 ${all.length - done} 条 · 做完 ${done} 条</span>
+    </div>
+    <form class="form todo-form" data-form="todo">
+      <input name="text" placeholder="今天想办什么，比如「背 20 个单词」" maxlength="120">
+      <input name="due" type="date" class="due-in" title="哪天之前办完，不填就没限期">
+      <button class="btn" type="submit">加上</button>
+    </form>
+    <div class="chips">${chips}</div>
+    ${rows ? `<ul class="list tight todos-list">${rows}</ul>` : '<p class="dim">这一类里没有条目。</p>'}
+    <p class="hint">清单跟「今天」页的任务不是一回事：任务是我排的学习计划，清单是你自己想起来要办的事。点右边那颗番茄可以就着这一条起一轮计时。</p>
+  </section>`
+}
+
+/**
+ * 番茄钟那个每秒走动的数字。
+ *
+ * 只在「工具」页、钟在跑、页面还看得见的时候开——这三条任何一条不成立就停掉。
+ * 数字是从服务端给的 `endsAt` 现算的，所以这个定时器**不是**真相来源，
+ * 只是个显示刷新；关掉它一切照常。
+ */
+function stopFocusTicker() {
+  if (focusTimer) {
+    clearInterval(focusTimer)
+    focusTimer = null
+  }
+}
+
+function syncFocusTicker() {
+  const f = toolbox && toolbox.focus
+  if (page !== 'toolbox' || !f || !f.running || chatHidden()) {
+    stopFocusTicker()
+    return
+  }
+  const tick = () => {
+    const clock = document.getElementById('focus-clock')
+    const ds = (clock && clock.dataset) || null
+    if (!ds) {
+      stopFocusTicker()
+      return
+    }
+    const ends = Date.parse(ds.ends || '')
+    if (!Number.isFinite(ends)) {
+      stopFocusTicker()
+      return
+    }
+    const total = Number(ds.total) || 0
+    const left = Math.max(0, Math.round((ends - Date.now()) / 1000))
+    clock.textContent = clockText(left)
+    const bar = document.getElementById('focus-bar')
+    if (bar && bar.style && total) bar.style.width = Math.max(0, Math.min(100, 100 - (left / total) * 100)) + '%'
+    if (left <= 0) {
+      // 走到点了：让服务端结算这一轮（记日志、清 running），再重画。
+      stopFocusTicker()
+      loadToolbox().then((next) => {
+        if (next) toolbox = next
+        render()
+      })
+    }
+  }
+  tick()
+  if (!focusTimer) focusTimer = setInterval(tick, 500)
+}
+
 function importCard() {
   const busy = ui.importing
   return `<section class="card">
@@ -2121,6 +2400,74 @@ document.addEventListener('click', async (event) => {
         ui.importing = false
         render()
       }
+    } else if (act === 'tool-pick') {
+      ui.tool = el.dataset.tool || TOOLS[0].id
+      render()
+    } else if (act === 'focus-start') {
+      const minutes = Number((document.getElementById('focus-min') || {}).value) || ui.focusMinutes
+      const breakMin = Number((document.getElementById('break-min') || {}).value) || ui.breakMinutes
+      const taskId = (document.getElementById('focus-task') || {}).value || ''
+      const hit = ((toolbox && toolbox.todos && toolbox.todos.items) || []).find((t) => t.id === taskId)
+      ui.focusMinutes = minutes
+      ui.breakMinutes = breakMin
+      ui.focusTask = taskId
+      el.disabled = true
+      const res = await toolPost('/study/api/focus', {
+        action: 'start',
+        minutes,
+        breakMinutes: breakMin,
+        taskId,
+        label: hit ? hit.text : '',
+      })
+      el.disabled = false
+      if (res.ok) toast(`专注开始了，${minutes} 分钟后响。`)
+      await refreshToolbox()
+    } else if (act === 'focus-break') {
+      el.disabled = true
+      const res = await toolPost('/study/api/focus', { action: 'start', kind: 'break' })
+      el.disabled = false
+      if (res.ok) toast('那这次只短歇一下。')
+      await refreshToolbox()
+    } else if (act === 'focus-stop') {
+      el.disabled = true
+      const res = await toolPost('/study/api/focus', { action: 'stop' })
+      el.disabled = false
+      if (res.ok) {
+        const log = (res.out && res.out.focus && res.out.focus.log) || []
+        const last = log[log.length - 1]
+        toast(last && last.partial ? `停了，记下 ${last.minutes} 分钟（不到一轮的算半截）。` : '停了。')
+      }
+      await refreshToolbox()
+    } else if (act === 'todo-filter') {
+      ui.todoStatus = el.dataset.status || ''
+      render()
+    } else if (act === 'todo-toggle') {
+      const id = el.dataset.id || ''
+      el.disabled = true
+      const res = await toolPost('/study/api/todo', { action: 'toggle', id })
+      el.disabled = false
+      if (res.ok && res.out && res.out.item && res.out.item.done) toast('勾掉一件。')
+      await refreshToolbox()
+    } else if (act === 'todo-del') {
+      const id = el.dataset.id || ''
+      el.disabled = true
+      const res = await toolPost('/study/api/todo', { action: 'remove', id })
+      el.disabled = false
+      if (res.ok) toast('删了。')
+      await refreshToolbox()
+    } else if (act === 'todo-timer') {
+      // 点清单右边那颗番茄：把这一条挂上去，直接起一轮。
+      ui.tool = 'pomodoro'
+      ui.focusTask = el.dataset.id || ''
+      const res = await toolPost('/study/api/focus', {
+        action: 'start',
+        minutes: ui.focusMinutes,
+        breakMinutes: ui.breakMinutes,
+        taskId: ui.focusTask,
+        label: el.dataset.text || '',
+      })
+      if (res.ok) toast('就着这一条起了一轮。')
+      await refreshToolbox()
     } else if (act === 'card-toggle') {
       const cardId = el.dataset.card
       if (ui.open.has(cardId)) ui.open.delete(cardId)
@@ -2213,6 +2560,15 @@ document.addEventListener('click', async (event) => {
 document.addEventListener('change', async (event) => {
   const el = event.target
   if (!el.dataset) return
+  // 番茄钟那两格时长：改动先记在 ui 上，这样中途重画不会把填好的数冲掉。
+  if (el.id === 'focus-min' || el.id === 'break-min') {
+    const n = Number(el.value)
+    if (Number.isFinite(n) && n >= 1 && n <= 180) {
+      if (el.id === 'focus-min') ui.focusMinutes = Math.round(n)
+      else ui.breakMinutes = Math.round(n)
+    }
+    return
+  }
   // 选文件上传：一次把选中的都传上去，一个个来（并发太高容易把内存堆满）。
   if (el.id === 'import-files') {
     const files = Array.from(el.files || [])
@@ -2287,6 +2643,24 @@ document.addEventListener('submit', async (event) => {
         ui.importing = false
         render()
       }
+    } else if (kind === 'todo') {
+      const text = String(data.get('text') || '').trim()
+      if (!text) {
+        toast('写一句话，比如「背 20 个单词」', true)
+        return
+      }
+      const res = await toolPost('/study/api/todo', {
+        action: 'add',
+        text,
+        due: String(data.get('due') || ''),
+      })
+      if (res.ok) {
+        form.reset()
+        const box = form.querySelector('input[name="text"]')
+        if (box && box.focus) box.focus()
+        toast('加上了。')
+      }
+      await refreshToolbox()
     } else if (kind === 'chat') {
       const text = String(data.get('text') || '').trim()
       if (!text) {

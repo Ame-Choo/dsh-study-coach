@@ -101,6 +101,7 @@ const PROBE_PATHS = [
   '/study/api/mistakes',
   '/study/api/review',
   '/study/api/materials',
+  '/study/api/toolbox',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -153,6 +154,38 @@ const SHELF_INDEX = {
   ],
 }
 
+/** 工具栏目：一个跑着的番茄钟 + 两条清单（一条没做完、一条做完了）。 */
+const TOOLBOX = {
+  focus: {
+    running: true,
+    phase: 'work',
+    phaseLabel: '专注',
+    taskId: 'td-1',
+    label: '背 20 个单词',
+    endsAt: '2099-01-01T00:25:00.000Z',
+    left: 1380,
+    roundMinutes: 25,
+    workMinutes: 25,
+    breakMinutes: 5,
+    longBreakMinutes: 15,
+    roundsPerLong: 4,
+    longBreakDue: false,
+    today: '2026-10-01',
+    todayMinutes: 50,
+    todayRounds: 2,
+    log: [{ at: '2026-10-01T09:00:00.000Z', kind: 'work', minutes: 25, taskId: '', label: '看例题', partial: false }],
+  },
+  todos: {
+    total: 2,
+    open: 1,
+    done: 1,
+    items: [
+      { id: 'td-1', text: '背 20 个单词', done: false, at: '2026-10-01T08:00:00.000Z', doneAt: '', due: '2026-10-02', pointId: 'M1.4', spent: 0, updatedAt: '2026-10-01T08:00:00.000Z' },
+      { id: 'td-2', text: '整理错题', done: true, at: '2026-09-30T08:00:00.000Z', doneAt: '2026-10-01T08:30:00.000Z', due: '', pointId: '', spent: 12, updatedAt: '2026-10-01T08:30:00.000Z' },
+    ],
+  },
+}
+
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
 async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false } = {}) {
   const { document, window, boxes, listeners } = stubDom()
@@ -195,6 +228,10 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     else if (path.includes('/api/materials')) body = { ok: true, ...SHELF }
     else if (path.includes('/api/material?')) body = SHELF_INDEX
     else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
+    // 工具栏目：番茄钟跟清单各两条写接口，回的同构，够面板接着往下走就行。
+    if (path.includes('/api/toolbox')) body = { ok: true, ...TOOLBOX }
+    else if (path.includes('/api/focus')) body = { ok: true, action: 'start', ...TOOLBOX }
+    else if (path.includes('/api/todo')) body = { ok: true, action: 'add', item: TOOLBOX.todos.items[0], todos: TOOLBOX.todos }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
     if (path.includes('/api/chat/sessions')) {
@@ -654,6 +691,15 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   assert.match(coach.html(), /class="card open" data-card="chat"/)
   const libNarrow = await boot(fixture(), { innerWidth: 400, path: '/study/library' })
   assert.match(libNarrow.html(), /class="card open" data-card="library"/)
+
+  // 工具页那张卡多带了一个类（`<section class="card focus">`），以前 fold() 会把
+  // 后面的属性也当成类名砍进去，拼出 `data-card="focus open" data-card="tool"`：
+  // open 掉进 data-card 里，卡永远折着，点折叠按钮也拿错 dataset.card。钉死它。
+  const tool = await boot(fixture(), { innerWidth: 400, path: '/study/toolbox' })
+  assert.match(tool.html(), /class="card focus open" data-card="tool"/)
+  // 侧栏模式那一页会出两处 data-card="tool"：折叠按钮一颗、卡片一节。两处都得干净。
+  assert.equal((tool.html().match(/data-card="tool"/g) || []).length, 2)
+  assert.doesNotMatch(tool.html(), /data-card="[^"]*\s/)
 })
 
 test('对话页就是一个完整聊天窗口；别的页挂一颗悬浮窗', async () => {
@@ -744,4 +790,66 @@ test('资料页：书架列出每本拆到哪、归到哪，点开能看见页�
   assert.equal(page.posts.at(-1).path, '/study/api/materials/build')
   assert.deepEqual(page.posts.at(-1).body, { materialId: 'mat-1' })
   assert.ok(page.calls.filter((c) => c === '/study/api/materials').length >= 2, '拆完要重拉书架看进度')
+})
+
+test('工具页：二级菜单切小工具，番茄钟照服务端的绝对时刻走，清单勾得动', async () => {
+  const page = await boot(fixture(), { path: '/study/toolbox' })
+
+  // 导航上多了「工具」，二级菜单横在两栏上面，默认选中番茄钟
+  assert.match(page.html(), /data-nav="toolbox"/)
+  assert.match(page.html(), /class="sub-nav"/)
+  assert.match(page.html(), /data-act="tool-pick" data-tool="pomodoro"/)
+  assert.match(page.html(), /data-act="tool-pick" data-tool="checklist"/)
+  assert.match(page.html(), /class="sub-item on" data-act="tool-pick" data-tool="pomodoro"/)
+  assert.match(page.html(), /id="focus-clock"/)
+
+  // 钟面上写的是服务端给的剩余时间，不是页面自己数出来的
+  assert.match(page.html(), /id="focus-clock"[^>]*data-ends="2099-01-01T00:25:00\.000Z"/)
+  assert.match(page.html(), /data-total="1500"/)
+  assert.match(page.html(), /23:00/, '1380 秒要写成 23:00')
+  assert.match(page.html(), /今天 2 个 · 50 分钟/)
+  assert.match(page.html(), /背 20 个单词/, '这一轮挂在哪条清单上要写出来')
+
+  // 还没切过去的时候，清单那张卡不该在（省一趟接口 + 少画一堆东西）。
+  // 探针那条 alive('/study/api/toolbox') 也算命中，所以不能拿次数当判据。
+  assert.doesNotMatch(page.html(), /data-form="todo"/)
+  assert.equal(page.posts.filter((p) => p.path === '/study/api/todo').length, 0)
+
+  // 切到清单
+  await page.clickAct({ act: 'tool-pick', tool: 'checklist' })
+  assert.match(page.html(), /class="sub-item on" data-act="tool-pick" data-tool="checklist"/)
+  assert.match(page.html(), /data-form="todo"/)
+  assert.doesNotMatch(page.html(), /id="focus-clock"/)
+  assert.match(page.html(), /没做完 1 条 · 做完 1 条/)
+  assert.match(page.html(), /data-act="todo-toggle" data-id="td-1"/)
+  assert.match(page.html(), /data-act="todo-del" data-id="td-2"/)
+  assert.match(page.html(), /class="tick on"[^>]*data-id="td-2"/, '做完那条要打上勾')
+  assert.match(page.html(), /data-act="todo-timer" data-id="td-1"/)
+  assert.match(page.html(), /2026-10-02 前/, '到期日要写出来')
+
+  // 勾掉一条：打的是 toggle，回来重拉一次
+  await page.clickAct({ act: 'todo-toggle', id: 'td-1' })
+  assert.equal(page.posts.at(-1).path, '/study/api/todo')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'toggle', id: 'td-1' })
+
+  // 加一条：空文本被本地拦下，不白打一趟接口
+  const before = page.posts.length
+  await page.submitForm({ form: 'todo' }, { text: '   ', due: '' })
+  assert.equal(page.posts.length, before, '空条目不该打接口')
+  await page.submitForm({ form: 'todo' }, { text: '背 20 个单词', due: '2026-10-02' })
+  assert.equal(page.posts.at(-1).path, '/study/api/todo')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'add', text: '背 20 个单词', due: '2026-10-02' })
+
+  // 切回番茄钟：起一轮要把时长和挂靠一起交上去
+  await page.clickAct({ act: 'tool-pick', tool: 'pomodoro' })
+  await page.clickAct({ act: 'focus-start' })
+  assert.equal(page.posts.at(-1).path, '/study/api/focus')
+  assert.equal(page.posts.at(-1).body.action, 'start')
+  assert.equal(page.posts.at(-1).body.minutes, 25)
+  assert.equal(page.posts.at(-1).body.breakMinutes, 5)
+
+  // 停掉：不是「开了就算完成」，中途停要按实际分钟记半截
+  await page.clickAct({ act: 'focus-stop' })
+  assert.equal(page.posts.at(-1).path, '/study/api/focus')
+  assert.deepEqual(page.posts.at(-1).body, { action: 'stop' })
 })

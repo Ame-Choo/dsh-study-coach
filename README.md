@@ -117,10 +117,12 @@ pnpm add link:/绝对路径/dsh-study-coach
 | `study_files` | 看材料目录：`list` 列目录 / `stat` 看存在 / `url` 换成 `/study/file` 链接 |
 | `study_pages` | 把扫描版 PDF 的某几页渲成编号 PNG（`材料/路径 + from/to`），拿去看图认页码——「这一页讲的是哪个知识点」只能这么看出来 |
 | `study_book` | 整本书拆成页级索引：`action=info` 数页数、读书签 / `action=build` 后台把每一页渲成 `p0007.png` / `action=pages` 查某个单元在哪些教辅的哪几页 |
+| `study_focus` | 番茄钟：`action=start` 起一轮（`minutes` / `kind=work\|break` / `taskId` / `label`）/ `action=stop` 停掉 / `action=status` 看还剩多久。**存的是绝对时刻不是倒计时**，所以起完就别管了，别轮询等它 |
+| `study_todo` | 清单：`action=add` / `toggle` / `patch` / `remove` / `list`（可按 `status=open\|today\|done` 筛）。这是学生自己想办的事，跟 `study_plan` 排的学习任务是两码事 |
 | `study_guide` | 在面板顶上放一句指引，把学生叫回对话 |
 | `study_inbox` | 读学生在面板上的留言，读完标掉 |
 
-这 17 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
+这 19 个工具是写给别人家 agent 用的，不是写给人看的：每个描述都交代「什么时候调、参数从哪儿拿、返回怎么读、跟别的工具什么顺序」，参数不对会直接抛中文错误。输出 schema 用 `additionalProperties: false` 把数组条目的字段钉死了（`modules[].points[].id`、`tasks[].id`、`materials[].id`、`items[].id`），因为 `study_record` / `study_plan` / `study_material` / `study_analysis` 的必填输入就得从这些数组里取。
 
 「先把整本教辅读一遍、分析它教什么」这件事不是靠谁记得，是写死在随包 SKILL.md 第 2 节里的：材料登记完就得通读，结论写进 `study_analysis`，画地图和排任务都从这份结论里取。册子厚就分批喂 `chapters`，或者拉几个子 agent 并行读——同一个 `no` 会覆盖，读到哪写到哪。
 
@@ -138,14 +140,14 @@ pnpm add link:/绝对路径/dsh-study-coach
 读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
 `/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
-`/study/api/point/pages`。
+`/study/api/point/pages`、`/study/api/toolbox`。
 
 写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
 `/study/api/mastery`、`/study/api/ability`、`/study/api/library`、`/study/api/task`、
 `/study/api/task/update`、`/study/api/task/remove`、`/study/api/task/toggle`、
 `/study/api/practice/ask`、`/study/api/reset`、`/study/api/materials/import`、
-`/study/api/materials/build`、`/study/api/material/upload`。
+`/study/api/materials/build`、`/study/api/material/upload`、`/study/api/focus`、`/study/api/todo`。
 
 还有两条不走 router 的：`/study/page?path=…` 把拆出来的页图发出去（只放行数据根 `pages/` 底下的文件），
 `/study/api/material/upload` 是流式收上传（超过 300 MB 直接拒，让用户改走「粘贴本机路径」）。
@@ -521,6 +523,61 @@ node --test
 `test/book.test.js`（10 条，页级索引的纯函数）、`test/shelf.test.js`（8 条，导入 / 拆图 / 书架 / 按单元找页，靠注入假的 `spawnBuild` 不起真进程）、`test/booktool.test.js`（6 条，三个工具的 `info` / `build` / `pages`）、`test/panel.test.js` 的资料页断言、`test/practice-ui.test.js` 的「按页直达」两条。
 
 写 `Store.update` 的时候踩过一次：`upsertAnalysis` 返回的是**那一份材料的条目**，而 `update('analysis', fn)` 要 fn 返回**整个 analysis**。写成 `store.update('analysis', (a) => upsertAnalysis(a, id, patch))` 会把整份文件写成一个条目——正确写法是 `{ upsertAnalysis(a, id, patch); return a }`。
+
+## 补：工具栏目 —— 番茄钟和清单
+
+面板上多了一个「工具」页（`/study/toolbox`）。它是**容器不是功能**：页面左边一条二级菜单（`TOOLS` 注册表），右边画选中的那个小工具。以后往里加东西就三步：
+
+1. 写一个 `xxxCard()`，返回一张 `<section class="card …">`；
+2. 往 `TOOLS` 数组里加一条 `{ id, label, hint, card: () => xxxCard() }`；
+3. 要落盘的话在 `lib/store.js` 的 `FILES` 里加一份文件、`Store.default()` 里给个初值。
+
+`PAGE_CARDS.toolbox.main` 只有一条 `['tool', '小工具', currentToolCard]`，卡 id 用的是 `tool` 而不是跟二级菜单联动——**卡 id 是折起来之后刻在按钮上的那个身份，跟着二级菜单变会让侧栏的折叠状态当场失忆**。
+
+#### 一、番茄钟只存绝对时刻
+
+`toolbox.json` 的 `focus` 里存的是 `endsAt`（ISO 时刻）、`startedAt`、`phase`，**不存「还剩多少秒」**：
+
+```json
+{ "running": true, "endsAt": "2026-10-01T09:25:00.000Z", "startedAt": "2026-10-01T09:00:00.000Z",
+  "phase": "work", "workMinutes": 25, "breakMinutes": 5, "today": "2026-10-01",
+  "todayMinutes": 107, "todayRounds": 3, "log": [] }
+```
+
+好处是刷新、关页面、出门吃饭、DSH 重启都不影响它算得对不对——剩余时间永远是 `endsAt - now` 现算出来的。所以：
+
+- 服务端**没有任何常驻定时器**。每次读（`GET /study/api/toolbox`）和每次写之前都顺手 `settleFocus()`：到点了就结算成一条日志、累加今天的分钟数、把 `phase` 翻到休息，然后 `running` 置回 false。
+- 面板上那个 500 ms 的 `syncFocusTicker()` **只是显示刷新，不是真相来源**：它从 `#focus-clock` 的 `data-ends` 现算剩余，只为了数字能动。它只在「工具页 + 正在跑 + 页面可见」时才开，一离开就 `clearInterval`。
+- **一轮走完不自动接下一轮**。学生走开半小时回来，不该看到「你正在第 4 个番茄」——他什么都没按过。
+- **中途停不算完整番茄**：`stopFocus()` 按实际坐了几分钟写一条 `partial: true` 的日志，分钟数照算，但 `todayRounds` 不加。不这么写的话，「开一下再关」就是刷番茄数的口子。
+
+`requireMinutes` 拦 1—180 之外的整数（含小数、字符串），读的时候也夹一次——档案是 JSON，手改坏、跨版本迁移都可能留下 `workMinutes: 999`。
+
+#### 二、清单跟「今天」不是一回事
+
+`study_todo` 管的是**学生自己想办的事**（背 20 个单词、整理错题），`study_plan` 管的是**教练排的学习计划**。两拨人写的两拨东西，混一张表就会出现「这任务是谁排的」说不清。
+
+排序写死在 `listTodos` 里：没做完的在前，各自按 `at` 倒序；`status` 认 `open` / `today` / `done` 三档。文字必填、最多 120 字、`due` 必须是 `YYYY-MM-DD`，同一条可挂 `pointId`（做题页那条例题错在哪，起番茄钟时能直接挂过去）。
+
+#### 三、测试
+
+`test/toolbox.test.js`（9 条）：只存绝对时刻、走完一轮的结算、中途停记半截、同时只能跑一个钟、时长上下限与坏数据夹回、跨天清零、清单校验与排序、`study_focus` / `study_todo` 两个工具、三条路由与中文报错。
+
+#### 四、`fold()` 那个坑
+
+侧栏模式靠 `fold()` 把卡片折成一行名字，它要从卡片工厂返回的 `<section class="card focus" data-card="focus">` 里**只取 class 属性**：
+
+```js
+const own = (html.slice(0, at).match(/class="card([^"]*)"/) || ['', ''])[1]
+```
+
+以前写的是「砍到第一个 `>` 再去掉头尾引号」，那套只有 `<section class="card xxx">` 这种单个属性的卡才成立。工具页那张卡多带了一个 `data-card`，砍出来的就成了 ` focus" data-card="focus`，拼进去变成：
+
+```html
+<section class="card focus" data-card="focus open" data-card="tool">
+```
+
+`open` 掉进了 `data-card` 里 —— 卡永远折着，点折叠按钮还拿错误的 `dataset.card` 去 toggle。症状是「浏览器模式好好的，一侧栏就展不开」。
 
 
 
