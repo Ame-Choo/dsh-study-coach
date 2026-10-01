@@ -99,6 +99,7 @@ const PROBE_PATHS = [
   '/study/api/library',
   '/study/practice',
   '/study/api/mistakes',
+  '/study/api/review',
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -107,6 +108,12 @@ const CHAT_MESSAGES = [
   { id: 'c1', seq: 9, role: 'user', text: '这一节的含参讨论没跟上', time: 1759300000000 },
   { id: 'c2', seq: 16, role: 'bot', text: '分两种情形看：A 是不是空集会改变结论。', time: 1759300060000, tools: ['read'] },
 ]
+
+/** 今日复盘图那份假数据。真 SVG 由 lib/review.js 拼，这里只要够卡片认出来就行。 */
+const REVIEW = {
+  data: { branches: [{ side: 'left' }, { side: 'right' }], error_count: 1 },
+  svg: '<svg viewBox="0 0 2048 1180" width="2048" height="1180"><title>今日复盘</title></svg>\n',
+}
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
 async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false } = {}) {
@@ -143,6 +150,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
         ? { ok: true, date: agenda.date, all: true, profiles: agenda.profiles }
         : { ok: true, state: fixture }
     }
+    if (path.includes('/api/review')) body = { ok: true, date: '2026-10-01', data: REVIEW.data, svg: REVIEW.svg }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
     if (path.includes('/api/chat/sessions')) {
@@ -203,8 +211,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
   return { html, calls, posts, clickAct, clickNav, submitForm, listeners, window, documentElement: document.documentElement }
 }
 
-function fixture() {
-  return {
+function fixture() {  return {
     root: '/tmp/x',
     profile: {
       version: 1,
@@ -641,4 +648,15 @@ test('对话页就是一个完整聊天窗口；别的页挂一颗悬浮窗', as
   await home.clickAct({ act: 'float-close' })
   assert.match(home.html(), /class="fab" data-act="float-open"/)
   assert.doesNotMatch(home.html(), /class="float"/)
+})
+
+test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() 靠它拼 class', async () => {
+  const today = await boot(fixture(), { path: '/study/today' })
+  assert.match(today.html(), /<section class="card review" data-card="review">/)
+  assert.match(today.html(), /今日复盘图/)
+  assert.match(today.html(), /data-act="review-save"/)
+  assert.match(today.html(), /<svg viewBox="0 0 2048 1180"/)
+  // 卡片工厂吐的是 <div> 的话，fold() 会把 class 属性拼成 class="card<div class="review""
+  // ——这一条就是上次那个 bug 的看门狗。
+  assert.doesNotMatch(today.html(), /class="card[^"]*</, 'fold() 拿到非卡片 HTML 了')
 })

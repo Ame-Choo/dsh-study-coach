@@ -726,6 +726,22 @@ html[data-mode="browser"] .chat-page .card {
 .mistakes .chips .mini.on { border-color: var(--accent); color: var(--accent); }
 .mistakes .list.tight li { align-items: flex-start; }
 
+/* ── 今日复盘图 ───────────────────────────────────────────────────────────
+ * SVG 自带 2048×1180 的 width/height，得压成跟着卡片走，不然会撑破版心。
+ * 图里字号是按 2048 宽定的，缩到 1100 宽左右还在能看清的范围；再窄就横着滑。
+ */
+.review-stage {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f6f5f0;
+  margin: 2px 0 10px;
+}
+.review-stage svg { display: block; width: 100%; height: auto; }
+/* 侧栏里版心只有四百来像素，缩到 100% 字就看不清了。给个下限，横着滑着看。 */
+html[data-mode="sidebar"] .review-stage { overflow-x: auto; }
+html[data-mode="sidebar"] .review-stage svg { width: 820px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

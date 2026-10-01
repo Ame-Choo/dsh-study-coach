@@ -135,7 +135,8 @@ pnpm add link:/绝对路径/dsh-study-coach
 ## HTTP 接口
 
 读：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
-`/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`。
+`/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
+`/study/api/mistakes`、`/study/api/review`。
 
 写：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、`/study/api/tools`、
 `/study/api/inbox`、`/study/api/map/module`、`/study/api/map/replace`、`/study/api/map/confirm`、
@@ -428,5 +429,21 @@ node --test
 - **面板**：「能力」页多一张错题本卡（按状态筛 + 每条「再练」），`capabilities.mistakes` 探针失效时整张卡不出现；做题页多一个「这题做错了」入口（填题号 + 错在哪），走 `POST /study/api/practice/ask` 的第三个 `mode: 'mistake'`，投出去的 prompt 以 `【面板·错题】` 开头，里面直接写着「用 `study_record` 记下来」。
 - **档案跟着一起出**：`study_archive` 的证据行**有错题才带 `mistake` 字段**（写成 `mistake: item?.mistake ?? null` 会被宿主的 `additionalProperties: false` 拒掉，报 `"evidence[0].mistake" is not a declared property`）。
 - **一个踩过的坑**：`findMistake()` 返回的是 `{ pointId, item }`，错题在 `hit.item.mistake` 上——写成 `hit.mistake` 不会报错，只会静默拿到 `undefined`，症状是 `study_record` 更新完返回的 `mistakeStatus` 是空串。
+
+### 七、今日复盘图：把版式搬过来，别把运行时搬过来
+
+「今日」页下面多一张图：中间一行日期和大类数，左右各挂几张卡片，每张卡是一个今天动过的单元，带错题的卡片左边那颗点变红。它来自 `good-learning-skill`（MIT）的 `references/visual-map-design.md` 和 `scripts/render_summary_map.py`。
+
+**没有直接用那份 Python。** 原实现是 Python + Pillow 画 PNG，装完想画张图就得先给对方机器装 Python（`--png` 那路还要 Pillow）。这里的做法是把**版式常量搬进 JS、服务端现拼 SVG 字符串**（`lib/review.js`）：
+
+- 2048×1180 固定画布、`CARD_W=596`、`CARD_H=252`、每侧行位 `ROWS = {1:[494], 2:[270,718], 3:[196,494,792]}`、左右列 x = 74 / 1378，配色是六对 accent/tint，曲线用三次贝塞尔手写路径——都是照抄的。
+- **没跟过来的**是 PNG 那条路：2× 超采样 + LANCZOS 缩回、高斯模糊伪造投影、手抄第二遍的 PNG 坐标。SVG 里一个 `<feDropShadow>` 就够了，也不用维护两套坐标。
+- **数据自己来**：`buildReview(state, {date})` 把「当天有证据的单元 + 当天有错题的单元 + 当天有任务的单元」并起来，按「有错题 > 证据多 > 任务多」排，最多 6 个，前一半走左、后一半走右。**一个单元都没动过就返回 `null`**，面板那边整张卡不出现——空白的一天硬凑一张图只会更难看。
+- **最值钱的那条照抄了**：`reviewSvg()` 里硬校验 `error_count` 必须等于带错题的分支数（`error_count 是 0，但带错题的分支有 1 个`），另外还拦分支不是 1—6 个、`side` 不是 left/right、某一侧超过 3 个。跟错题本那条一个思路：规矩写成数据自校验，才不是口号。
+- **参考实现的两个毛病没跟**：第 7 种 `category` 在原实现里直接 `IndexError`（这边按调色板循环取色）；分类药丸宽度原实现写死 62，装不下「集合与常用逻辑用语」这种大类名（这边按字宽撑开）。
+- **版式没有文本测量、也不自动换行**，文案长了会直接溢出卡片，所以 `clip(value, units)` 按字号把每段裁到预算内（CJK 算一个字宽、半角算 0.55）。`core_subtitle` 一开始放的是教练判词，实测会顶到中心块边上——改成结构化的「2 个大类 · 5 个单元」，判词挪到 `core_foot`。量字宽要用 PIL 找墨迹包围盒，但**块边缘的抗锯齿像素会被当成墨迹**，x 范围得内缩几个像素再算。
+- **两个入口**：`GET /study/api/review?date=` 给 `{date, data, svg}`；面板把 `svg` 直接嵌进卡片，右上角一颗「下载 SVG」把它当文件存下来。侧栏模式版心太窄，缩到 100% 字看不清，所以那边给 820px 下限横着滑。
+
+**一个踩过的坑**：卡片工厂必须返回 `<section class="card …">`。`fold(id, label, html)` 是靠 `html` 开头那段来拼外层 `class` 的——返回 `<div class="review">` 会拼成 `class="card<div class="review""`，浏览器把这段 class 解析得乱七八糟，症状是**卡片没有卡框、卡头消失、内容却还在**，看截图很容易以为是 CSS 问题。`test/panel.test.js` 里留了一条看门狗：`assert.doesNotMatch(html, /class="card[^"]*</)`。
 
 

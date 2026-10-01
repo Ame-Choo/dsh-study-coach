@@ -27,11 +27,13 @@ const ROUTES = [
   ['/study/api/archive?level=group&key=', '每级档案'],
   ['/study/practice', '做题页'],
   ['/study/file?path=', '打开文件'],
-  // 下面这四条是「分页面 + 多科目 + 对话页」那一批，最容易漏判：
+  // 下面这几条是「分页面 + 多科目 + 对话页 + 错题本 + 复盘图」那几批，最容易漏判：
   ['/study/today', '子页面'],
   ['/study/api/tasks?all=1', '多科目'],
   ['/study/api/chat/sessions', '对话通道'],
   ['/study/api/chat', '对话快照'],
+  ['/study/api/mistakes', '错题本'],
+  ['/study/api/review', '今日复盘图'],
 ]
 
 /** 前端那几个必须出现的记号：现读磁盘，所以能直接看出前端是哪一代。 */
@@ -40,6 +42,8 @@ const MARKS = [
   ['resolvePage', '分页面'],
   ['chatCard', '对话页'],
   ['openFirstCard', '侧栏自动展开'],
+  ['mistakesCard', '错题本'],
+  ['reviewCard', '今日复盘图'],
 ]
 
 let bad = 0

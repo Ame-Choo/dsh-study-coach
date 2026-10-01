@@ -51,6 +51,7 @@ const STALE_NEED = [
   ['library', '学习目标库'],
   ['practice', '做题页'],
   ['mistakes', '错题本'],
+  ['review', '今日复盘图'],
   ['file', '打开网课 / 讲义'],
 ]
 
@@ -62,6 +63,8 @@ let agenda = null
 let library = null
 /* 错题本（只有 /study/api/mistakes 这条接口给，state 里没有） */
 let mistakes = null
+/* 今日复盘图：{ date, data, svg }；这一天没动过任何单元就是 null */
+let review = null
 /* 对话那份快照：{ available, sessionId, messages, sessions, error } */
 let chat = null
 /* 「对话」页开着时的轮询句柄；离开这一页就停 */
@@ -280,14 +283,15 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, review] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
     alive('/study/practice'),
     alive('/study/api/mistakes'),
+    alive('/study/api/review'),
   ])
-  return { ability, archive, library, practice, mistakes, file: await fileAlive() }
+  return { ability, archive, library, practice, mistakes, review, file: await fileAlive() }
 }
 
 /**
@@ -343,6 +347,8 @@ async function load() {
     agenda = await loadAgenda()
     library = await loadLibrary()
     mistakes = await loadMistakes()
+    // 复盘图只有「今天」这一页要。其余页不拉，省一趟请求和 9 KB。
+    review = page === 'today' ? await loadReview() : null
     // 对话快照每页都要：右下角那颗悬浮按钮得知道通道通没通，
     // 只有「对话」页才顺带多要一份会话清单。
     await loadChat({ withSessions: page === 'coach' })
@@ -396,6 +402,21 @@ async function loadMistakes() {
     const out = await api('/study/api/mistakes?limit=60')
     if (!Array.isArray(out.items)) return null
     return { items: out.items, total: Number(out.total) || out.items.length, byStatus: out.byStatus || {} }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 今日复盘图。只有「今天」这一页要，所以别的页不拉——一张图 9 KB，没必要每页都拖。
+ * 这一天什么都没动过（服务端回 data: null）时返回 null，卡片自己收起来。
+ */
+async function loadReview() {
+  if (!capabilities || !capabilities.review) return null
+  try {
+    const out = await api('/study/api/review?date=' + today())
+    if (!out || !out.data || !out.svg) return null
+    return { date: out.date || today(), data: out.data, svg: String(out.svg) }
   } catch {
     return null
   }
@@ -495,7 +516,7 @@ function resolvePage() {
  * 矮卡不会把高卡顶出一个洞来。
  */
 const PAGE_CARDS = {
-  today: { main: [['today', '今日任务', tasksCard]] },
+  today: { main: [['today', '今日任务', tasksCard], ['review', '今日复盘图', reviewCard]] },
   map: { main: [['map', '知识地图', mapCard]] },
   ability: {
     main: [
@@ -1424,6 +1445,30 @@ function tasksCard() {
 }
 
 /**
+ * 今日复盘图。版式照 good-learning-skill（MIT）的 render_summary_map.py 搬过来，
+ * 但那头是 Python + Pillow 画 PNG，这边是服务端现拼 SVG 字符串——一个「装完就能用」
+ * 的插件不该因为想画张图就要求对方机器上有 Python。面板只负责把图摆进来、给颗下载。
+ *
+ * 这一天一个单元都没动过就不画：空白的一天硬凑一张图只会更难看。
+ * 图里全是短句（版式没有自动换行，服务端已经按字号裁过），细节仍以下面几张卡为准。
+ */
+function reviewCard() {
+  if (!review || !review.svg) return ''
+  const data = review.data || {}
+  const branches = Array.isArray(data.branches) ? data.branches : []
+  const wrong = Number(data.error_count) || 0
+  return `<section class="card review">
+    <div class="card-head">
+      <h2>今日复盘图</h2>
+      <button class="mini" data-act="review-save">下载 SVG</button>
+    </div>
+    <p class="dim">${branches.length} 个单元${wrong ? ` · 其中 ${wrong} 个带错题` : ''} · 颜色是大类，红点是当天记的错题</p>
+    <div class="review-stage">${review.svg}</div>
+    <p class="dim">这张图是拿今天记下的证据和错题现算的，只放得下短句；要看细节，翻上面的今日任务，或去「能力」页看错题本。</p>
+  </section>`
+}
+
+/**
  * 任务在图谱那份归档里是原始形状，这儿补上跳转按钮和知识点标题。
  * 跟服务端 taskView 算法一样，前端只为了少一趟请求。
  */
@@ -1740,6 +1785,18 @@ document.addEventListener('click', async (event) => {
       } finally {
         el.disabled = false
       }
+    } else if (act === 'review-save') {
+      // 图已经在页面里了，直接把它当一个文件存下来——不用再往服务端要一趟。
+      const blob = new Blob([review.svg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `今日复盘-${review.date}.svg`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+      toast('已下载今日复盘图（SVG，浏览器直接双击就能看）')
     } else if (act === 'card-toggle') {
       const cardId = el.dataset.card
       if (ui.open.has(cardId)) ui.open.delete(cardId)
