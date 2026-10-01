@@ -168,7 +168,7 @@ function render() {
   <header class="pr-head">
     <a class="back" href="/study">← 回面板</a>
     <div class="crumb">${crumbs.map((c) => `<span>${esc(c)}</span>`).join('<i>›</i>')}</div>
-    <div class="pr-stage" style="--c:${esc(STAGE_COLOR[data.stage] || '#5b6472')}">${esc(data.stage)}</div>
+    <div class="pr-stage" style="--c:${esc(STAGE_COLOR[data.stage] || 'var(--stage-1)')}">${esc(data.stage)}</div>
   </header>
 
   <section class="card">
@@ -195,7 +195,7 @@ function render() {
     <div class="stages">
       ${STAGES.map((s) => `
         <button class="stage-btn${s === data.stage ? ' on' : ''}" data-act="rate" data-stage="${esc(s)}"
-          style="--c:${esc(STAGE_COLOR[s] || '#5b6472')}">${esc(s)}</button>`).join('')}
+          style="--c:${esc(STAGE_COLOR[s] || 'var(--stage-1)')}">${esc(s)}</button>`).join('')}
     </div>
     <div class="note-row">
       <input id="note" type="text" placeholder="凭什么这么判？比如「今天做了 5 道，3 道自己会的」" value="${esc(ui.note)}">

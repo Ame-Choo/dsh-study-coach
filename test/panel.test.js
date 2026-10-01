@@ -51,7 +51,7 @@ function stubDom() {
         this.store.set(key, String(value))
       },
     },
-    location: { href: 'http://127.0.0.1:19388/study', search: '', assign() {} },
+    location: { href: 'http://127.0.0.1:19388/study', search: '', pathname: '/study', assign() {} },
   }
   return { document, window, boxes, listeners }
 }
@@ -92,10 +92,11 @@ const PROBE_PATHS = [
 ]
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '' } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study' } = {}) {
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
   window.location.search = search
+  window.location.pathname = path
   const calls = []
   const posts = []
   globalThis.document = document
@@ -212,8 +213,8 @@ function fixture() {
   }
 }
 
-test('面板渲染：总体能力、每级档案、任务跳转与管理、学习目标库都出得来', async () => {
-  const { html, calls, clickAct } = await boot(fixture())
+test('主页面：只回答「现在什么情况、下一步点哪儿」，活儿都在子页面里', async () => {
+  const { html, calls } = await boot(fixture())
 
   // 先把两份数据拿回来（探测要用 state 里登记过的材料路径，得排在它后面）
   assert.deepEqual(calls.slice(0, 2), ['/study/api/state', '/study/api/summary'])
@@ -231,21 +232,62 @@ test('面板渲染：总体能力、每级档案、任务跳转与管理、学�
   // 假 fetch 什么都回 200，所以不该出现「服务端是旧代码」那条横幅
   assert.doesNotMatch(html(), /服务端还是旧代码/)
 
-  // 顶上那句指引：面板要把人叫回对话
-  assert.match(html(), /看完回来答三个问题/)
+  // 顶栏就是导航：六页一个不少，当前那页标出来
+  for (const p of ['/study', '/study/today', '/study/map', '/study/ability', '/study/library', '/study/coach']) {
+    const want = p.replace(/\//g, '\\/')
+    assert.match(html(), new RegExp(`class="nav-item[^"]*" href="${want}"`), `导航里该有 ${p}`)
+  }
+  assert.match(html(), /class="nav-item on" href="\/study"/)
 
-  // ① 总体能力那张卡
+  // 主页面三件套：hero、大盘数字、入口卡
+  assert.match(html(), /class="hero"/)
+  assert.match(html(), /class="stats"/)
+  assert.match(html(), /class="entries"/)
+  assert.equal(html().split('class="entry"').length - 1, 5, '五个入口')
+
+  // 教练的指引摆在最显眼的地方，好把人叫回对话
+  assert.match(html(), /看完回来答三个问题/)
+  assert.equal(html().split('看完回来答三个问题').length - 1, 1, '指引只该出现一次')
+
+  // 主页面自己不是操作台：任务勾选、档案弹层、目标库表单都不铺在这儿
+  assert.doesNotMatch(html(), /data-act="task-toggle"/)
+  assert.doesNotMatch(html(), /data-act="archive-open"/)
+  assert.doesNotMatch(html(), /data-act="lib-select"/)
+})
+
+test('今天页：任务能跳转、能改能删；看课的任务先看再练，顺序不能反', async () => {
+  const { html, clickAct } = await boot(fixture(), { path: '/study/today' })
+
+  assert.match(html(), /data-card="today"/)
+  assert.match(html(), /data-act="task-toggle"/)
+  assert.match(html(), /\/study\/file\?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C01\.%E7%AC%AC%E4%B8%80%E8%8A%82/)
+  assert.match(html(), /看这节网课/)
+  assert.match(html(), /这一节的讲义/)
+  assert.match(html(), /\/study\/practice\?point=M1\.1/)
+  assert.match(html(), /看完去做练习/)
+  assert.ok(html().indexOf('看这节网课') < html().indexOf('看完去做练习'), '看课按钮要排在练习前面')
+  assert.doesNotMatch(html(), /做题 \/ 看掌握度/, '看课任务的按钮说的是「看完去做练习」')
+
+  assert.match(html(), /data-act="task-edit"/)
+  assert.match(html(), /data-act="task-remove"/)
+  await clickAct({ act: 'task-remove', id: 'task-1' })
+  assert.match(html(), /确定删掉/)
+  await clickAct({ act: 'task-cancel' })
+  assert.doesNotMatch(html(), /确定删掉/)
+})
+
+test('能力页：大盘、卡住的地方、每级档案按键，点开是那一级的细账', async () => {
+  const { html, calls, clickAct } = await boot(fixture(), { path: '/study/ability' })
+
   assert.match(html(), /card ability/)
   assert.match(html(), /底子还行，先把没碰过的补上。/)
   assert.match(html(), /该复习了/)
   assert.match(html(), /最近七天/)
 
-  // ② 每级都有「档案」小按键：大类、单元总览里就有，模块得展开大类才看得到
+  // 每级都有「档案」小按键：大类、单元总览里就有，模块级得在地图页展开大类才露出来
   assert.match(html(), /data-act="archive-open" data-level="group"/)
   assert.match(html(), /data-act="archive-open" data-level="point"/)
   assert.doesNotMatch(html(), /data-act="archive-open" data-level="module"/)
-  await clickAct({ act: 'group-open', group: '第一大块' })
-  assert.match(html(), /data-act="archive-open" data-level="module" data-key="M1"/)
 
   // 点「档案」把弹层拉起来，里面是这一级的细账
   await clickAct({ act: 'archive-open', level: 'module', key: 'M1' })
@@ -259,25 +301,24 @@ test('面板渲染：总体能力、每级档案、任务跳转与管理、学�
   assert.match(html(), /模块掌握档案/)
   await clickAct({ act: 'archive-close' })
   assert.doesNotMatch(html(), /模块掌握档案/)
+})
 
-  // ③ 任务能一键跳过去。看课的任务以看课为主线：先看，再去做练习，顺序不能反
-  assert.match(html(), /\/study\/file\?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C01\.%E7%AC%AC%E4%B8%80%E8%8A%82/)
-  assert.match(html(), /看这节网课/)
-  assert.match(html(), /这一节的讲义/)
-  assert.match(html(), /\/study\/practice\?point=M1\.1/)
-  assert.match(html(), /看完去做练习/)
-  assert.ok(html().indexOf('看这节网课') < html().indexOf('看完去做练习'), '看课按钮要排在练习前面')
-  assert.doesNotMatch(html(), /做题 \/ 看掌握度/, '看课任务的按钮说的是「看完去做练习」')
+test('地图页：展开大类才看得到模块那级的档案；定稿的地图不再问「就这么定」', async () => {
+  const { html, clickAct } = await boot(fixture(), { path: '/study/map' })
 
-  // ④ 任务能改能删
-  assert.match(html(), /data-act="task-edit"/)
-  assert.match(html(), /data-act="task-remove"/)
-  await clickAct({ act: 'task-remove', id: 'task-1' })
-  assert.match(html(), /确定删掉/)
-  await clickAct({ act: 'task-cancel' })
-  assert.doesNotMatch(html(), /确定删掉/)
+  assert.match(html(), /data-card="map"/)
+  assert.doesNotMatch(html(), /data-act="map-confirm"/)
 
-  // ⑤ 学习目标库：切换 / 改名 / 删掉 / 新建
+  // 没展开之前，模块级那颗按键不该出现
+  assert.doesNotMatch(html(), /data-act="archive-open" data-level="module"/)
+  await clickAct({ act: 'group-open', group: '第一大块' })
+  assert.match(html(), /data-act="archive-open" data-level="module" data-key="M1"/)
+})
+
+test('档案页：目标库、学习目标、材料、基本工具各就各位，主栏边栏分得开', async () => {
+  const { html } = await boot(fixture(), { path: '/study/library' })
+
+  // 学习目标库：切换 / 改名 / 删掉 / 新建
   assert.match(html(), /data-act="lib-select"/)
   assert.match(html(), /data-act="lib-rename"/)
   assert.match(html(), /data-act="lib-remove"/)
@@ -287,62 +328,76 @@ test('面板渲染：总体能力、每级档案、任务跳转与管理、学�
   // 学习目标也该能改（主路径是对话，这儿只是兜底）
   assert.match(html(), /data-act="goal-edit"/)
 
-  // 定稿的地图不再问「就这么定」
-  assert.doesNotMatch(html(), /data-act="map-confirm"/)
+  // 主栏放档案与材料，边栏放目标与工具
+  assert.match(html(), /<div class="col main">.*data-card="library"/s)
+  assert.match(html(), /<div class="col aside">.*data-card="goal"/s)
+  assert.match(html(), /<div class="col aside">.*data-card="tools"/s)
 })
 
 test('表单能提交：改任务、改目标、改档案名、新建档案都走得通', async () => {
-  const { html, calls, clickAct, submitForm } = await boot(fixture())
-  const before = calls.length
+  // 改任务在「今天」页
+  const today = await boot(fixture(), { path: '/study/today' })
+  const taskBefore = today.calls.length
+  await today.clickAct({ act: 'task-edit', id: 'task-1' })
+  assert.match(today.html(), /data-form="task-edit"/)
+  await today.submitForm({ form: 'task-edit', id: 'task-1' }, { title: '看第二节', kind: 'read', minutes: '25' })
+  assert.ok(today.calls.length - taskBefore >= 4, `提交后应该重新 load 过，实际只多发了 ${today.calls.length - taskBefore} 条`)
 
-  await clickAct({ act: 'task-edit', id: 'task-1' })
-  assert.match(html(), /data-form="task-edit"/)
-  await submitForm({ form: 'task-edit', id: 'task-1' }, { title: '看第二节', kind: 'read', minutes: '25' })
+  // 改目标、改档案名、新建档案都在「档案」页
+  const lib = await boot(fixture(), { path: '/study/library' })
+  const before = lib.calls.length
 
-  await clickAct({ act: 'goal-edit' })
-  assert.match(html(), /data-form="goal"/)
-  await submitForm({ form: 'goal' }, { subject: '高数', outcome: '会做中档题', deadline: '2027-09-30', minutesPerDay: '45' })
+  await lib.clickAct({ act: 'goal-edit' })
+  assert.match(lib.html(), /data-form="goal"/)
+  await lib.submitForm({ form: 'goal' }, { subject: '高数', outcome: '会做中档题', deadline: '2027-09-30', minutesPerDay: '45' })
 
-  await clickAct({ act: 'lib-rename', id: 'p2' })
-  assert.match(html(), /data-form="lib-rename"/)
-  await submitForm({ form: 'lib-rename', id: 'p2' }, { title: '新名字' })
+  await lib.clickAct({ act: 'lib-rename', id: 'p2' })
+  assert.match(lib.html(), /data-form="lib-rename"/)
+  await lib.submitForm({ form: 'lib-rename', id: 'p2' }, { title: '新名字' })
 
-  await clickAct({ act: 'lib-new' })
-  assert.match(html(), /data-form="lib-new"/)
-  await submitForm({ form: 'lib-new' }, { title: '第三门', subject: '', outcome: '', deadline: '', minutesPerDay: '' })
+  await lib.clickAct({ act: 'lib-new' })
+  assert.match(lib.html(), /data-form="lib-new"/)
+  await lib.submitForm({ form: 'lib-new' }, { title: '第三门', subject: '', outcome: '', deadline: '', minutesPerDay: '' })
 
   // 每次提交后都得重新拉一遍 state + summary
-  assert.ok(calls.length - before >= 8, `提交后应该重新 load 过，实际只多发了 ${calls.length - before} 条`)
+  assert.ok(lib.calls.length - before >= 8, `提交后应该重新 load 过，实际只多发了 ${lib.calls.length - before} 条`)
 })
 
-test('地图还是草稿时，面板给出定稿按钮；没有图谱宿主也不炸', async () => {
+test('地图还是草稿时，地图页给出定稿按钮；没数据的能力卡不渲染', async () => {
   const data = fixture()
   data.map.status = 'draft'
   data.ability = null
   data.profiles = []
-  const { html } = await boot(data)
-  assert.match(html(), /data-act="map-confirm"/)
-  assert.match(html(), /地图还是草稿/)
+
+  const map = await boot(data, { path: '/study/map' })
+  assert.match(map.html(), /data-act="map-confirm"/)
+  assert.match(map.html(), /地图还是草稿/)
+
   // 能力卡没数据就不该渲染
-  assert.doesNotMatch(html(), /card ability/)
+  const ability = await boot(data, { path: '/study/ability' })
+  assert.doesNotMatch(ability.html(), /card ability/)
+
   // 单档案的时候不出现目标库
-  assert.doesNotMatch(html(), /新建一个学习目标/)
+  const lib = await boot(data, { path: '/study/library' })
+  assert.doesNotMatch(lib.html(), /新建一个学习目标/)
 })
 
 test('服务端是旧代码时，面板把话说清楚，而不是让人对着没反应的按钮猜', async () => {
-  const { html } = await boot(fixture(), { stale: true })
+  const home = await boot(fixture(), { stale: true })
 
   // 顶上那条横幅：缺哪几样、为什么、怎么办
-  assert.match(html(), /服务端还是旧代码/)
-  assert.match(html(), /总体能力判断/)
-  assert.match(html(), /每级掌握档案/)
-  assert.match(html(), /做题页/)
-  assert.match(html(), /打开网课 \/ 讲义/)
-  assert.match(html(), /重启一次 DSH/)
+  assert.match(home.html(), /服务端还是旧代码/)
+  assert.match(home.html(), /总体能力判断/)
+  assert.match(home.html(), /每级掌握档案/)
+  assert.match(home.html(), /做题页/)
+  assert.match(home.html(), /打开网课 \/ 讲义/)
+  assert.match(home.html(), /重启一次 DSH/)
 
   // 东西还是照常渲染，不是一屏错误
-  assert.match(html(), /data-act="archive-open" data-level="group"/)
-  assert.match(html(), /data-act="task-toggle"/)
+  const ability = await boot(fixture(), { stale: true, path: '/study/ability' })
+  assert.match(ability.html(), /data-act="archive-open" data-level="group"/)
+  const today = await boot(fixture(), { stale: true, path: '/study/today' })
+  assert.match(today.html(), /data-act="task-toggle"/)
 })
 
 /** 「今天」那栏的多科目版本：两门课各一条，服务端把链接都算好了。 */
@@ -391,8 +446,8 @@ function agendaFixture() {
   }
 }
 
-test('多科目：今天那栏按科目分组，能只看一门，也能直接给任意一门加任务', async () => {
-  const { html, clickAct, submitForm, posts } = await boot(fixture(), { agenda: agendaFixture() })
+test('多科目：今天页按科目分组，能只看一门，也能直接给任意一门加任务', async () => {
+  const { html, clickAct, submitForm, posts } = await boot(fixture(), { agenda: agendaFixture(), path: '/study/today' })
 
   // 两门课各占一组，任务挂在各自的 profileId 上
   assert.match(html(), /data-act="task-filter" data-profile="p2"/)
@@ -430,32 +485,36 @@ test('多科目：今天那栏按科目分组，能只看一门，也能直接�
 })
 
 test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一下切成浏览器模式铺开', async () => {
-  const narrow = await boot(fixture(), { innerWidth: 400 })
+  const narrow = await boot(fixture(), { innerWidth: 400, path: '/study/today' })
   assert.equal(narrow.documentElement.dataset.mode, 'sidebar')
   // 侧栏模式：每张卡头顶一条折叠按钮，卡身折起来
   assert.match(narrow.html(), /class="fold"[^>]*data-act="card-toggle"/)
   assert.match(narrow.html(), /data-card="today"/)
   assert.match(narrow.html(), /今天要做的/)
-  // 「今天」默认是开着的，其余折着
+  // 「今天」默认是开着的
   assert.match(narrow.html(), /class="card open" data-card="today"/)
-  assert.doesNotMatch(narrow.html(), /class="card guide on open" data-card="guide"/)
-  // 折起来的卡片，内容只该出现一次（不能一边留着原样一边又包一层）
-  assert.equal(narrow.html().split('看完回来答三个问题').length - 1, 1)
 
   await narrow.clickAct({ act: 'card-toggle', card: 'today' })
   assert.doesNotMatch(narrow.html(), /class="card open" data-card="today"/)
   await narrow.clickAct({ act: 'card-toggle', card: 'today' })
   assert.match(narrow.html(), /class="card open" data-card="today"/)
 
-  // 切成浏览器模式：折叠按钮消失，卡片分主栏 / 边栏两列摞
+  // 切成浏览器模式：折叠按钮消失
   await narrow.clickAct({ act: 'mode', mode: 'browser' })
   assert.equal(narrow.documentElement.dataset.mode, 'browser')
   assert.doesNotMatch(narrow.html(), /data-act="card-toggle"/)
-  assert.match(narrow.html(), /<div class="col main">.*data-card="today"/s)
-  assert.match(narrow.html(), /<div class="col aside">.*data-card="ability"/s)
-  assert.match(narrow.html(), /<div class="col aside">.*data-card="library"/s)
   // 侧栏才用的折叠类不该漏到浏览器模式里
   assert.doesNotMatch(narrow.html(), /class="card[^"]*\bopen\b/)
+
+  // 两栏都有东西的页（档案页）：主栏 + 边栏各摞各的
+  const lib = await boot(fixture(), { path: '/study/library' })
+  assert.match(lib.html(), /<div class="col main">.*data-card="library"/s)
+  assert.match(lib.html(), /<div class="col aside">.*data-card="goal"/s)
+  assert.doesNotMatch(lib.html(), /data-act="card-toggle"/)
+
+  // 只有一栏的页不硬凑一个空边栏
+  const map = await boot(fixture(), { path: '/study/map' })
+  assert.doesNotMatch(map.html(), /<div class="col aside">/)
 
   // 反着来：宽屏默认浏览器模式
   const wide = await boot(fixture())

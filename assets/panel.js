@@ -19,12 +19,12 @@ try {
 const STAGES = ['没接触过', '见过', '能跟做', '能独立做', '熟练稳定', '能讲明白']
 
 const STAGE_COLOR = {
-  '没接触过': '#5b6472',
-  '见过': '#7d8aa0',
-  '能跟做': '#4d9de0',
-  '能独立做': '#3bb273',
-  '熟练稳定': '#f0a202',
-  '能讲明白': '#e05d8a',
+  '没接触过': 'var(--stage-1)',
+  '见过': 'var(--stage-2)',
+  '能跟做': 'var(--stage-3)',
+  '能独立做': 'var(--stage-4)',
+  '熟练稳定': 'var(--stage-5)',
+  '能讲明白': 'var(--stage-6)',
 }
 
 const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', other: '其他' }
@@ -132,8 +132,8 @@ function resolveMode() {
 }
 
 /* ── 两套配色 ─────────────────────────────────────────────────────────────
- * 暗色是默认（晚上看不刺眼），亮色给白天。选择存在本机，换页面也还在。
- * 定在 <html data-theme> 上，颜色全在 style.css 的变量里。
+ * 亮色（暖骨白 + 鼠尾草）是默认，暗色是同色系的暖暗版，晚上看。
+ * 选择存在本机，换页面也还在。定在 <html data-theme> 上，颜色全在 style.css 的变量里。
  */
 const THEME_KEY = 'study-coach:theme'
 let theme = resolveTheme()
@@ -155,7 +155,7 @@ function resolveTheme() {
   } catch {
     /* 存不下就算了 */
   }
-  return saved === 'light' ? 'light' : 'dark'
+  return saved === 'dark' ? 'dark' : 'light'
 }
 
 function saveTheme(next) {
@@ -362,59 +362,173 @@ async function loadLibrary() {
   }
 }
 
+/* ── 页面 ─────────────────────────────────────────────────────────────────
+ * 一页一件事。主页面不干活，只回答「我现在什么情况、下一步点哪儿」；改地图、勾任务、
+ * 换目标这些都在各自子页面里。地址就是真地址（/study/today 这样），服务端把这几条
+ * 都发同一份 panel.html，认页的事在下面 resolvePage()。
+ */
+const PAGES = [
+  { id: 'home', path: '/study', label: '主页', hint: '一眼看现在什么情况' },
+  { id: 'today', path: '/study/today', label: '今天', hint: '今天要做的，一条条勾掉' },
+  { id: 'map', path: '/study/map', label: '知识地图', hint: '一门课的全貌，逐个单元自评' },
+  { id: 'ability', path: '/study/ability', label: '能力', hint: '大盘、薄弱点、该复习的' },
+  { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
+  { id: 'coach', path: '/study/coach', label: '对话', hint: '留句话，我回来就办' },
+]
+
+let page = resolvePage()
+
+/** 从地址认页；认不出来（或者测试里没有 location）就落主页。 */
+function resolvePage() {
+  let path = ''
+  try {
+    path = (window.location && window.location.pathname) || ''
+  } catch {
+    /* 没有 location 就当主页 */
+  }
+  const clean = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
+  if (clean === '' || clean === '/study') return 'home'
+  const hit = PAGES.find((p) => p.path === clean)
+  return hit ? hit.id : 'home'
+}
+
+/*
+ * 每页各放哪几张卡。main 宽、aside 窄，各自一列往下摞——grid 两栏各摞各的，
+ * 矮卡不会把高卡顶出一个洞来。
+ */
+const PAGE_CARDS = {
+  today: { main: [['today', '今天要做的', tasksCard]] },
+  map: { main: [['map', '知识地图', mapCard]] },
+  ability: { main: [['ability', '总体能力', abilityCard]] },
+  library: {
+    main: [['library', '我的学习档案', libraryCard], ['materials', '材料', materialsCard]],
+    aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
+  },
+  coach: {
+    main: [['inbox', '跟教练说话', inboxCard]],
+    aside: [['guide', '教练的指引', guideCard]],
+  },
+}
+
 /* ── 渲染 ─────────────────────────────────────────────────────────────── */
 function render() {
   const app = document.getElementById('app')
   applyMode()
   app.className = ''
-
-  /*
-   * 每张卡归哪一栏。浏览器模式是主栏 + 边栏各摞各的（grid 两栏，矮卡不会把高卡顶出洞）；
-   * 侧栏模式不看这一栏，一律折成一条一条。
-   *   主栏：现在该干什么、地图、材料——要宽的东西。
-   *   边栏：水平、目标、档案、工具——算账和翻旧账用的。
-   */
-  const cards = [
-    ['main', 'guide', '教练的指引', guideCard()],
-    ['main', 'today', '今天要做的', tasksCard()],
-    ['aside', 'ability', '总体能力', abilityCard()],
-    ['main', 'map', '知识地图', mapCard()],
-    ['aside', 'goal', '学习目标', goalCard()],
-    ['aside', 'library', '我的学习档案', libraryCard()],
-    ['main', 'materials', '材料', materialsCard()],
-    ['aside', 'tools', '基本工具', toolsCard()],
-    ['aside', 'inbox', '跟教练说话', inboxCard()],
-  ]
-  const draw = (which) =>
-    cards
-      .filter((c) => c[0] === which)
-      .map(([, id, label, html]) => fold(id, label, html))
-      .join('')
-
-  const body = isSidebar()
-    ? cards.map(([, id, label, html]) => fold(id, label, html)).join('')
-    : `<div class="col main">${draw('main')}</div><div class="col aside">${draw('aside')}</div>`
-
   app.innerHTML = `
     ${topBar()}
     ${staleCard()}
-    <div class="cards">${body}</div>
+    ${page === 'home' ? homePage() : pageCards()}
     ${archiveModal()}
   `
   mountGraph()
 }
 
-/** 顶栏：名字 + 今天做完几条 + 地图状态 + 换配色 + 两种模式来回切。 */
+/** 当前这一页的卡片；侧栏模式一律折成一条一条。 */
+function pageCards() {
+  const spec = PAGE_CARDS[page] || PAGE_CARDS.today
+  const draw = (col) => (spec[col] || []).map(([id, label, make]) => fold(id, label, make())).join('')
+  const aside = draw('aside')
+  if (isSidebar()) return `<div class="cards">${draw('main')}${aside}</div>`
+  return `<div class="cards${aside ? ' two' : ''}">
+    <div class="col main">${draw('main')}</div>
+    ${aside ? `<div class="col aside">${aside}</div>` : ''}
+  </div>`
+}
+
+/**
+ * 主页面：一屏之内说清「现在什么水平、今天还剩什么、下一步点哪儿」。
+ * 它自己不承担编辑功能——那些都在子页面里，这儿只放入口。
+ */
+function homePage() {
+  const sum = summary || {}
+  const day = todayTasks()
+  const done = day.filter((t) => t.done).length
+  const left = day.length - done
+  const modules = (state && state.map && state.map.modules) || []
+  const points = modules.reduce((n, m) => n + ((m.points || []).length), 0)
+  const total = sum.total || points
+  const touched = sum.touched || 0
+  const pct = total ? Math.round((touched / total) * 100) : 0
+  const goal = (state && state.profile && state.profile.goal) || {}
+  const materials = (state && state.profile && state.profile.materials) || []
+  const libs = (library && Array.isArray(library.profiles) ? library.profiles : []).filter((p) => !p.error)
+  const built = modules.length > 0
+
+  const hour = new Date().getHours()
+  const hello = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 14 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
+  const lead = !built
+    ? '地图还是空的。把教辅或者网课目录丢进对话里，我给你解一遍、画出来。'
+    : day.length === 0
+      ? '今天还没排任务。自己加一条，或者在对话里说一声今天有多少时间。'
+      : left > 0
+        ? `今天还有 ${left} 条没做。做完一条勾一条，回来我照着进度给你排明天。`
+        : '今天的任务全勾完了。'
+
+  const stat = (value, label, sub) => `<div class="stat">
+      <b>${esc(String(value))}</b>
+      <span class="stat-label">${esc(label)}</span>
+      ${sub ? `<span class="stat-sub">${esc(sub)}</span>` : ''}
+    </div>`
+
+  const entries = [
+    { id: 'today', title: '今天要做的', hint: '一条条勾掉，做完回来说一声', count: day.length ? `${done}/${day.length}` : '还没排' },
+    { id: 'map', title: '知识地图', hint: '这门课的全貌，点到哪个单元就自评', count: built ? `${points} 个单元` : '还没画' },
+    { id: 'ability', title: '总体能力', hint: '大盘数字、卡住的地方、什么时候该复习', count: total ? `碰过 ${pct}%` : '还没数据' },
+    { id: 'library', title: '学习档案', hint: '换一门课、加材料、记基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
+    { id: 'coach', title: '跟教练说', hint: '看不懂、想换教材、今天没空，都写这儿', count: '' },
+  ]
+
+  return `
+  <section class="hero">
+    <p class="eyebrow">今天 · ${today()}</p>
+    <h1>${esc(hello)}</h1>
+    <p class="lede">${esc(lead)}</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="/study/today">今天要做的</a>
+      <a class="btn" href="/study/map">${built ? '看知识地图' : '开始画地图'}</a>
+    </div>
+  </section>
+
+  <section class="stats">
+    ${stat(day.length ? `${done}/${day.length}` : '—', '今天的任务', day.length ? (left > 0 ? `还剩 ${left} 条` : '都做完了') : '还没排')}
+    ${stat(total || '—', '地图上的单元', modules.length ? `${modules.length} 个模块` : '还没画')}
+    ${stat(total ? `${pct}%` : '—', '碰过的比例', total ? `${touched} / ${total}` : '')}
+    ${stat(goal.deadline || '—', '最晚到', goal.subject ? goal.subject : '目标还没定')}
+  </section>
+
+  <section class="entries">
+    ${entries
+      .map(
+        (e) => `<a class="entry" href="/study/${e.id}">
+      <span class="entry-head"><span class="entry-title">${esc(e.title)}</span>${e.count ? `<span class="entry-count">${esc(e.count)}</span>` : ''}</span>
+      <span class="entry-hint">${esc(e.hint)}</span>
+    </a>`,
+      )
+      .join('')}
+  </section>
+
+  <div class="cards">${fold('guide', '教练的指引', guideCard())}</div>`
+}
+
+/** 顶栏：名字 + 页面导航 + 今天做完几条 + 地图状态 + 换配色 + 两种模式来回切。 */
 function topBar() {
   const map = (state && state.map) || {}
   const seg = MODES.map(
     (m) => `<button class="seg ${m.id === mode ? 'on' : ''}" data-act="mode" data-mode="${m.id}" title="${esc(m.hint)}">${m.label}</button>`,
   ).join('')
+  const nav = PAGES.map(
+    (p) =>
+      `<a class="nav-item${p.id === page ? ' on' : ''}" href="${p.path}" title="${esc(p.hint)}"${
+        p.id === page ? ' aria-current="page"' : ''
+      }>${esc(p.label)}</a>`,
+  ).join('')
   const day = todayTasks()
   const done = day.filter((t) => t.done).length
   const progress = day.length ? `<span class="pill ${done === day.length ? '' : 'hot'}">今天 ${done}/${day.length}</span>` : ''
   return `<header class="top">
-    <div class="brand">学习教练</div>
+    <a class="brand" href="/study">学习教练</a>
+    <nav class="nav" aria-label="页面">${nav}</nav>
     <div class="top-right">
       ${progress}
       <span class="dim">${map.status === 'confirmed' ? '地图已定稿' : '地图还是草稿'}</span>
@@ -625,7 +739,7 @@ function abilityCard() {
     .slice(0, 8)
     .map(
       (w) => `<li>
-        <span class="dot" style="background:${STAGE_COLOR[w.stage] || '#5b6472'}"></span>
+        <span class="dot" style="background:${STAGE_COLOR[w.stage] || 'var(--stage-1)'}"></span>
         <div style="flex:1"><b>${esc(w.title)}</b> <span class="dim">${esc(w.group)} · ${esc(w.moduleTitle)}</span>
           <div class="dim">${esc(w.reason)}</div></div>
         ${archiveBtn('point', w.pointId)}
@@ -636,7 +750,7 @@ function abilityCard() {
   const due = (a.due || [])
     .slice(0, 8)
     .map(
-      (d) => `<li><span class="dot" style="background:${STAGE_COLOR[d.stage] || '#5b6472'}"></span>
+      (d) => `<li><span class="dot" style="background:${STAGE_COLOR[d.stage] || 'var(--stage-1)'}"></span>
         <div style="flex:1"><b>${esc(d.title)}</b> <span class="dim">${esc(d.stage)} · 该 ${esc(d.nextReview)}</span></div>
         ${archiveBtn('point', d.pointId)}</li>`,
     )
@@ -1150,10 +1264,10 @@ function toolsCard() {
     <ul class="list">${list
       .map(
         (t) => `<li>
-          <span class="dot" style="background:${STAGE_COLOR[t.stage] || '#5b6472'}"></span>
+          <span class="dot" style="background:${STAGE_COLOR[t.stage] || 'var(--stage-1)'}"></span>
           <b>${esc(t.name)}</b>
           <span class="dim" style="flex:1">${esc(t.note)}</span>
-          <span class="stage-tag" style="color:${STAGE_COLOR[t.stage] || '#5b6472'}">${esc(t.stage)}</span>
+          <span class="stage-tag" style="color:${STAGE_COLOR[t.stage] || 'var(--stage-1)'}">${esc(t.stage)}</span>
         </li>`,
       )
       .join('')}</ul>

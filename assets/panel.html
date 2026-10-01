@@ -18,10 +18,10 @@
     document.documentElement.dataset.mode = mode
     var t = new URLSearchParams(location.search).get('theme')
     if (t !== 'light' && t !== 'dark') t = localStorage.getItem('study-coach:theme')
-    document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light'
   } catch (e) {
     document.documentElement.dataset.mode = 'browser'
-    document.documentElement.dataset.theme = 'dark'
+    document.documentElement.dataset.theme = 'light'
   }
 })()
 </script>
