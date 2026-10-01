@@ -346,7 +346,7 @@ export function renderGraph(host, options) {
   svg.appendChild(view)
 
   /* HUD（索引板 / 工具箱 / 提示句）是直接挂在 <svg> 上的，跟视图层 `.kg-view` 平级——
-     它们天生就不吃 `translate(t) scale(k)`，拖动缩放时钉在视口上。
+     它们天生就不吃 `translate(t) scale(k)`，缩放时钉在视口上。
      **别再给它们补什么反向变换**：补了反而会跟着鼠标乱飞（踩过）。 */
   const applyView = () => {
     const { tx, ty, k } = state.view
@@ -467,10 +467,10 @@ export function renderGraph(host, options) {
       }))
     }
 
-    /* 整块板块都能点：不必非得戳中左边那块小牌子。拖过画布的不算点（看 panned）。 */
+    /* 整块板块都能点：不必非得戳中左边那块小牌子。画布已经不跟着鼠标拖了（见文末），
+       所以这里没有「拖过的那一发不算点」要挡。 */
     const hit = svgEl('rect', { class: 'kg-band-hit', x: BAND_X, y: boardTop, width: bandW, height: boardH })
     hit.addEventListener('click', () => {
-      if (panned) return
       toggleNode(group)
     })
     bands.appendChild(hit)
@@ -503,7 +503,7 @@ export function renderGraph(host, options) {
   const note = svgEl('text', { class: 'kg-plate-note', x: PLATE.x + 14, y: PLATE.y + PLATE.h + 14 })
   note.textContent = `已接触 ${touched}/${allPoints.length}${today ? ' · 斜纹＝该复习' : ''}`
   plate.appendChild(note)
-  /* 挂在 svg 上，不进 `.kg-view`：它就不吃拖动的变换，钉在视口左上角。 */
+  /* 挂在 svg 上，不进 `.kg-view`：它就不吃视图变换，钉在视口左上角。 */
   svg.appendChild(plate)
 
   /* ── 画 ────────────────────────────────────────────────────────────────── */
@@ -802,7 +802,7 @@ export function renderGraph(host, options) {
     svg.appendChild(hint)
   }
 
-  /* ── 工具箱：不受拖动缩放影响，钉在右上角 ─────────────────────────────── */
+  /* ── 工具箱：不受视图缩放影响，钉在右上角 ─────────────────────────────── */
 
   const tools = svgEl('g', { class: 'kg-tools' })
   let tx = vw - 16
@@ -842,51 +842,10 @@ export function renderGraph(host, options) {
   svg.appendChild(tools)
   applyView()
 
-  /* ── 拖和缩放 ─────────────────────────────────────────────────────────── */
-
-  let dragging = null
-  let captured = false
-  /* 从板块上按下拖过画布，松手时浏览器还会补一发 click——那一发不算「点板块展开」。 */
-  let panned = false
-
-  svg.addEventListener('pointerdown', (event) => {
-    if (event.target.closest && event.target.closest('.kg-group, .kg-mod, .kg-point, .kg-btn, .kg-tool')) return
-    panned = false
-    dragging = { x: event.clientX, y: event.clientY, tx: state.view.tx, ty: state.view.ty }
-    captured = false
-    if (svg.setPointerCapture) {
-      try {
-        svg.setPointerCapture(event.pointerId)
-        captured = true
-      } catch {
-        /* 指针已经没了，无所谓 */
-      }
-    }
-    svg.classList.add('is-panning')
-  })
-
-  svg.addEventListener('pointermove', (event) => {
-    if (!dragging) return
-    const dx = event.clientX - dragging.x
-    const dy = event.clientY - dragging.y
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panned = true
-    state.view.tx = dragging.tx + dx
-    state.view.ty = dragging.ty + dy
-    applyView()
-  })
-
-  const endDrag = () => {
-    if (!dragging) return
-    dragging = null
-    svg.classList.remove('is-panning')
-  }
-  svg.addEventListener('pointerup', endDrag)
-  svg.addEventListener('pointercancel', endDrag)
-  /* 捕获成功时事件会一直送到 svg 身上，拖出画布也不会丢；捕获没成功的浏览器
-     只能靠 pointerleave 兜底，不然一松手就粘着鼠标不放。 */
-  svg.addEventListener('pointerleave', () => {
-    if (!captured) endDrag()
-  })
+  /* ── 缩放 ─────────────────────────────────────────────────────────────
+     画布**不再跟着鼠标拖**（用户说「知识地图的拖动可以关掉」）：早先拖一下就整幅
+     `translate` 走位，手指擦过板块还会误触，索性把平移整条路去掉——`复位视图`
+     和滚轮缩放都还在，看得到的地方够用。别再往这里加回 pointerdown/move 平移。 */
 
   svg.addEventListener('wheel', (event) => {
     event.preventDefault()

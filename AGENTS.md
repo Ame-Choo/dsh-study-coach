@@ -131,7 +131,10 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   （`scale = Math.min(box.width / vw, box.height / vh)`），再加 `preserveAspectRatio="xMinYMin meet"`。
   漏了这步，缩放就会「把东西带乱飘」——测试「滚轮缩放钉在指针底下」盯着（换算助手要拆 `atX` / `atY`，
   一个函数管两轴必错）。
-- **板块热区要靠 `panned` 让路**：`.kg-band-hit` 整块可点，但拖过画布的那一下（位移 > 3px）不算点。
+- **画布不跟鼠标拖**（用户要求关掉）：`assets/graph.js` 里**没有**平移那套 pointer 监听，也别加回去；
+  `.kg-band-hit` 的 click 因此不需要 `panned` 让路（那个状态已经删了）。滚轮缩放 + `.kg-tool` 的
+  `复位视图` / `全部收起` 是全部交互，`test/graph.test.js` 用「按下再挪，`viewTransform` 一动不动」钉着。
+  `assets/graph.css` 里 `.kg-svg` 的 `cursor: default` 别再改回 `grab`，也别加 `touch-action: none`。
 - 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
 - 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
   —— 所以它好测，别往里加 requestAnimationFrame。
@@ -153,6 +156,10 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - **复盘图常驻主页与今日任务两页**：`loadReview()` 的触发条件是 `page === 'today' || page === 'home'`；
   它只要求 `svg` 是字符串（`data` 可以是 `null`），`reviewCard()` 因此有空态分支——**这一天什么都没动过
   也要出卡**，写清「怎么让它有内容」，但别放「下载 SVG」。
+- **今日任务卡也常驻主页**（用户后来要的）：`homePage()` 的 `.cards` 依次是 `today` / `review` / `guide`。
+  `tasksCard()` 不依赖「当前页是 today」——`load()` 里 agenda 与 `/study/api/state` 本来就不分页拉，
+  勾选走文档级 `change` 委托，所以在主页上照样勾得动。断言「主页不是操作台」那条因此改口：
+  `data-act="task-toggle"` 在主页是**该在**的，档案弹层与目标库表单仍不该铺在主页。
 - `test/panel.test.js` 的 harness 用 `review` 选项喂图（`review: null` 才走得到空态分支）；
   断言别拿 `/api/review` 当条件——探活也会打这个路径，要写 `/api/review?date=`。
 

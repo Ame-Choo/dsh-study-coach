@@ -534,8 +534,8 @@ test('主页面：只回答「现在什么情况、下一步点哪儿」，活�
   assert.match(html(), /看完回来答三个问题/)
   assert.equal(html().split('看完回来答三个问题').length - 1, 1, '指引只该出现一次')
 
-  // 主页面自己不是操作台：任务勾选、档案弹层、目标库表单都不铺在这儿
-  assert.doesNotMatch(html(), /data-act="task-toggle"/)
+  // 主页面现在常驻「今日任务」那张卡（不用换页就能勾），但档案弹层、目标库表单仍不铺在这儿
+  assert.match(html(), /data-act="task-toggle"/)
   assert.doesNotMatch(html(), /data-act="archive-open"/)
   assert.doesNotMatch(html(), /data-act="lib-select"/)
 })
@@ -1181,6 +1181,25 @@ test('今日复盘图：常驻在主页与今日任务两页；今天没动过�
   const ability = await boot(fixture(), { path: '/study/ability' })
   assert.doesNotMatch(ability.html(), /data-card="review"/)
   assert.ok(!ability.calls.some((c) => c.includes('/api/review?date=')), '能力页不该真去拉复盘图')
+})
+
+test('今日任务也常驻主页：不用换页就能勾一条', async () => {
+  const home = await boot(fixture(), { path: '/study' })
+  // 版式跟今日任务那页同一套：卡片类是 card day、抬头是 .day-hero、行里有索引字
+  assert.match(home.html(), /<section class="card day" data-card="today">/)
+  assert.match(home.html(), /<p class="eyebrow">TODAY · 今日任务<\/p>/)
+  assert.match(home.html(), /class="day-gauge" role="img"/)
+  assert.match(home.html(), /<li class="task-item is-next">\s*<span class="task-ord" aria-hidden="true">01<\/span>/)
+  // 主页上直接勾：走的还是那条文档级委托，不用先换到「今日任务」页
+  assert.match(home.html(), /data-act="task-toggle" data-id="task-1" data-profile="default"/)
+  // 勾选走的是 change 委托（读 target.checked），夹具里没有真 input，直接喂一个过去
+  await home.listeners.get('change')({
+    target: { dataset: { act: 'task-toggle', id: 'task-1', profile: 'default' }, checked: true },
+  })
+  assert.equal(home.posts.at(-1).path, '/study/api/task/toggle')
+  assert.equal(home.posts.at(-1).body.id, 'task-1')
+  // 同一屏上复盘图也还在：两张常驻卡都在主页
+  assert.match(home.html(), /data-card="review"/)
 })
 
 test('今日任务页：眉标 / 大标题 / 日期 · 周X / 状态 / 量尺，任务行带序号，只给一条青', async () => {

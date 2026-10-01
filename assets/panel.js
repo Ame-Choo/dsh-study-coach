@@ -1136,7 +1136,7 @@ function homePage() {
       .join('')}
   </section>
 
-  <div class="cards">${fold('review', '今日复盘图', reviewCard())}${fold('guide', '教练的指引', guideCard())}</div>`
+  <div class="cards">${fold('today', '今日任务', tasksCard())}${fold('review', '今日复盘图', reviewCard())}${fold('guide', '教练的指引', guideCard())}</div>`
 }
 
 /** 顶栏：名字 + 页面导航 + 今天做完几条 + 地图状态 + 换配色 + 两种模式来回切。 */
@@ -1734,7 +1734,7 @@ function mapCard() {
       </div>
       <div class="bar">${bar}</div>
       <div class="map-legend">${legend}</div>
-      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；画布可拖动与缩放，左上角那块索引板钉着不跟走。每个单元设「看课」「做题」两个入口。下方列表按大类折叠，展开后显示掌握度。</p>
+      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；滚轮可缩放（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下方列表按大类折叠，展开后显示掌握度。</p>
     </div>
     <div class="graph-host" id="graph-host"></div>
     ${groupedBlocks(modules)}

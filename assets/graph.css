@@ -16,12 +16,7 @@
   background: var(--card, #141618);
   border: 1px solid var(--line, rgba(255, 255, 255, .22));
   font-family: var(--font);
-  cursor: grab;
-  touch-action: none;
-}
-
-.kg-svg.is-panning {
-  cursor: grabbing;
+  cursor: default;
 }
 
 /* 蓝图网格：极淡，给平面一点深度，不参与信息。 */

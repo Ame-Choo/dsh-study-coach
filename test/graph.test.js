@@ -721,12 +721,14 @@ test('工具按钮：全部收起清空展开，复位视图把 transform 复位
   assert.equal(byClass(host, 'kg-point').length, 0)
 
   const svg = svgOf(host)
+  /* 画布不再跟鼠标拖了：按下去再挪，视图变换一动不动。 */
   svg.dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 7 })
   svg.dispatch('pointermove', { clientX: 60, clientY: 30 })
-  assert.equal(viewTransform(host), 'translate(50 20) scale(1)')
-  // 索引板与工具箱直接挂在 <svg> 上、不进视图层：它们压根不吃拖动的变换，
-  // 钉在视口上不动。**不许给它们补反向变换**——补了才会跟着鼠标乱飞。
-  assert.equal(byClass(host, 'kg-view')[0].getAttribute('transform'), 'translate(50 20) scale(1)')
+  assert.equal(viewTransform(host), 'translate(0 0) scale(1)', '拖动不许再平移画布')
+  // 用滚轮把视图层真的推走，再看索引板与工具箱有没有被带着跑：它们直接挂在 <svg> 上、
+  // 不进视图层，钉在视口上不动。**不许给它们补反向变换**——补了才会跟着鼠标乱飞。
+  svg.dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200 })
+  assert.notEqual(viewTransform(host), 'translate(0 0) scale(1)')
   assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), null)
   assert.equal(byClass(host, 'kg-tools')[0].getAttribute('transform'), null)
   assert.ok(byClass(host, 'kg-plate')[0].parentNode === svgOf(host), '索引板要挂在 svg 上，别塞进视图层')
@@ -789,33 +791,35 @@ test('滚轮缩放钉在指针底下：那一点的画布坐标不动，缩放�
   }
 })
 
-test('空白处能拖动画布；按在单元上不拖', () => {
+test('画布不跟鼠标拖（拖动关掉了）；滚轮还是能缩放', () => {
   const host = makeHost()
   resetState(host)
   renderGraph(host, baseOpts())
   const svg = svgOf(host)
 
+  // 空白处按下再挪：以前会整幅平移，现在一动不动
   const down = svg.dispatch('pointerdown', { clientX: 5, clientY: 5, pointerId: 3 })
-  assert.ok(svg.classList.contains('is-panning'))
-  assert.deepEqual(svg.pointerCaptures, [3])
+  assert.ok(!svg.classList.contains('is-panning'), '拖动这条已经不在了')
+  assert.deepEqual(svg.pointerCaptures, [], '别再捕获指针')
   svg.dispatch('pointermove', { clientX: 105, clientY: 45 })
-  assert.equal(viewTransform(host), 'translate(100 40) scale(1)')
-
-  svg.dispatch('pointerup', {})
-  assert.ok(!svg.classList.contains('is-panning'))
+  assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
   assert.equal(down.defaultPrevented, false)
 
-  // 拖动结束，再动也不该跟着走
+  svg.dispatch('pointerup', {})
   svg.dispatch('pointermove', { clientX: 500, clientY: 500 })
-  assert.equal(viewTransform(host), 'translate(100 40) scale(1)')
+  assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
 
-  // 从单元上按下：不该开始拖
-  clickTool(host, '复位视图')
+  // 单元上按下更不该动
   drillDown(host)
-  const svg2 = svgOf(host)
   const point = byClass(host, 'kg-point')[0]
   point.dispatch('pointerdown', { clientX: 5, clientY: 5, pointerId: 4 })
-  assert.ok(!svg2.classList.contains('is-panning'))
   point.dispatch('pointermove', { clientX: 200, clientY: 200 })
   assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
+
+  // 缩放没被牵连：滚轮照样能把画布放大，复位按钮照样收得回来
+  const before = readScale(host)
+  svgOf(host).dispatch('wheel', { deltaY: -300, clientX: 300, clientY: 200 })
+  assert.ok(readScale(host) > before, '滚轮还得能放大')
+  clickTool(host, '复位视图')
+  assert.equal(readScale(host), 1)
 })
