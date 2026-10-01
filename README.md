@@ -264,7 +264,7 @@ node --test
 
 - **学习目标、材料、知识地图，只有对话那边能写**（`study_goal` / `study_material` / `study_map`）。面板上原来那几个表单已经拆掉 —— 学生自己在面板里填目标是错的，目标得是问出来的。
 - 面板上还能做的三件事：点知识点自评六档、勾掉今天做完的任务、确认地图草稿（「看过了，就这样」）。
-- 面板顶上那句指引由 `study_guide` 写，没写就是一句兜底提示（"想改目标、加材料、回对话里说"）。
+- 面板顶上那句指引由 `study_guide` 写。**没写就整条不画**（早先垫过一句「本页仅供查看，改动请在对话里提」，每页都挂着：既是废话，也不准——面板上能动手的其实不少）。
 - 面板底下有个留言口，学生留的话进 `inbox.json`；下次对话用 `study_inbox` 读，读完标掉。（**这个口后来删了**，面板改成直接开一个对话窗口打 `POST /study/api/chat/send`；`inbox.json` 与 `study_inbox` 还在，见「补：五」。）
 - 档案文件从 4 个变 6 个：多了 `guide.json`（面板指引）和 `inbox.json`（学生留言）。
 - 工具从 7 个变 9 个：多了 `study_guide`、`study_inbox`。`study_report` 的返回里也带上了 `guide` 和 `inboxItems`。
@@ -495,7 +495,7 @@ node --test
 - **只画「人说的话」。** 白名单是 `CHAT_EVENT_TYPES = ['user/message', 'assistant/message']`。两个理由都是实测的：①**工具事件是正文的十几倍**——拿正在跑的 DSH 拉一次，173 条里只有 6 条是人话，不筛的话一屏「调用 pwsh（3 步）」把正文冲没；这一轮用了哪些工具，`assistant/message` 自带的 `tools` 已经折成一行「用了 read、edit」，够用。②`user/message` 里混着**宿主注入的整段 `<system-reminder>`**（AGENTS.md 全文），不筛就会当成学生说的话整段画出来。另外**没有正文的 assistant 步**（一轮里只带工具调用的那些）也丢——画出来只有一排「（这一步没有正文）」。要往回加类型，往 `CHAT_EVENT_TYPES` 里写、再在 `toMessages` 里补一段映射。
 - HTTP 三条：`GET /study/api/chat/sessions`、`GET /study/api/chat?sessionId=&max=&sessions=1`、`POST /study/api/chat/send {text, sessionId?, mode?}`（`mode` 只收 `queue` / `steer`，复用 `lib/bridge.js` 的投递通道）。
 - 面板侧：**整页对话**和**右下角悬浮窗**是同一份状态（`chat` 对象）两处渲染，`paintChat()` 一次把 `#chat-log` 和 `#float-log` 都刷掉。开着对话页或悬浮窗时**每 2.5 秒拉一次快照**，标签页切到后台、或者两者都关掉就把定时器停掉（`syncChatPolling()` + `chatVisible()`）；只有指纹变了才重画，正在输的字和滚到一半的位置都不动。**通道没接通就别开定时器**（会留一个永远停不下来的 interval，`node --test` 会因此跑不完）。
-- 悬浮窗：FAB（`[data-act="float-open"]`）在主页以外的每一页都在，点开是简化版——只有消息列表 + 一个输入框，不显示工具胶囊和时间戳，`×` 关掉、`Esc` 也关；`Enter` 发送、`Shift+Enter` 换行。
+- 悬浮窗：FAB（`[data-act="float-open"]`）在主页以外的每一页都在，点开是简化版——只有消息列表 + 一个输入框，不显示工具胶囊和时间戳，`×` 关掉、`Esc` 也关；`Enter` 发送、`Shift+Enter` 换行。**按住标题栏能把它拖走**（位置记在 `localStorage`，刷新还在老地方；双击标题栏回右下角）。
 - 侧栏模式下一屏只放得下一张卡，所以**换页时自动把那一页的主卡摊开**（`openFirstCard()` 只在换页和首次加载时调一次，放进 `render()` 里会让折叠按钮按不动）。
 
 三条路由同样是**服务端代码 → 必须重启 DSH 才生效**。没重启时对话页会直接说「服务端还没重启」，而不是装作坏了。
@@ -511,6 +511,7 @@ node --test
 - **脱开 DSH 也能看长相。** `DSH_STUDY_PREVIEW_CHAT=1 node scripts/preview.mjs` 会挂一份假对话，不必重启 DSH 就能把对话页和悬浮窗点一遍。真跑起来那段对话仍是 `sessionController` 给的。
 - **顶上能挑会话。** 他那台 DSH 上开着好几个会话时，对话页和悬浮窗顶上那颗下拉就能选——`GET /study/api/chat?sessions=1` 给清单，选中项按 `updatedAt` 倒排的当前会话。只有一条会话时**不给下拉**，改成一行静态的「当前会话：X」（摆一颗只有一个选项、点不动的控件还不如直接写出来）。清单只在**对话页**或**悬浮窗开着**的时候才拉（`loadChat({ withSessions: page === 'coach' || ui.float })`），别的时候省一趟接口。
 - **两个容易踩的地方。** ①`loadChat` 收清单时要判空：`Array.isArray(out.sessions) && out.sessions.length ? out.sessions : (chat && chat.sessions) || []`——不判的话，一次没带 `sessions=1` 的请求会用空数组把刚拉到的清单冲掉（悬浮窗一关一开就没得选了）。②点开悬浮窗时得补拉一次：`load()` 跑的那会儿 `ui.float` 还是 `false`，清单是空的。
+- **浮窗能拖着走。** 按住标题栏（`.float-head`）拖，落点记在 `localStorage` 的 `study-coach:float-pos`（`FLOAT_POS_KEY`），拖过的位置**每帧重画都带着**（`ui.floatPos` → 行内 `left/top`，加个 `moved` 类把 `right/bottom` 让开）——不然 2.5 秒刷一次快照，窗子每次都自己跳回右下角。拖动用**指针事件**（鼠标 / 触屏 / 触控笔一套），监听挂在 `document` 而不是窗子自己身上：拖到窗口外面再松手也得收到 `pointerup`，挂元素上会漏，那就变成「手松了它还跟着鼠标跑」。落点由 `clampPos()` 按在视口里（整扇都看得见；视口比窗子还小就贴左上角），窗口 resize 之后会重新按一次，**每次重画也会按一次**（`clampFloatToView()`）——位置可能是在外接屏上拖的，换回笔记本再打开不能让它落在屏幕外。拖动期间**直接改元素样式、不整页重画**——重画会把输入框里的字和消息列表滚到一半的位置弄丢。双击标题栏回右下角，把记的位置也清掉。标题栏上那两颗按钮照旧是按钮（`pointerdown` 里遇到 `button` 直接放行）。
 
 ### 六、错题本：不新开一张表，挂在证据上
 

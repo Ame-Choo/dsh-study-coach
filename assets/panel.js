@@ -30,7 +30,8 @@ const KIND_ORDER = ['book', 'ai', 'notes', 'past', 'video', 'other']
 const TASK_KIND = { watch: '看课', read: '读教材', practice: '练习', review: '复习', other: '其他' }
 const GUIDE_KIND = { ask: '需在对话中回答', self: '请在下方自评', plan: '查看今日任务', done: '' }
 
-const BACK_HINT = '本页仅供查看。修改学习目标、登记材料、重画知识地图，请在对话中提出。'
+/** 右下角那个浮窗被拖到哪儿了。拖过一次才存，没拖过就是 CSS 里那个右下角。 */
+const FLOAT_POS_KEY = 'study-coach:float-pos'
 
 /**
  * 服务端是不是新代码。
@@ -118,6 +119,8 @@ const ui = {
   chatSending: false,
   /* 右下角那个悬浮小窗开着没有 */
   float: false,
+  /* 浮窗被拖到哪儿了：null = 没拖过，照 CSS 待在右下角 */
+  floatPos: readFloatPos(),
   /* 错题本只看哪一档，空串 = 全看 */
   mistakeStatus: '',
   factKind: '',
@@ -888,6 +891,7 @@ function render() {
   mountGraph()
   syncChatPolling()
   syncFocusTicker()
+  clampFloatToView()
 }
 
 /* ── 对话轮询 ─────────────────────────────────────────────────────────────
@@ -1180,13 +1184,19 @@ function openMaterial(kind, point) {
     .catch((err) => toast('发送失败：' + err.message))
 }
 
-/** 顶上那句：要么是教练留的，要么是「回对话里说」的兜底提示。 */
+/**
+ * 顶上那句：教练留了话就写出来，没留就**什么都不画**。
+ *
+ * 以前这里垫了一句「本页仅供查看，改动请在对话里提」，每页都挂着——一来是废话，
+ * 二来也不准（面板上能动手的其实不少：自评、勾任务、管清单、切档案）。教练没说
+ * 话的时候，这一栏就该是空的。
+ */
 function guideCard() {
   const guide = state.guide || {}
-  const text = guide.text || BACK_HINT
-  const sub = guide.text ? GUIDE_KIND[guide.kind] || '' : ''
-  return `<section class="card guide ${guide.text ? 'on' : ''}">
-    <div class="guide-text">${esc(text)}</div>
+  if (!guide.text) return ''
+  const sub = GUIDE_KIND[guide.kind] || ''
+  return `<section class="card guide on">
+    <div class="guide-text">${esc(guide.text)}</div>
     ${sub ? `<div class="dim">${esc(sub)}</div>` : ''}
   </section>`
 }
@@ -2712,6 +2722,9 @@ function chatCard() {
  * 面板任何一页都挂一颗圆按钮，点开就是简化版的聊天窗：同一份快照、同一条投递通道，
  * 只是字号和留白收一档，宽度固定。走到哪一页都能顺手说一句，不用先绕回「对话」页。
  * 「对话」页本身已经整屏是聊天窗口了，那一页不再挂。
+ *
+ * 拖过之后位置记在 `ui.floatPos` 里，**每帧重画都带着它**——不然每 2.5 秒刷一次
+ * 快照，窗子就自己跳回右下角了。
  */
 function floatChat() {
   if (page === 'coach') return ''
@@ -2720,22 +2733,158 @@ function floatChat() {
   }
   const snapshot = chat
   const on = Boolean(snapshot && snapshot.available)
-  const head = `<header class="float-head">
+  const pos = ui.floatPos
+  const cls = `float${pos ? ' moved' : ''}`
+  const place = pos ? ` style="left:${pos.left}px;top:${pos.top}px"` : ''
+  const head = `<header class="float-head" title="按住这里可以拖走，双击回到右下角">
     <b>与教练对话</b>${on ? '' : '<span class="dim">未接通</span>'}
     <span class="spread"></span>
     <button class="mini" data-act="chat-reload" title="重新读取">↻</button>
     <button class="mini" data-act="float-close" title="收起" aria-label="收起">✕</button>
   </header>`
   if (!on) {
-    return `<section class="float" role="dialog" aria-label="与教练对话">${head}
+    return `<section class="${cls}"${place} role="dialog" aria-label="与教练对话">${head}
       <p class="dim float-off">${chatOffText('float')}</p>
     </section>`
   }
-  return `<section class="float" role="dialog" aria-label="与教练对话">${head}
+  return `<section class="${cls}"${place} role="dialog" aria-label="与教练对话">${head}
     ${chatBody(snapshot, 'float')}
   </section>`
 }
 
+/* ══ 浮窗拖着走 ═══════════════════════════════════════════════════════════
+ * 浮窗本来是钉在右下角的，挡着东西的时候想挪开。按住标题栏就能拖，松开记住位置
+ * （localStorage，刷新还在老地方）；双击标题栏回到右下角——拖跑了找不回来最气人。
+ *
+ * 用指针事件，鼠标 / 触屏 / 触控笔一套写完。监听挂在 **document** 上而不是窗口
+ * 自己身上：拖到窗口外面再松手也得收到 pointerup，挂元素上会漏，然后就变成
+ * 「手松了它还跟着鼠标跑」。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/** 拖动中的中间状态：{ box, dx, dy }。null = 没在拖。 */
+let floatDrag = null
+
+/** 把窗口按在视口里：整扇都看得见，拖不出去。视口比窗口还小就贴在左上角。 */
+function clampPos(left, top, size, view) {
+  const maxLeft = Math.max(0, Math.round(view.width - size.width))
+  const maxTop = Math.max(0, Math.round(view.height - size.height))
+  return {
+    left: Math.min(Math.max(0, Math.round(left)), maxLeft),
+    top: Math.min(Math.max(0, Math.round(top)), maxTop),
+  }
+}
+
+/** 浮窗现在多宽多高；量不到就按样式里那对默认值算（372 × 540）。 */
+function floatSize(box) {
+  const rect = box && box.getBoundingClientRect ? box.getBoundingClientRect() : null
+  return {
+    width: (box && box.offsetWidth) || (rect && rect.width) || 372,
+    height: (box && box.offsetHeight) || (rect && rect.height) || 540,
+  }
+}
+
+/**
+ * 把位置写进元素样式。拖动时直接改样式、不整页重画——重画会把输入框里的字
+ * 和消息列表滚到一半的位置弄丢。
+ */
+function applyFloatPos(box, pos) {
+  if (!box || !box.style) return
+  if (!pos) {
+    box.style.left = ''
+    box.style.top = ''
+    box.style.right = ''
+    box.style.bottom = ''
+    return
+  }
+  box.style.left = `${pos.left}px`
+  box.style.top = `${pos.top}px`
+  box.style.right = 'auto'
+  box.style.bottom = 'auto'
+}
+
+/**
+ * 存下来的位置可能是另一块屏幕上拖的（外接屏挪到左边、换回笔记本），画完照当前
+ * 视口重新按一次；没挪动就不写，省得每帧都碰 localStorage。
+ */
+function clampFloatToView() {
+  if (!ui.floatPos) return
+  const box = document.querySelector ? document.querySelector('.float') : null
+  if (!box) return
+  const pos = clampPos(ui.floatPos.left, ui.floatPos.top, floatSize(box), {
+    width: window.innerWidth || 0,
+    height: window.innerHeight || 0,
+  })
+  if (pos.left === ui.floatPos.left && pos.top === ui.floatPos.top) return
+  ui.floatPos = pos
+  applyFloatPos(box, pos)
+  saveFloatPos(pos)
+}
+
+/** 记住拖到哪儿。存不下（无痕模式之类）就只是这次算数。 */
+function saveFloatPos(pos) {
+  try {
+    const store = window.localStorage
+    if (!store) return
+    if (pos) store.setItem(FLOAT_POS_KEY, JSON.stringify({ left: pos.left, top: pos.top }))
+    else if (store.removeItem) store.removeItem(FLOAT_POS_KEY)
+  } catch (e) {
+    /* 存不下就算了 */
+  }
+}
+
+/** 读回上次拖到哪儿。没有、或者存坏了，都当没拖过。 */
+function readFloatPos() {
+  try {
+    const store = window.localStorage
+    const raw = store ? store.getItem(FLOAT_POS_KEY) : ''
+    const pos = raw ? JSON.parse(raw) : null
+    if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)) {
+      return { left: Math.round(pos.left), top: Math.round(pos.top) }
+    }
+  } catch (e) {
+    /* 读到坏的当没拖过 */
+  }
+  return null
+}
+
+document.addEventListener('pointerdown', (event) => {
+  if (event.button) return // 只认左键 / 单指
+  const box = event.target.closest && event.target.closest('.float')
+  if (!box) return
+  if (!event.target.closest('.float-head')) return
+  if (event.target.closest('button')) return // 标题栏上那两颗按钮还是按钮
+  const rect = box.getBoundingClientRect ? box.getBoundingClientRect() : { left: 0, top: 0 }
+  floatDrag = { box, dx: event.clientX - rect.left, dy: event.clientY - rect.top }
+  if (event.preventDefault) event.preventDefault()
+})
+
+document.addEventListener('pointermove', (event) => {
+  if (!floatDrag) return
+  // 每次都重新找一下窗子：面板每 2.5 秒可能整块重画一次，手里那个引用会变成脱离文档的旧节点。
+  const box = (document.querySelector && document.querySelector('.float')) || floatDrag.box
+  floatDrag.box = box
+  const pos = clampPos(event.clientX - floatDrag.dx, event.clientY - floatDrag.dy, floatSize(box), {
+    width: window.innerWidth || 0,
+    height: window.innerHeight || 0,
+  })
+  ui.floatPos = pos
+  applyFloatPos(box, pos)
+})
+
+document.addEventListener('pointerup', () => {
+  if (!floatDrag) return
+  floatDrag = null
+  saveFloatPos(ui.floatPos)
+})
+
+/* 双击标题栏：回到右下角，顺手忘掉记着的位置。 */
+document.addEventListener('dblclick', (event) => {
+  if (!event.target.closest || !event.target.closest('.float-head')) return
+  ui.floatPos = null
+  saveFloatPos(null)
+  applyFloatPos(event.target.closest('.float'), null)
+  render()
+})
 
 /* ── 交互 ─────────────────────────────────────────────────────────────── */
 
@@ -3407,7 +3556,11 @@ document.addEventListener('keydown', (event) => {
 let resizeTimer = null
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => mountGraph(), 160)
+  resizeTimer = setTimeout(() => {
+    mountGraph()
+    // 拖过的浮窗在窗口变小之后可能有一截露在外面，重新按回视口里
+    clampFloatToView()
+  }, 160)
 })
 
 /* 浏览器的前进后退：地址变了就照地址认一次页。 */

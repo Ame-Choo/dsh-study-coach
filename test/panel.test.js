@@ -33,7 +33,7 @@ function stubDom() {
   const document = {
     documentElement: { dataset: {} },
     getElementById: (id) => (id === 'graph-host' ? null : box(id)),
-    querySelector: () => null,
+    querySelector: (sel) => (typeof window.__query === 'function' ? window.__query(sel) : null),
     querySelectorAll: () => [],
     createElement: () => ({ style: {}, appendChild() {}, classList: { add() {}, remove() {} } }),
     addEventListener: (type, fn) => listeners.set(type, fn),
@@ -43,6 +43,7 @@ function stubDom() {
     addEventListener() {},
     open: () => null,
     innerWidth: 1200,
+    innerHeight: 800,
     localStorage: {
       store: new Map(),
       getItem(key) {
@@ -50,6 +51,9 @@ function stubDom() {
       },
       setItem(key, value) {
         this.store.set(key, String(value))
+      },
+      removeItem(key) {
+        this.store.delete(key)
       },
     },
     location: { href: 'http://127.0.0.1:19388/study', search: '', pathname: '/study', assign() {} },
@@ -913,6 +917,112 @@ test('对话页就是一个完整聊天窗口；别的页挂一颗悬浮窗', as
   await home.clickAct({ act: 'float-close' })
   assert.match(home.html(), /class="fab" data-act="float-open"/)
   assert.doesNotMatch(home.html(), /class="float"/)
+})
+
+test('顶上那一栏：教练没留话就整条不画，不再垫一句「本页仅供查看」', async () => {
+  // 夹具里 guide 是有话的：那就得画出来，还带「这类话要他干嘛」那一行小字
+  const said = await boot(fixture())
+  assert.match(said.html(), /class="card guide on"/)
+  assert.match(said.html(), /看完回来答三个问题/)
+  assert.match(said.html(), /需在对话中回答/)
+
+  // 教练没留话：整张卡都不在——以前这里垫一句「本页仅供查看…」，每页挂着
+  const quiet = await boot({ ...fixture(), guide: { text: '', kind: '' } })
+  assert.doesNotMatch(quiet.html(), /仅供查看/)
+  assert.doesNotMatch(quiet.html(), /class="card guide/)
+  assert.doesNotMatch(quiet.html(), /教练的指引/, '空卡连折叠条都不该有')
+})
+
+test('浮窗能拖着走：位置记在样式里、重画不跳回角落，双击回右下角', async () => {
+  const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
+  await home.clickAct({ act: 'float-open' })
+
+  // 假的窗口元素：量出来 372×540，此刻坐在 (800, 500)
+  const box = {
+    style: {},
+    offsetWidth: 372,
+    offsetHeight: 540,
+    getBoundingClientRect: () => ({ left: 800, top: 500, width: 372, height: 540 }),
+  }
+  const head = { closest: () => null }
+  const target = {
+    closest(sel) {
+      if (sel === '.float') return box
+      if (sel === '.float-head') return head
+      return null // 标题栏上那两颗按钮：按在这儿不算拖
+    },
+  }
+  const down = home.listeners.get('pointerdown')
+  const move = home.listeners.get('pointermove')
+  const up = home.listeners.get('pointerup')
+
+  // 没按住就动：一动不动
+  move({ clientX: 10, clientY: 10 })
+  assert.equal(box.style.left, undefined)
+
+  // 按住 (900, 520) —— 抓手在窗子里的 (100, 20)，拖到 (200, 300) 就是落在 (100, 280)
+  down({ button: 0, clientX: 900, clientY: 520, target, preventDefault() {} })
+  move({ clientX: 200, clientY: 300 })
+  assert.equal(box.style.left, '100px')
+  assert.equal(box.style.top, '260px', '视口高 800、窗子高 540，最多到 260 —— 拖不出视口')
+  assert.equal(box.style.right, 'auto', 'right 得让开，不然两头顶着')
+  assert.equal(box.style.bottom, 'auto')
+
+  // 再往右下角甩：按回视口内（1200-372 = 828）
+  down({ button: 0, clientX: 300, clientY: 400, target, preventDefault() {} })
+  move({ clientX: 9999, clientY: 9999 })
+  assert.equal(box.style.left, '828px')
+  assert.equal(box.style.top, '260px')
+
+  // 松手之后鼠标再动，窗子不跟着跑
+  up()
+  move({ clientX: 40, clientY: 40 })
+  assert.equal(box.style.left, '828px')
+  // 并且记下来了，刷新之后还在老地方
+  assert.equal(home.window.localStorage.getItem('study-coach:float-pos'), '{"left":828,"top":260}')
+
+  // 重画（收起再点开）位置得带着 —— 否则每 2.5 秒刷一次快照，窗子自己跳回右下角
+  await home.clickAct({ act: 'float-close' })
+  await home.clickAct({ act: 'float-open' })
+  assert.match(home.html(), /class="float moved" style="left:828px;top:260px"/)
+
+  // 双击标题栏：回右下角，记的位置也忘掉
+  const head2 = { closest: (sel) => (sel === '.float-head' ? head2 : sel === '.float' ? box : null) }
+  home.listeners.get('dblclick')({ target: head2 })
+  assert.equal(box.style.left, '', '回到 CSS 那个右下角')
+  assert.equal(box.style.top, '')
+  assert.equal(home.window.localStorage.getItem('study-coach:float-pos'), null)
+  assert.match(home.html(), /class="float" role="dialog"/)
+  assert.doesNotMatch(home.html(), /class="float moved"/)
+})
+
+test('浮窗记的位置是另一块屏幕上拖的：重画时按当前视口收回来看得见', async () => {
+  const home = await boot(fixture(), { path: '/study', chat: true, hidden: true })
+  await home.clickAct({ act: 'float-open' })
+  const box = {
+    style: {},
+    offsetWidth: 372,
+    offsetHeight: 540,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 372, height: 540 }),
+  }
+  const head = { closest: () => null }
+  const target = { closest: (sel) => (sel === '.float' ? box : sel === '.float-head' ? head : null) }
+  // 在外接屏（1200×800）上拖到右下角
+  home.listeners.get('pointerdown')({ button: 0, clientX: 900, clientY: 520, target, preventDefault() {} })
+  home.listeners.get('pointermove')({ clientX: 9999, clientY: 9999 })
+  home.listeners.get('pointerup')({})
+  assert.equal(box.style.left, '828px')
+
+  // 换回笔记本，视口只剩 400×700 —— 再画一次就得挪回来
+  home.window.innerWidth = 400
+  home.window.innerHeight = 700
+  home.window.__query = (sel) => (sel === '.float' ? box : null)
+  await home.clickAct({ act: 'float-close' })
+  await home.clickAct({ act: 'float-open' })
+  assert.equal(box.style.left, '28px', '400 - 372')
+  assert.equal(box.style.top, '160px', '700 - 540')
+  assert.equal(home.window.localStorage.getItem('study-coach:float-pos'), '{"left":28,"top":160}')
+  assert.match(home.html(), /class="float moved" style="left:28px;top:160px"/)
 })
 
 test('会话选择：只有一个会话也写出来，多个才给下拉，浮窗里也有', async () => {

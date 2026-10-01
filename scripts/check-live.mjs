@@ -57,6 +57,7 @@ const MARKS = [
   ['healthCard', '体检卡'],
   ['resolvePage', '分页面'],
   ['chatCard', '对话页'],
+  ['clampPos', '浮窗拖着走'],
   ['openFirstCard', '侧栏自动展开'],
   ['mistakesCard', '错题本'],
   ['reviewCard', '今日复盘图'],

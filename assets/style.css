@@ -753,6 +753,8 @@ html[data-mode="browser"] .chat-page .card {
   box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
+/* 被拖过：位置由行内样式说了算，别让 right/bottom 再把它拽回角落。 */
+.float.moved { right: auto; bottom: auto; }
 .float-head {
   display: flex;
   align-items: center;
@@ -760,7 +762,12 @@ html[data-mode="browser"] .chat-page .card {
   padding: 9px 10px 9px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--card-2);
+  /* 按住这一条能把窗子拖走；拖的时候别顺手把文字选上、别让触屏去滚页面。 */
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
+.float-head:active { cursor: grabbing; }
 .float-head b { font-size: 13px; }
 .float-head .spread { flex: 1; }
 .float-log {
