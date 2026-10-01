@@ -2602,8 +2602,11 @@ function clockOf(time) {
 }
 
 /**
- * 消息列表。工具调用和工具返回单独攒成一段——连着十几条 tool/call 铺开会把正文冲没，
- * 收成一行「调用了 read、edit（12 步）」正好。
+ * 消息列表。
+ *
+ * 服务端（lib/chat.js）现在只发 user / assistant 两种：工具事件在那边就筛掉了。
+ * 下面「工具攒成一行」这段留着是兜底，也给 scripts/preview.mjs 的假数据用——
+ * 真接上 DSH 时不会再走到。
  */
 function chatLog(snapshot) {
   const messages = (snapshot && snapshot.messages) || []

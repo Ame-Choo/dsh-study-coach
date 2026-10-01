@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { toMessages } from '../lib/chat.js'
+import { CHAT_EVENT_TYPES, toMessages } from '../lib/chat.js'
 import { Library } from '../lib/library.js'
 import { createRouter } from '../lib/routes.js'
 
@@ -25,10 +25,24 @@ process.env.DSH_STUDY_ROOT = root
 
 const NOW = Date.now()
 
-/** 一段真日志的样子：有正文、有推理、有工具调用、还有不该露面的系统消息。 */
+/** 一段真日志的样子：有正文、有推理、有工具调用、有宿主注入块，还有不该露面的系统消息。 */
 const LOG = [
   { type: 'user/message', seq: 9, time: NOW - 5000, data: { content: [{ type: 'text', text: '这节的含参讨论我没跟上' }] } },
   { type: 'step/start', seq: 10, time: NOW - 4900, data: { turn: 1, step: 1 } },
+  // 宿主注入的整段指令走的也是 user/message，不能画成学生说的话
+  {
+    type: 'user/message',
+    seq: 12,
+    time: NOW - 4800,
+    data: { content: [{ type: 'text', text: '<system-reminder>\nUpdated instructions from: AGENTS.md\n…\n</system-reminder>' }] },
+  },
+  // 只带工具调用、没有正文的一步：画出来只会多一排「（这一步没有正文）」
+  {
+    type: 'assistant/message',
+    seq: 14,
+    time: NOW - 4000,
+    data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'tool-call', id: 'c0', name: 'glob' }] } },
+  },
   {
     type: 'assistant/message',
     seq: 16,
@@ -133,23 +147,21 @@ after(async () => {
   rmSync(root, { recursive: true, force: true })
 })
 
-test('对话读进面板：只留正文，推理和系统消息不露面，内容对得上', async () => {
-  // 一、解析口径
+test('对话读进面板：只留两种消息类型，工具、系统消息、注入块都不露面', async () => {
+  // 一、解析口径：类型白名单先筛一道，再挑有正文的
+  assert.deepEqual([...CHAT_EVENT_TYPES], ['user/message', 'assistant/message'])
   const messages = toMessages(LOG.map((event) => ({ type: 'event', event })))
   assert.deepEqual(
     messages.map((m) => m.role),
-    ['user', 'assistant', 'tool', 'result'],
-    'system/message、step/*、session-log-* 都该被丢掉',
+    ['user', 'assistant'],
+    'tool/call、tool/result、system/message、step/*、注入块、没有正文的步，都该被丢掉',
   )
+  assert.deepEqual(messages.map((m) => m.seq), [9, 16], '留下的是哪两条，按 seq 排')
   assert.equal(messages[0].text, '这节的含参讨论我没跟上')
   assert.equal(messages[1].text, '我们把它拆成两步看。')
   assert.doesNotMatch(messages[1].text, /推理/, 'reasoning 不该进正文')
-  assert.deepEqual(messages[1].tools, ['read'])
+  assert.deepEqual(messages[1].tools, ['read'], '这一轮用了哪些工具，折在 assistant 那条上')
   assert.equal(messages[1].tokens, 120)
-  assert.equal(messages[2].tool.name, 'read')
-  assert.equal(messages[2].tool.hint, 'F:\\讲义.pdf', '工具参数摘要要挑出最好认的那个值')
-  assert.equal(messages[3].role, 'result')
-  assert.equal(messages[3].tool.callId, 'c1')
   assert.ok(messages.every((m) => typeof m.seq === 'number'), '每条都要带 seq，前端才好按序合并')
 
   // 二、接口侧：不给 sessionId，服务端自己挑最近那个有内容的会话
@@ -159,8 +171,8 @@ test('对话读进面板：只留正文，推理和系统消息不露面，内�
   assert.equal(one.sessionId, 'live-1', 'blank 和「刚开的」要被跳过')
   assert.equal(one.title, '学习教练')
   assert.equal(one.cursor, 20)
-  assert.equal(one.messages.length, 4)
-  assert.equal(one.messages.at(-1).role, 'result', '拿到 snapshot 就该退订，seq 21 那条不该混进来')
+  assert.equal(one.messages.length, 2, '工具那几条已经在服务端筛掉了')
+  assert.equal(one.messages.at(-1).role, 'assistant', '拿到 snapshot 就该退订，seq 21 那条不该混进来')
 
   // 三、会话清单：子 agent 不进面板
   const two = await (await fetch(base + '/study/api/chat/sessions')).json()
