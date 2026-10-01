@@ -47,6 +47,8 @@ pnpm add link:/绝对路径/dsh-study-coach
 ### 装完必须重启 DSH
 
 插件的 HTTP 路由是**进程启动时**挂上去的，不重启不生效。数据不受重启影响。
+改代码之后怎么判断「现在跑的到底是新的还是旧的」，见下面「补：改完代码怎么生效」——
+那里有两个自查脚本（`scripts/check-live.mjs`、`scripts/preview.mjs`）。
 
 ### 卸载
 
@@ -151,7 +153,7 @@ pnpm add link:/绝对路径/dsh-study-coach
 
 「一次只推进一档」这条也是工具自己实现的：`study_record` 里填跳了会被压回上一档，返回的 `summary` 里写「跳档」。
 
-压档之后还有一道**硬闸门**：往「能独立做 / 熟练稳定 / 能讲明白」推的时候，该单元底下必须先有够数的「真做过」证据（`kind` 是 `quiz` 或 `photo`），不够就直接抛错，写清楚现在有几条、还差几条。`STAGE_NEEDS = { 能独立做: 1, 熟练稳定: 2, 能讲明白: 3 }`、`WORK_KINDS = ['quiz', 'photo']` 都在 `lib/store.js`。
+压档之后还有一道**硬闸门**：往「能独立做 / 熟练稳定 / 能讲明白」推的时候，该单元底下必须先有够数的「真做过」证据（`kind` 是 `quiz` 或 `photo`），不够就直接抛错，写清楚现在有几条、还差几条。`STAGE_NEEDS = { 能独立做: 1, 熟练稳定: 2, 能讲明白: 3 }`、`WORK_KINDS = ['quiz', 'photo']` 都在 `lib/schema.js`（`lib/store.js` 转出来，`import … from './store.js'` 的老写法照样能拿到）。
 
 这道门刻意只装在**工具层**，没装进 `recordEvidence()`：`study_record` 是教练记档位的唯一入口，而面板上学生自己点的那颗自评按钮走 `POST /study/api/mastery`，那是他自己的说法，本来就该让它记下来——档案要留下的是「他认为自己到什么程度了」，不是「他证明了什么程度」。两笔账分开，判卷的时候才分得清。
 
@@ -196,6 +198,30 @@ node --test
 
 `test/plugin.test.js` 会假装自己是 DSH：造一个 ctx，把 `apply()` 真跑一遍，
 再把 `/study` 的 handler 挂到真 HTTP 服务器上打请求。改完东西先跑它。
+
+### 代码长什么样
+
+一层一层往下，谁都不回头 import 谁：
+
+| 文件 | 管什么 |
+| --- | --- |
+| `index.js` | 插件入口：定数据根、造 `Store` 与 `Library`、把 router / handler / 工具注册起来 |
+| `lib/schema.js` | 常量表、`nowIso`、各种空档案的默认形状。**零依赖的叶子**，谁都可以 import |
+| `lib/store.js` | 盘上那一层：读写 JSON、`Store.snapshot()`。`export * from './schema.js'`，老调用点照旧从 `./store.js` 取常量 |
+| `lib/map.js` | 地图 / 掌握度 / 错题 / 每级档案 / 总体能力 / 任务视图 |
+| `lib/analysis.js` | 材料通读的结论、页级归类 |
+| `lib/notice.js` | 面板顶上那句指引、学生留言 |
+| `lib/memory.js`、`lib/toolbox.js`、`lib/student.js` | 记忆卡排期、番茄钟与清单、学生画像，都是纯函数，不碰磁盘也不碰 HTTP |
+| `lib/library.js` | 档案根 → 每个学习目标一个子目录，外加回收站 |
+| `lib/paths.js` | 页图目录与上传目录只算这一处（`pagesRootOf` / `uploadRootOf`） |
+| `lib/routes.js` | 所有 `/study/api/*`；不碰 cordis，所以能脱开 DSH 单测 |
+| `lib/handler.js` | `/study/*` 的静态页、文件、页图、上传 |
+| `lib/tools.js` | 21 个 `study_*` 工具的定义与 execute |
+| `lib/review.js` | 今日复盘那张 2048×1180 的海报（服务端现拼 SVG） |
+| `lib/bridge.js`、`lib/chat.js` | 往 DSH 会话里投递、读会话快照。都是**可选**服务，拿不到就 `available:false` |
+| `assets/` | 面板 `panel.*`、做题页 `practice.*`、图谱 `graph.*`、六档表 `stages.js`、启动规则 `boot.js` |
+
+`assets/` 那一摊的规矩写在 [design.md](design.md) 里，**动 CSS 或新写页面之前先读它**。
 
 两道额外的护栏：
 
@@ -266,8 +292,8 @@ node --test
 
 - **做题页**：`/study/practice?point=<知识点 id>`。图谱上单元的「做题」按钮、以及别处要练哪一节，都开这页。页里四块：这一节（看课 / 打开配套练习 / 出处）、教辅里对应哪儿（逐章列出页码、习题号、难度，带「翻开」链接）、想练手（「让 AI 出几道新题」写进 `inbox.json`）、我现在到哪一档（六档自评）。
 - 章节靠 `GET /study/api/practice` 给：它把所有已分析的章节摊平，再拿知识点的 `source` 去对（章号或章节名），一个都对不上就把整份教辅摆出来——总比空着强。实现在 `lib/routes.js` 的 `chaptersFor()`。
-- 做题页是独立页面 `assets/practice.html` + `practice.js` + `practice.css`，六档和配色抽到了 `assets/stages.js`（只给这页用；面板 `panel.js` 仍留着内联那份，少一个加载失败就白屏的可能）。`lib/handler.js` 里给 `/study/practice` 单开了分支。
-- **掌握度百分比**：`lib/store.js` 加了 `STAGE_SCORE`（没接触过 0 / 见过 0.2 / 能跟做 0.4 / 能独立做 0.6 / 熟练稳定 0.8 / 能讲明白 1）、`progressOf()`（一组知识点算平均）、`progressByGroup()`（按大类、按模块各算一份）。`Store.snapshot()` 现在多返回 `progress: { overall, groups, modules }`，面板直接用，不用再算。
+- 做题页是独立页面 `assets/practice.html` + `practice.js` + `practice.css`，六档和配色抽到了 `assets/stages.js`。**这一段当时写的是「只给这页用，面板那份还内联着」——后来收掉了**：面板与图谱都改成从 `assets/stages.js` 取，`test/mirrors.test.js` 钉住前后端那几张表不许再各写一份。`lib/handler.js` 里给 `/study/practice` 单开了分支。
+- **掌握度百分比**：`lib/map.js` 里有 `STAGE_SCORE`（没接触过 0 / 见过 0.2 / 能跟做 0.4 / 能独立做 0.6 / 熟练稳定 0.8 / 能讲明白 1）、`progressOf()`（一组知识点算平均）、`progressByGroup()`（按大类、按模块各算一份）。`Store.snapshot()` 多返回 `progress: { overall, groups, modules }`，面板直接用，不用再算。
 - 面板下面那份列表改成了**两层折叠**：默认只有大类（后面跟百分比条），点开才见模块（也带百分比），再点开才是最小单元和自评按钮。从图谱上点一个圆点，它所在的大类和模块会自动撑开、滚到那一条。
 - **三级图标重叠**是个真 bug，已修：`assets/graph.js` 递归往下传 y 的时候是 `baseY + node.top`，漏掉了父节点自身那半截高度（`node.y - node.subH / 2`），所以两个模块的第二层起点都算成 0。改成 `baseY + node.y - node.subH / 2 + node.top` 之后，单元圆点间距恢复正常。顺手给单元加了 `kg-unit-bg` 底色，看着像一张卡片。
 - `POST /study/api/map/module` 原来只认 `body.id`，不收 `group`，大类会丢。现在两种形状都吃（裸模块或 `{ module: {...} }`），并且 `group` 存得住。
@@ -276,7 +302,7 @@ node --test
 
 这一版按「六点新要求」改的，都落在同一套数据上：
 
-- **每级一份掌握档案**：`lib/store.js` 的 `archiveFor(map, mastery, level, key)` 给大类 / 模块 / 单元三级各生成一份账（`progress` / `total` / `touched` / `avgConfidence` / `byStage` / `due` / 逐点状态与证据流水 / 该级证据汇总）。面板上大类的头、模块的头、单元那行后面各挂一个「档案」小按钮，弹层里就是它。工具侧是 `study_archive`，HTTP 侧是 `GET /study/api/archive?level=&key=`。三级算的是同一套东西，所以「函数 60%」跟它底下模块的百分比永远对得上。
+- **每级一份掌握档案**：`lib/map.js` 的 `archiveFor(map, mastery, level, key)` 给大类 / 模块 / 单元三级各生成一份账（`progress` / `total` / `touched` / `avgConfidence` / `byStage` / `due` / 逐点状态与证据流水 / 该级证据汇总）。面板上大类的头、模块的头、单元那行后面各挂一个「档案」小按钮，弹层里就是它。工具侧是 `study_archive`，HTTP 侧是 `GET /study/api/archive?level=&key=`。三级算的是同一套东西，所以「函数 60%」跟它底下模块的百分比永远对得上。
 - **总体能力**：`abilityReport(state)` 横着把所有大类、所有点、所有基本工具、最近七天的完成节奏摊成一份大盘，外加一句判词（`judgement {text, level, updatedAt}`，由 `study_ability action=set` 写）。面板顶部那张「总体能力」卡就是它：大盘百分比 + 六段构成条 + 各大类 / 卡住的地方 / 该复习了 / 最近七天四块。工具侧 `study_ability`，HTTP 侧 `GET|POST /study/api/ability`。
 - **任务能跳过去，也能改能删**：任务多了 `note`；`taskView()` 把一条任务摊成带按钮的形状——命中 `target` 那个单元就自动补上「看这节网课」（`point.video`）、「这一节的讲义」（`point.practice`）、「做题 / 看掌握度」（`/study/practice?point=`）；`kind=watch` 的任务改成**看课优先**：「看这节网课」排第一，最后一个按钮是「看完去做练习」（同一页，只是把练习接在看课后面）。面板上任务行里可以**改**（标题 / 类型 / 分钟）和**删**。工具侧 `study_plan` 从 `add|toggle` 扩成 `add|toggle|update|remove`；HTTP 侧多了 `POST /study/api/task/update` 和 `POST /study/api/task/remove`。
 - **学习目标库**：`lib/library.js` 的 `Library` 类把「档案根 → 每个目标一个子目录」管起来（`list / create / select / rename / remove`，删掉是移到回收站，最后一个删不掉）。换目标、加一门课、清掉不学的，面板最后一张卡上就能做；工具侧是 `study_library`，HTTP 侧是 `GET|POST /study/api/library`。老的单档案根仍然能用（`library.supported` 是 false，那几个 action 会老实说「装不下第二个」）。
@@ -383,7 +409,7 @@ node --test
 
 ### 四、页码怎么变成「一键跳转」
 
-- `store.js` 的 `upsertAnalysis` 把 `marks` 存下来（`marksOf` 裁字段：label 和 page 缺一个就丢，page 只留数字）；`study_analysis` 的章节 schema 和 `pickChapter` 都带上了它。
+- `lib/analysis.js` 的 `upsertAnalysis` 把 `marks` 存下来（`marksOf` 裁字段：label 和 page 缺一个就丢，page 只留数字）；`study_analysis` 的章节 schema 和 `pickChapter` 都带上了它。
 - `GET /study/api/practice` 除 `chapters` 外多返回一个 **`pageHits`**：把命中的 mark 摊平，带上 `file` / `materialId` / `no` / `title`。判定在 `marksFor()`：**有 `pointId` 就只认 pointId**（那是 agent 亲手绑的），没有才退回标题互含，且 label 至少 3 个字——章号相近的两份讲义不会互相误伤。
 - 做题页把这些渲染成一排页码按钮：「这一页讲什么 · 第 6 页」，链接是 `/study/file?path=…` 拼 `#page=6`——Chrome 自带的 PDF 阅读器认这个 fragment，点开直接在那一页。
 - 一份材料**没拆过页**时，页面底下直说：「这几章现在只到『哪一份文件』，还没到『第几页』。让我把这份讲义拆成一页一页看一遍，就能按知识点直接跳到页码。」这跟「坏了」是两回事，得让学生看出来。
@@ -583,7 +609,7 @@ node --test
 
 1. 写一个 `xxxCard()`，返回一张 `<section class="card …">`；
 2. 往 `TOOLS` 数组里加一条 `{ id, label, hint, card: () => xxxCard() }`；
-3. 要落盘的话在 `lib/store.js` 的 `FILES` 里加一份文件、`Store.default()` 里给个初值。
+3. 要落盘的话在 `lib/schema.js` 的 `FILES` 里加一份文件、`Store.default()` 里给个初值。
 
 `PAGE_CARDS.toolbox.main` 只有一条 `['tool', '小工具', currentToolCard]`，卡 id 用的是 `tool` 而不是跟二级菜单联动——**卡 id 是折起来之后刻在按钮上的那个身份，跟着二级菜单变会让侧栏的折叠状态当场失忆**。
 
