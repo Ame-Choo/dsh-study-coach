@@ -188,8 +188,10 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - 折叠着也得报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数。
 - 连线是**正交折线**（`M 右沿 y H 中缝 V ky H 左沿`），布局是确定性递归，没有力导向、没有动画循环
   —— 所以它好测，别往里加 requestAnimationFrame。
-- 视觉验收别拿正在跑的 DSH 折腾：离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` +
-  `.graphcheck-server.mjs`（19392），asset 全走 `process.cwd()`（手写绝对路径容易踩工作区那个括号）。
+- 视觉验收别拿正在跑的 DSH 折腾：`node scripts/preview.mjs`（19390）就够了，它不用 DSH、读的是真数据根；
+  要造夹具就临时起一个静态壳子或另开一个数据根，**用完即删、别往工作区根上堆临时文件**（曾经堆了一堆
+  `.graphcheck.html` / `.mdcheck.html` / `.shot/` 之类，后来按用户要求清干净了）。asset 全走 `process.cwd()`
+  （手写绝对路径容易踩工作区那个括号）。
 
 ## 今日任务页与今日复盘图是一家（`assets/panel.js` 的 `.day-*` / `.day-hero`）
 

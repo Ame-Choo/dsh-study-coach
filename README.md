@@ -990,7 +990,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 **接线**：三个页面外壳（`assets/panel.html` / `read.html` / `practice.html`）各加一行 katex 的 `<link>` 与 `<script>`（UMD，装成 `window.katex`）；`assets/panel.js` 加 `import { inline as mdInline, renderMarkdown } from './md.js'`，`chatText()` 改走 `renderMarkdown`，错题本那三行（错步 / 错因 / 订正）走 `mdInlineText()`（行内，不套 `<p>`）。`.chat-text` 的 `white-space` 从 `pre-wrap` 改成 `normal`——**md.js 吐的 HTML 块之间带换行，`pre-wrap` 会把它画成空行**，段落里的单换行由 md.js 自己转 `<br>`。气泡里的块级样式（`.chat-text .md-*`）收在 `assets/style.css`，标题在气泡里不放大、外边距收窄；`.md-math` / `.md-block-math` / `.katex` 是三个页面共用的，也放在 `style.css` 里。KaTeX 的 `throwOnError:false` 会用**它自己的红**（内联 `#cc0000`）标认不出的公式，深色底上跟这套配色打架 → 一条 `.katex-error { color: var(--bad) !important; }` 压回去（压内联样式只能用 `!important`）。
 
-**测试**：`test/md.test.js` 15 条（新增三条：没装 KaTeX 时退回源码且不吐 `$`、`\$` 与「花了 $5 到 $8」不当公式、Windows 路径的反斜杠不动、`$<img …>$` 被转义；KaTeX 在场时四次调用的 `display` 档；`extras` 的产物不进转义），`test/panel.test.js` 那条加了粗体 / 列表 / 公式三条断言。全量 **306** 条。视觉上是拿一个离线样张（`.mdcheck.html` + `.mdcheck-server.mjs`，起在 19391）在 headless 浏览器里截的图：`x²+y²=1`、`∫₀¹`、`lim (1+1/n)ⁿ` 都排出来了，Windows 路径原样。
+**测试**：`test/md.test.js` 15 条（新增三条：没装 KaTeX 时退回源码且不吐 `$`、`\$` 与「花了 $5 到 $8」不当公式、Windows 路径的反斜杠不动、`$<img …>$` 被转义；KaTeX 在场时四次调用的 `display` 档；`extras` 的产物不进转义），`test/panel.test.js` 那条加了粗体 / 列表 / 公式三条断言。视觉上是拿一个临时离线样张在 headless 浏览器里截的图（那种样张是当晚的临时物，早已删掉；现在要看页面就用 `node scripts/preview.mjs`，19390）：`x²+y²=1`、`∫₀¹`、`lim (1+1/n)ⁿ` 都排出来了，Windows 路径原样。
 
 - **记账**：只动了 `assets/*` 与三个 html（`lib/` 没碰）→ **刷新页面即可**，不必重启 DSH。
 
@@ -1012,7 +1012,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   · **板块做成关卡面**：抬头条 `.kg-band-head`（两位索引字 + 竖规 + 横向进度槽 + 右端百分比）、右侧压淡的大索引字 `.kg-index`、两条电路通道竖线 `.kg-col`、右沿刻度 `.kg-scale`、左上右下角包 `.kg-frame`、左沿竖进度 `.kg-vgauge` / `.kg-vgauge-fill`、以及整块可点的透明热区 `.kg-band-hit`（**拖过画布的那一下不算点**，用 `panned` 判）。
   · **单元行做成表**：隔行斑马纹 `.kg-unit-row.is-alt`、编号格右边一道竖规 `.kg-cell-rule`、行底线 `.kg-row-rule`；模块**收起**时在右边摆一条「格带」`.kg-cells`——一节一个 9px 方格子、颜色取那一节的档位（没接触过的压暗），收着也看得出里面几节、读到哪儿了。
   · 又多了两个几何常量（`HEAD_BAR_H`、`CELL_RULE_X`）；加装饰照旧**另起 class**，别借 `.kg-box` / `.kg-dot` / `.kg-halo`。
-- **记账**：这一批只动 `assets/graph.js` / `assets/graph.css` / `assets/panel.js` / `assets/style.css`（`lib/` 没碰）→ **刷新页面即可**。视觉验收用离线样张 `F:\dshworkingspace(studyplugin\.graphcheck.html` + `.graphcheck-server.mjs`（19392），不碰正在跑的 DSH。
+- **记账**：这一批只动 `assets/graph.js` / `assets/graph.css` / `assets/panel.js` / `assets/style.css`（`lib/` 没碰）→ **刷新页面即可**。视觉验收走 `node scripts/preview.mjs`（19390，不碰正在跑的 DSH）；当年那些临时离线样张不在仓库里（也别往工作区根上堆）。
 
 ## 补：复盘图常驻，今日任务照复盘图那套版式
 
@@ -1067,7 +1067,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - 旧样式把主按钮写成 `background: var(--dsw-alias-brand-primary); color: var(--dsw-alias-bg-base)`。`--dsw-alias-bg-base` 是**背景**语义（页面底色），不是「填充色之上的文字色」。装了 `dsh-plugin-wallpaper-engine` 之后，它在壁纸激活时把整套别名层改写：`--dsw-alias-bg-base: transparent`（`lib/client.js:183`、`:225`），顺带把 `bg-layer-1/2/3` 换成玻璃配方、`border-l1/l2` 换成 `rgba(180,180,180,.35)`、`brand-primary` 换成 `var(--we-accent,#4f8cff)`（`:708`）。于是 `color: transparent` —— 剩下一个空白方块。
 - **公开的 `--dsw-alias-*` 允许集只有 14 个**（`bg-base / bg-layer-1 / bg-layer-2 / bg-overlay / border-l1 / border-l2 / brand-primary / label-primary / label-secondary / state-{error,idle,success,warn}-primary / specific-sidebar-fill`），**里面没有「填充色之上那层文字色」**，所以这一页干脆不做实心填充：品牌色只描边 + 左侧一道 3px 信号条，文字走 `label-primary`。
 - **每个别名引用都要写实色兜底**：`var(--dsw-alias-brand-primary, #4f8cff)`。别名层不属于我们，谁都可能改写它。
-- 怎么验的（没有 DSH 也能看）：`F:\dshworkingspace(studyplugin\.shot\sc\harness.html` 是个离线壳子——迷你 React + `toDom()` + `window.fetch` 桩，`?bundle=old|new&theme=light|dark&we=0|1&state=running|stopped` 四个开关，两套 token（DSH 正典 / 壁纸插件改写）。旧 bundle 从 git 导出成 `.shot/sc/client-old.js`。壳子里还能直接把 computed style 打到页面上：**旧 bundle 量出 `.sc-btn.primary color = rgba(0, 0, 0, 0)`，新 bundle 是 `rgb(0, 0, 0)`**。截图在 `.shot/sc/`。顺带两条环境经验：Edge 必须用老 `--headless`（`--headless=new` 会报 `Multiple targets are not supported in headless mode`），`--dump-dom` 在它上面零输出、别指望。
+- 怎么验的（没有 DSH 也能看）：当时搭了一个临时离线壳子——迷你 React + `toDom()` + `window.fetch` 桩，`?bundle=old|new&theme=light|dark&we=0|1&state=running|stopped` 四个开关，两套 token（DSH 正典 / 壁纸插件改写）；旧 bundle 从 git 导出成一个临时 js。壳子里能把 computed style 直接打到页面上：**旧 bundle 量出 `.sc-btn.primary color = rgba(0, 0, 0, 0)`，新 bundle 是 `rgb(0, 0, 0)`**。那套壳子是当晚的临时物（在工作区根，不在仓库里），现在已经删了——要复现就照这个思路现搭一个，或者装了 `dsh-plugin-wallpaper-engine` 之后拿 `scripts/preview.mjs` 直接看。顺带两条环境经验：Edge 必须用老 `--headless`（`--headless=new` 会报 `Multiple targets are not supported in headless mode`），`--dump-dom` 在它上面零输出、别指望。
 
 
 ## 补：「能力」页并进知识地图页（整体饼图 + 各大类）

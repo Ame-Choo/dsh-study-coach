@@ -143,6 +143,12 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 `update` 是**整份读-改-整份写**，除 map/mastery 外自动补 `updatedAt`。**没有文件锁**——同一进程靠 Node 单线程串行，
 跨进程只有拆图子进程，而它只写自己那本页图目录。读的时候 JSON 坏了退默认值，不崩。
 
+**「刚下载下来」是什么样**：数据根不存在，第一次跑时自己建出上面那些文件（实测：11 个 JSON，全空，
+`registry.json` 里只有一个 `default` 档案，`map.modules` / `profile.materials` 都是空的）。
+要回到这个状态，**把整个数据根删掉就行**（DSH 重启后重新建；删之前若想留个底，只把 `registry.json` +
+`profiles/**/*.json` + `ai/**` 压成一个小 zip 即可，`pages/` 与 `uploads/` 是页图和原件、占九成体积、不必留）。
+仓库里**不需要**任何清理——学习内容一条都不在仓库里。
+
 多科目：`registry.json` 只记名册与 `active`，`Library` 给每个 profile 记忆化一个 `Store`，
 `read/write/update` 全转发给 `activeStore()`（`lib/library.js:409`），所以「切档案」只是改一个字段，
 路由和工具都不必知道手里拿的是 `Store` 还是 `Library`。删是软删，最后一个档案不许删。
@@ -330,7 +336,7 @@ node scripts/check-live.mjs 19387 19388
 | `Library.store()` 顺手造空档案 | 带 `profileId` 的路由先 `storeFor()` 查名册 |
 | 探活把终端挂住 | SSE 那条永不结束；`check-live.mjs` 的字节数是 `.length`；用后台任务 |
 | `/study/api/point/pages` 当探针会误判 | 旧服务端的 `/study/api/point/:id` 会把 `pages` 当单元 id 接住并回 200；探「看课」那条新路由要用 `/study/api/point/media`（缺参新代码 400、旧代码 404） |
-| 看课匹配「人人有份」 | 别拿 3 字公共子串当判据（「题型1」谁都有）；`videoForPoint()` 现在是 80 完全相等 / 60 互相包含且短边 ≥5 字 / 40 公共子串 ≥6，弱匹配一律退成文件夹；改完拿 `.recon-media.mjs` 过一遍真数据 |
+| 看课匹配「人人有份」 | 别拿 3 字公共子串当判据（「题型1」谁都有）；`videoForPoint()` 现在是 80 完全相等 / 60 互相包含且短边 ≥5 字 / 40 公共子串 ≥6，弱匹配一律退成文件夹；改完拿真数据（`node scripts/preview.mjs` 起 19390 之后自己去打 `/study/api/point/media?point=`）过一遍 |
 | 预览服务器「刚起就死」 | `Start-Job` 起的进程随那次 pwsh 调用结束就没；**起服务器与跑探针 / 截图必须写在同一段脚本里**（`Start-Job -Name preview … Stop-Job`） |
 | `--dump-dom` 空、新 headless 报 Multiple targets | 用老 `--headless` + `--virtual-time-budget` + `--screenshot` |
 
