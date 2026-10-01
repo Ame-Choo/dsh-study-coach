@@ -127,13 +127,15 @@ export function renderGraph(host, options) {
 
   const opt = options || {}
   const rawModules = Array.isArray(opt.modules) ? opt.modules : []
+  // 六档和它们各自的颜色都由调用方给（见 assets/stages.js），这一份只管画。
+  // 调用方漏给时的兜底走 currentColor，不写死色值——否则就又多一套跟主题无关的配色。
   const stages = Array.isArray(opt.stages) && opt.stages.length ? opt.stages : ['没接触过']
   const fallbackStage = stages[0]
   const mastery = opt.mastery && opt.mastery.points ? opt.mastery.points : {}
   const openPoint = opt.openPoint || null
   const onPick = typeof opt.onPick === 'function' ? opt.onPick : null
   const onOpen = typeof opt.onOpen === 'function' ? opt.onOpen : null
-  const colorOf = (stage) => (typeof opt.colorOf === 'function' ? opt.colorOf(stage) : null) || '#5b6472'
+  const colorOf = (stage) => (typeof opt.colorOf === 'function' ? opt.colorOf(stage) : null) || 'currentColor'
 
   const modules = rawModules.filter((m) => m && (m.title || m.id))
   if (modules.length === 0) {

@@ -16,20 +16,12 @@ try {
   renderGraph = null
 }
 
-const STAGES = ['没接触过', '见过', '能跟做', '能独立做', '熟练稳定', '能讲明白']
+import { STAGES, STAGE_COLOR } from './stages.js'
+
 /* 与 lib/store.js 的 MISTAKE_STATUS 同序：待验证 → 已订正 → 已复做对 */
 const MISTAKE_STATUS = ['待验证', '已订正', '已复做对']
 /** 学生画像那五档，跟 lib/store.js 的 FACT_KINDS 同序同字。 */
 const FACT_KINDS = ['习惯', '强项', '弱项', '偏好', '背景']
-
-const STAGE_COLOR = {
-  '没接触过': 'var(--stage-1)',
-  '见过': 'var(--stage-2)',
-  '能跟做': 'var(--stage-3)',
-  '能独立做': 'var(--stage-4)',
-  '熟练稳定': 'var(--stage-5)',
-  '能讲明白': 'var(--stage-6)',
-}
 
 const KIND = { book: '教辅', video: '网课', notes: '讲义', past: '真题', ai: 'AI 出题', other: '其他' }
 /** 书架上分组的顺序：教辅在前，AI 出的卷子紧随其后（跟教辅平级），剩下按重要性排。 */
