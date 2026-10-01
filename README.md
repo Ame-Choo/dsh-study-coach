@@ -165,11 +165,11 @@ pnpm add link:/绝对路径/dsh-study-coach
 
 ## HTTP 接口
 
-读（19 条）：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
+读（20 条）：`/study/api/state`、`/study/api/summary`、`/study/api/point/:id`、`/study/api/practice`、
 `/study/api/archive`、`/study/api/ability`、`/study/api/library`、`/study/api/tasks`、
 `/study/api/mistakes`、`/study/api/review`、`/study/api/materials`、`/study/api/material`、
-`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`、`/study/api/student`、
-`/study/api/chat`、`/study/api/chat/sessions`、`/study/api/panel`。
+`/study/api/material/tree`、`/study/api/point/pages`、`/study/api/toolbox`、`/study/api/memory`、
+`/study/api/student`、`/study/api/chat`、`/study/api/chat/sessions`、`/study/api/panel`。
 
 写（27 条）：`/study/api/goal`、`/study/api/materials`、`/study/api/materials/remove`、
 `/study/api/materials/import`、`/study/api/materials/build`、`/study/api/tools`、
@@ -482,7 +482,7 @@ node --test
 | `/study` | 主页 | 一屏说清「现在什么水平、今天还剩什么、下一步点哪儿」，只放入口不放编辑表单 |
 | `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
 | `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿；下面接**「掌握度」**那一节（整体饼图 + 各大类，行尾「档案」展开细账）；再下面是错题本，边栏是学生画像 |
-| `/study/atlas` | 学习 | 资料图谱：挑资料，看它覆盖了哪几个大类 / 模块 / 最小单元；没标注的交给教练 |
+| `/study/atlas` | 学习 | 资料图谱：挑一份材料，按它自己的目录摊成大类 → 模块 → 最小单元三层，每层都能直接打开对应那一页 / 那一段；没标的交给教练 |
 | `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
 | `/study/materials` | 资料 | 资料书架：一本拆到哪、归到哪个单元，按页直达；右栏登记新资料 |
 | `/study/toolbox` | 工具 | 二级菜单装小工具：番茄钟、清单（以后往这儿加） |
@@ -1042,14 +1042,17 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 
 **② web 端读不动，就把这件事转给教练。** 资料页原来只把失败写在卡片上（`shelfState()` 的「原件不在了」、拆图抛错的 toast、`shelfDetail()` 的「读不出来：…」），人还得自己想「那我该干嘛」。现在三处出口都调 `forwardToCoach()`：把「哪一份 / 什么路径 / 为什么读不动 / 请读完按最小单元归位」投进学习教练会话（`POST /study/api/chat/send`），然后 toast 一句「已经交给教练了」。**同一份、同一个理由只投一次**（`acted` 那张表按 `materialId + 理由` 记），刷新不会刷出一串重复消息。
 
-**③ 「学习」页：拿知识图谱当骨架，看资料盖到哪里。** 这一页**没有新增服务端路由**——两边的数据本来就够：`/study/api/state` 给 `state.map.modules`（11 个大类/模块、67 个单元，每条带 `id/title`），`/study/api/materials` 每份材料带 `points`（它分析里出现过的单元 id 并集）。面板把两者一拼就是「资料图谱」：
+**③ 「学习」页：资料图谱（后来整页重做过一次，见下面「第二版」）。** 第一版是**客户端**拿知识图谱当骨架、拿每份材料的 `points` 往上贴：抬头复用今日任务那套 `.day-hero`，一排材料筹码写名字 + 单元数，再按**大类 → 模块 → 单元**列，两边数据（`/study/api/state` 的 `state.map.modules` + `/study/api/materials` 每份的 `points`）一拼就成。**材料写名字、不写 A/B/C**（用户：「教辅的名字要显示它的名字而不是一串字母」），行里放不下就走 `shortMatTitle()`（去年份、「新高考/高考/中考」、「数学」，超 11 字掐中间），**全名永远在 `title` 里**。没材料对上的单元写「还没有材料对上」；`points` 为空的那几份列在末尾，每份一颗「让教练标一遍」→ 走 `forwardToCoach({annotate: true})`，措辞是「资料没标到知识图谱，交给你」。**新页面要记账**：`lib/handler.js:27` 的 `PANEL_PAGES` 里得加上 `'atlas'`，否则 `/study/atlas` 直接 404；这条是 `lib/` 改动 → **要重启 DSH**。
 
-- 抬头复用今日任务那套 `.day-hero`（眉标 `MATERIAL GRAPH · 资料图谱` / 大标题 / 状态块「N 份材料 · 覆盖 x/y 个单元」/ 覆盖度量尺）；下面一排材料筹码，**写名字 + 单元数**（`2026新高考53A数学精练册(1) 14` / `2026阿不老高考数学一轮课程 未标`）；再下面是**分组开关**，然后按**大类 → 模块 → 单元**列：`基础知识 → M1 集合与逻辑 6/6 → M1.1 集合基础知识与基本例题  53A精练册(1) 53A答案精析册(3) 1常规模-方法册`。
-- **材料写名字，不写 A/B/C**（用户：「教辅的名字要显示它的名字而不是一串字母」）。行里那颗筹码放不下全名，走 `shortMatTitle()` 去掉年份、开头的「新高考/高考/中考」、结尾的年份括注和全文里的「数学」，超过 11 字掐中间（`M2.3二…随堂小测`）；**全名永远在 `title` 里**（筹码 `title="全名 · 教辅"`，picker 那颗 `title="全名 · 教辅 · N 个单元"`）。所以那一版删掉了字母图例，`.atlas-tag` 也从 18×18 的字母方块变成文字筹码。
-- **两种分组，用户自己选**（用户：「可以依据模块和最小单元两种方式区分，让用户自己选，比如 M1.X 在一起，M2.X 在一起」）。`ui.atlasMode` 默认 `'module'`（一行一个模块：模块头 + 量尺 + **这一模块里对上它的材料**，下面才是它的单元）；切到 `'point'`（一行一个最小单元：不铺模块块，把大类下所有单元挨着平铺，模块名进那一行的 `title` 和抬头那句）。开关就是 `.chips.atlas-mode` 里两颗 `data-act="atlas-mode"`，点了只清 `ui.atlasPages` 再重画。
-- 点一个单元就地铺开它在各材料里的页码（`GET /study/api/point/pages?point=M1.1`）；没材料对上的单元写「还没有材料对上」；末尾把 `points` 为空的那几份列出来（这台机器上就是那份一轮网课），每份一颗「让教练标一遍」→ 走的还是 `forwardToCoach()`，**只是措辞换成「资料没标到知识图谱，交给你」**：按 M1.1 这种 id 标、一处内容可以同时归好几个、教辅按页范围对、网课按讲次对，读完写进材料分析里。
-- **新页面要记账**：`lib/handler.js:27` 的 `PANEL_PAGES` 里得加上 `'atlas'`，否则 `/study/atlas` 直接 404（它只认列出来的那几个子页面路径）。这条是 `lib/` 改动 → **要重启 DSH**。
-- 测试：`test/panel.test.js` 33 条、全量 315 条。学习页那条用例里那份「网课」夹具就是照这台机器上那份一轮课程捏的（`kind: 'video'`、`points: []`、`coverage: '只翻目录'`）。
+**③-第二版：整页推倒重做，按材料自己的目录摊三层。** 用户看过之后说「资料图谱推倒重做吧，按照资料的目录或者文件夹分类来做三层：大类、模块、最小单元，以及对应链接来」——于是骨架搬到服务端：
+
+- 新增 `lib/material-tree.js`（入口 `materialTree({ material, shelf, spans, list })`）+ `GET /study/api/material/tree?materialId=`，回 `{ ok, material, basis, truncated, groups, loose }`。`basis` 三选一：`toc`（书有目录两级，单元是落在模块页范围内的页级索引）、`spans`（目录没读过，就一段一段的页级索引自己当单元）、`folder`（path 是文件夹的，按子目录当模块、文件名当单元）。三个上限常量 `MAX_MODULES = 400` / `MAX_UNITS = 1200` / `MAX_PAGES_PER_UNIT = 12`。
+- 面板：`loadAtlas()` 只在这一页拉一次树；**一次只挑一份材料**（`ui.atlasPick`），那排筹码就是切换器；折起来的大类/模块记在 `ui.atlasShut`（键 `g:大类序号` / `m:大类序号:模块序号`），纯客户端不打服务端。三级 DOM 是 `.atlas-group` → `.atlas-mod` → `li.atlas-unit`，每层的头都能点着折起来，行尾挂 `.atlas-range`（页码）与 `.atlas-links`。
+- **每一层都给链接**：`atlasLinks()` 走 `assets/urls.js` 的 `openPath()`，`linkLabel()` 按扩展名说话（`.pdf` → 打开 PDF、视频扩展名 → 打开视频、`.md/.txt` → 打开正文、`kind === 'folder'` → 打开文件夹、其余 → 打开），页图最多 4 颗 `P10` 这种直链 `/study/page?path=`。**判扩展名只许切 `#`，别切 `?`**——写成 `split(/[?#]/)` 会把 query 一起切掉，`/study/file?path=…pdf` 里的 `.pdf` 就看不见了（踩过）。
+- `tree.loose`（封面、目录、答案这些没归到任何模块的页）单开一块「没归到目录里的」，标题退回内容类型；一条 pointId 都没有的那几份收进 `.atlas-blank`（「这份材料还没挂到最小单元上」）+「交给教练去标」。
+- 版本守卫：`probeCapabilities()` 里 `alive('/study/api/material/tree')`（缺参新代码回 400、旧代码 404）→ `capabilities.tree`；没有它就说「去重启 DSH」，别说「还没标」。
+- 测试：`test/material-tree.test.js` 8 条（`folderTree` / `bookTree` / `basis` 分流都拿假 `list` 与假 toc 喂）、`test/panel.test.js` 33 条，全量 **324 条**。
+- 真数据上看过的：精讲册 = 11 个大类 58 条内容（`专题一 集合、常用逻辑用语与不等式 4 个模块 · 4 条内容 P9-16` → `1.1 集合 … M1.1 1 条 P10-11` → 单元行 `M1.1 专题一 集合/逻辑/不等式  讲解  P10-11  打开 PDF  [P10][P11]`）；网课那份 = `basis: folder`、42 个大类、单元是 mp4 文件名配「打开视频」。**已知数据侧瑕疵**（不是渲染错）：材料分析里模块骨架粗时，个别模块那一行的单元 id 会显示成邻居的（精讲册 `1.2 常用逻辑用语` 下面写着 `M1.1`）。
 
 
 

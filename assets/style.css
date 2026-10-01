@@ -492,79 +492,67 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .day-gauge > i { display: block; height: 100%; background: var(--accent); }
 .day-gauge.over > i { background: var(--warn); }
 
-/* ── 学习页（资料图谱）：把知识地图摊开，一行单元挂上覆盖它的材料 ────────
+/* ── 学习页（资料图谱）：一份材料自己的目录，摊成 大类 → 模块 → 最小单元 ──
  * 抬头整块复用 .day-hero（跟今日任务、复盘图是一家）；下面四样是自己攒的：
- * 材料选择条、分组开关（按模块 / 按最小单元）、大类 → 模块 → 单元的覆盖清单、
- * 以及末尾那块「还没标过」的催办。
- * 材料一律写名字（筹码放不下时用 shortMatTitle() 去过前缀的那一截，全名在 title 里），
- * 别再退回 A/B/C——一串字母看不出是哪本。
- * 量尺一条都不许渐变；材料没对上的单元写灰，别用红——那不是错，是还没标。
+ * 材料选择条、一行小工具（几个大类 / 几条内容 / 能折起来）、三级清单、末尾那块
+ * 「还没挂到单元上」的催办。
+ * 形状是服务端摊好的（GET /study/api/material/tree），这里只画不重算。
+ * 每一个最小单元右侧挂着链接：原文件（PDF 那一页 / 那段视频）+ 前几页的页图。
+ * 材料一律写全名，别退回 A/B/C——一串字母看不出是哪本。
+ * 量尺一条都不许渐变；没挂到单元的写灰，别用红——那不是错，是还没标。
  */
-.atlas .chips { margin: 0 0 var(--sp-2); }
+.atlas .chips { margin: 0 0 var(--sp-2); align-items: center; }
 .atlas .mini.on { border-color: var(--accent); color: var(--accent); }
-/* 材料筹码：名字可能很长（最多 22em），截断的是名字那一截，右边那个单元数不许被挤掉 */
-.atlas-pick .mini { display: inline-flex; align-items: center; max-width: 22em; }
+/* 材料筹码：名字可能很长（最多 26em），截断的是名字那一截 */
+.atlas-pick .mini { display: inline-flex; align-items: center; max-width: 26em; }
 .atlas-pick .mini-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.atlas .mini-n {
-  flex: none; margin-left: 6px; padding-left: 6px;
-  border-left: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent);
-  font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-.atlas .mini.on .mini-n { color: var(--accent); border-left-color: color-mix(in srgb, var(--accent) 40%, transparent); }
-/* 分组开关：跟材料那排分开一点，左边挂一个小标签说这排是干什么的 */
+/* 工具那行：左边一句账，右边一句怎么用 */
 .atlas-mode { align-items: center; margin-top: calc(-1 * var(--sp-1)); }
 .atlas-mode .atlas-mlabel { align-self: center; margin-right: 2px; font-size: var(--fs-micro); letter-spacing: .06em; color: var(--faint); }
-.atlas-tag {
-  flex: none; max-width: 13em;
-  padding: 0 6px; line-height: 17px; font-size: var(--fs-micro); font-weight: 400;
-  color: var(--dim); background: var(--card-2); border: 1px solid var(--line);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+/* 三级：大类和模块那两行都能点着折起来 */
 .atlas-group { padding: var(--sp-3) 0 var(--sp-1); border-top: 1px solid var(--line-2); }
 .atlas-group:first-of-type { border-top: 0; padding-top: 0; }
-.atlas-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.atlas-group-head,
+.atlas-mod-head { cursor: pointer; }
+.atlas-group-head { display: flex; align-items: baseline; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.atlas-group-head:hover,
+.atlas-mod-head:hover { background: var(--card-2); }
+.atlas-caret { flex: none; width: 10px; color: var(--faint); font-size: var(--fs-micro); }
 .atlas-gname { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
 .atlas-mod { margin: 0 0 var(--sp-3) var(--sp-2); padding-left: var(--sp-3); border-left: 1px solid var(--line-2); }
-.atlas-mod-head { display: flex; align-items: baseline; gap: var(--sp-1); font-size: var(--fs-label); }
-.atlas-mid { font-family: var(--font-display); font-size: var(--fs-label); letter-spacing: .04em; color: var(--dim); }
+.atlas-mod-head { display: flex; align-items: baseline; gap: var(--sp-1); padding: 2px 0; font-size: var(--fs-label); }
 .atlas-mtitle { flex: 1 1 auto; min-width: 0; color: var(--text); }
-.atlas-count { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
-.atlas-count.miss { color: var(--warn); }
-.atlas-gauge { height: 4px; margin: 5px 0 6px; background: color-mix(in srgb, var(--line-2) 45%, transparent); }
-.atlas-gauge > i { display: block; height: 100%; background: var(--accent); }
+.atlas-mid { flex: none; font-family: var(--font-display); font-size: var(--fs-label); letter-spacing: .04em; color: var(--dim); }
+/* 页码 / 页数一律等宽，扫一列的时候对得齐 */
+.atlas-range { flex: none; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--faint); font-variant-numeric: tabular-nums; }
 .atlas-units { margin: 0; }
 .atlas-units li.atlas-unit {
-  display: grid; grid-template-columns: 46px minmax(0, 1fr) auto;
-  align-items: center; gap: var(--sp-1) var(--sp-2);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 4px var(--sp-2);
   padding: 5px var(--sp-2); background: transparent; border-radius: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
 .atlas-units li.atlas-unit:last-child { border-bottom: 0; }
-.atlas-unit[data-act]:hover { background: var(--card-2); cursor: pointer; }
-.atlas-id { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--dim); font-variant-numeric: tabular-nums; }
-/* 单元名最多两行：材料多的行会把名字挤成一截，宁可换行也别只剩「集合…」 */
+.atlas-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.atlas-id { flex: none; max-width: 100%; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--dim); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 一句说明最多两行：它是目录里的那截小结，宁可换行也别只剩「专题一…」 */
 .atlas-name {
-  min-width: 0; font-size: var(--fs-label); color: var(--text);
+  min-width: 0; font-style: normal; font-size: var(--fs-micro); color: var(--faint);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.atlas-covers { display: flex; flex-wrap: wrap; gap: 3px; max-width: 56%; align-items: center; justify-content: flex-end; }
-.atlas-mod-covers { margin: 0 0 6px; max-width: none; justify-content: flex-start; }
-.atlas-unit.miss .atlas-name { color: var(--faint); }
-.atlas-pages { grid-column: 1 / -1; }
-.atlas-page-list { list-style: none; margin: var(--sp-1) 0 2px; padding: 0; display: grid; gap: var(--sp-1); }
-.atlas-page-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: var(--fs-micro); }
+.atlas-unit.miss .atlas-id { color: var(--faint); }
+.atlas-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; justify-content: flex-end; max-width: 62%; }
+.atlas-kind { flex: none; padding: 0 5px; line-height: 16px; font-size: var(--fs-micro); color: var(--faint); border: 1px solid var(--line); }
+.atlas-links { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.atlas-links .mini { line-height: 16px; }
+.atlas-pg-none { font-size: var(--fs-micro); }
 .atlas-blank { margin-top: var(--sp-3); padding: var(--sp-3); background: var(--card-2); border-left: 2px solid var(--warn); }
 .atlas-blank > b { display: block; margin-bottom: 6px; color: var(--ink); }
-.atlas-blank-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-1) 0; font-size: var(--fs-label); }
-.atlas-blank-row > span { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.atlas-blank-row .atlas-kind { flex: none; font-size: var(--fs-micro); color: var(--faint); }
-.atlas-blank-row .atlas-bname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.atlas-blank .hint { margin: var(--sp-2) 0 0; }
-html[data-mode="sidebar"] .atlas-units li.atlas-unit { grid-template-columns: 42px minmax(0, 1fr); }
-/* 侧栏里一行只放得下 id + 名字，材料筹码挪到下面一整行（2 列网格里它会掉进 42px 那格） */
-html[data-mode="sidebar"] .atlas-units li.atlas-unit > .atlas-covers { grid-column: 1 / -1; max-width: none; justify-content: flex-start; }
-
+.atlas-blank .hint { margin: 0 0 var(--sp-2); }
+html[data-mode="sidebar"] .atlas-units li.atlas-unit { grid-template-columns: minmax(0, 1fr); }
+/* 侧栏里一行放不下「名字 + 链接」两栏，链接挪到下面一整行 */
+html[data-mode="sidebar"] .atlas-units li.atlas-unit > .atlas-meta { grid-column: 1 / -1; max-width: none; justify-content: flex-start; }
+html[data-mode="sidebar"] .atlas-group-head { flex-wrap: wrap; }
 /*
  * 任务行：序号索引字 | 勾 + 标题 | 元信息 |（换行）备注 |（换行）操作。
  * 左边一道 2px 信号条——「现在该做的那条」是青的，做过的压暗，一屏只给一条青。

@@ -109,6 +109,9 @@ const PROBE_PATHS = [
   '/study/api/materials',
   '/study/api/toolbox',
   '/study/api/memory',
+  // 这一条跟上面那十条一样，都在 probeCapabilities() 的 Promise.all 里
+  '/study/api/material/tree',
+  // 这条是 await fileAlive()，排在 Promise.all 之后，所以它在最后
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
 
@@ -191,6 +194,97 @@ const SHELF_INDEX = {
     { page: 4, pointId: 'M1.4', kind: '讲解', note: '', file: 'p0004.png', url: '/study/page?path=C%3A%2Fdata%2Fp0004.png' },
     { page: 5, pointId: 'M1.4', kind: '讲解', note: '', file: 'p0005.png', url: '' },
   ],
+}
+
+/**
+ * 学习页那三层：形状照 `lib/material-tree.js` 摊出来的（服务端算好，面板只画）。
+ * 一本教辅走 toc：大类（toc level 1）→ 模块（level 2）→ 单元（落在这一段里的页）；
+ * 一门网课走文件夹：大类 → 模块 → 里面的 mp4。一条 pointId 都没有的材料要给「交给教练去标」。
+ */
+const TREES = {
+  'mat-1': {
+    ok: true,
+    material: { materialId: 'mat-1', title: '必修一', kind: 'book', path: 'F:\\课件\\必修一.pdf', file: true, total: 20, rendered: 20, scanned: true, coverage: '部分通读', indexed: 8, chapters: 1, tocCount: 0 },
+    basis: 'toc',
+    truncated: false,
+    groups: [
+      {
+        title: '第一章 集合',
+        page: 1,
+        to: 8,
+        count: 1,
+        units: [],
+        modules: [
+          {
+            title: '1.1 集合',
+            pointId: 'M1.1',
+            page: 4,
+            to: 5,
+            units: [
+              {
+                title: 'M1.1',
+                pointId: 'M1.1',
+                kind: '讲解',
+                from: 4,
+                to: 5,
+                note: '集合的概念与表示；元素与集合的关系',
+                url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E5%BF%85%E4%BF%AE%E4%B8%80.pdf#page=4',
+                pages: [{ page: 4, url: '/study/page?path=C%3A%2Fdata%2Fp0004.png' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    loose: [
+      { title: '封面与目录', pointId: '', kind: '目录', from: 1, to: 3, note: '', url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E5%BF%85%E4%BF%AE%E4%B8%80.pdf#page=1', pages: [] },
+    ],
+  },
+  'mat-video': {
+    ok: true,
+    material: { materialId: 'mat-video', title: '一轮课程', kind: 'video', path: 'F:\\课件\\一轮课程', file: true, total: 0, rendered: 0, scanned: false, coverage: '只翻目录', indexed: 0, chapters: 0, tocCount: 0 },
+    basis: 'folder',
+    truncated: false,
+    groups: [
+      {
+        title: '模块一 基础知识',
+        count: 1,
+        units: [
+          {
+            title: '02.【必看】观看指南.mp4',
+            pointId: '',
+            kind: 'video',
+            from: 0,
+            to: 0,
+            note: '',
+            url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C02.mp4',
+            pages: [],
+          },
+        ],
+        modules: [
+          {
+            title: '集合',
+            pointId: '',
+            page: 0,
+            to: 0,
+            units: [
+              {
+                title: '04.基础知识&基本例题.mp4',
+                pointId: '',
+                kind: 'video',
+                from: 0,
+                to: 0,
+                note: '',
+                url: '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6%5C%E4%B8%80%E8%BD%AE%E8%AF%BE%E7%A8%8B%5C04.mp4',
+                pages: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    loose: [],
+  },
 }
 
 /** 工具栏目：一个跑着的番茄钟 + 两条清单（一条没做完、一条做完了）。 */
@@ -358,6 +452,11 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     else if (path.includes('/api/materials/import')) body = { ok: true, dir: false, added: [{ title: '必修一' }] }
     else if (path.includes('/api/materials')) body = { ok: true, ...shelf }
     else if (path.includes('/api/material?')) body = SHELF_INDEX
+    // 学习页那三层（服务端摊好的那份形状）
+    else if (path.includes('/api/material/tree')) {
+      const id = new URL('http://x' + path).searchParams.get('materialId') || ''
+      body = TREES[id] || { ok: false, error: { code: 'not-found', message: `没有这份材料：${id}` } }
+    }
     // 学习页点一个单元：它在各材料里在第几页
     else if (path.includes('/api/point/pages')) {
       body = {
@@ -1596,8 +1695,8 @@ test('记忆卡：正面朝上不给答案；背完自己翻下一张，排期�
   assert.deepEqual(page.posts.at(-1).body, { action: 'remove', id: 'c-3' })
 })
 
-test('学习页：选材料就看它覆盖了哪些单元；没标的交给教练', async () => {
-  // 再加一份「一份都没标过」的网课——这就是这台机器上那份一轮课程的样子
+test('学习页：挑一份材料，按它自己的目录摊成三层，每一层都能点开对应的那一段', async () => {
+  // 再加一份「一条都没挂到单元上」的网课——这就是这台机器上那份一轮课程的样子
   const video = {
     materialId: 'mat-video',
     title: '一轮课程',
@@ -1622,67 +1721,81 @@ test('学习页：选材料就看它覆盖了哪些单元；没标的交给教�
   // ① 抬头跟今日任务、复盘图是一家：眉标 → 大标题 + 状态块 → 一条量尺
   assert.match(page.html(), /MATERIAL GRAPH · 资料图谱/)
   assert.match(page.html(), /<h2 class="day-title">资料图谱<\/h2>/)
-  assert.match(page.html(), /<span class="day-pill">3 份材料 · 覆盖 1\/2 个单元<\/span>/)
-  assert.match(page.html(), /aria-label="材料覆盖度 50%"/)
+  assert.match(page.html(), /<span class="day-pill">3 份材料 · 这一份 2 条内容<\/span>/)
+  assert.match(page.html(), /aria-label="已挂到单元 50%"/, '这一份两条内容里只挂上了一条')
+  assert.match(page.html(), /1 个大类 · 2 条内容 · 已挂到单元 1 条/)
 
-  // ② 三份材料各写自己的名字（全名在筹码上，行里用短的那一截），不带字母；没标的写「未标」
+  // ② 挑材料：三份各写自己的名字，一次只挑一份；不带字母
   assert.equal((page.html().match(/data-act="atlas-pick" data-id=/g) || []).length, 3)
-  assert.match(page.html(), /<span class="mini-t">必修一<\/span><span class="mini-n">2<\/span>/)
-  assert.match(page.html(), /<span class="mini-t">一轮课程<\/span><span class="mini-n">未标<\/span>/)
-  assert.match(page.html(), /<span class="mini-t">随堂小测 · M1\.4（2026-10-01）<\/span><span class="mini-n">1<\/span>/)
+  assert.match(page.html(), /<span class="mini-t">必修一<\/span>/)
+  assert.match(page.html(), /<span class="mini-t">一轮课程<\/span>/)
+  assert.match(page.html(), /<span class="mini-t">随堂小测 · M1\.4（2026-10-01）<\/span>/)
+  assert.match(page.html(), /class="mini on" data-act="atlas-pick" data-id="mat-1"/)
   assert.doesNotMatch(page.html(), /A · 教辅/, '材料不许再写成一串字母')
-  assert.match(page.html(), /data-act="atlas-all">全选/)
 
-  // ③ 两种分组让人自己挑，默认按模块
-  assert.match(page.html(), /data-act="atlas-mode" data-mode="module"/)
-  assert.match(page.html(), /data-act="atlas-mode" data-mode="point"/)
-  assert.match(page.html(), /class="mini on" data-act="atlas-mode" data-mode="module"/)
+  // ③ 三层：大类 → 模块 → 最小单元，每一层右边带页码范围
+  assert.match(page.html(), /<span class="atlas-gname">第一章 集合<\/span>/)
+  assert.match(page.html(), /data-act="atlas-shut" data-key="g:0"[^>]*>\s*<span class="atlas-caret">▾<\/span>/)
+  assert.match(page.html(), /<span class="dim">1 个模块 · 1 条内容<\/span>/)
+  assert.match(page.html(), /<span class="atlas-range">P1—8<\/span>/)
+  assert.match(page.html(), /data-act="atlas-shut" data-key="m:0:0"/)
+  assert.match(page.html(), /<span class="atlas-mtitle">1\.1 集合<\/span>/)
+  assert.match(page.html(), /<span class="atlas-mid">M1\.1<\/span>/)
+  assert.match(page.html(), /<span class="atlas-range">P4—5<\/span>/)
+  assert.match(page.html(), /<b class="atlas-id">M1\.1<\/b>/)
+  assert.match(page.html(), /<i class="atlas-name" title="集合的概念与表示；元素与集合的关系">集合的概念与表示<\/i>/)
+  assert.match(page.html(), /<span class="atlas-kind">讲解<\/span>/)
 
-  // ④ 按模块：一行一个模块——模块头 + 覆盖量尺 + 对上这一块的材料筹码，底下才是它的单元
-  assert.match(page.html(), /第一大块/)
-  assert.match(page.html(), /<span class="atlas-mid">M1<\/span>/)
-  assert.match(page.html(), /<span class="atlas-count">1\/2<\/span>/)
-  assert.match(page.html(), /<li class="atlas-unit" data-act="atlas-point" data-point="M1\.1"/)
-  assert.match(page.html(), /<li class="atlas-unit miss">/)
-  assert.match(page.html(), /还没有材料对上/)
-  assert.match(page.html(), /第二个单元/)
-  assert.match(page.html(), /<b class="atlas-tag" title="必修一 · 教辅">必修一<\/b>/)
-  const modCovers = page.html().match(/class="atlas-covers atlas-mod-covers">[\s\S]*?<\/div>/)[0]
-  assert.match(modCovers, /必修一/)
+  // ④ 每一层都能直接打开：原文件那一页 + 前几页的页图
+  assert.match(page.html(), /<a class="mini" href="\/study\/file\?path=[^"]*#page=4"[^>]*>打开 PDF<\/a>/)
+  assert.match(page.html(), /<a class="mini pg-btn" href="\/study\/page\?path=C%3A%2Fdata%2Fp0004\.png"[^>]*title="第 4 页的图">P4<\/a>/)
+  // 没归到目录里的那几条单开一块，别硬塞进某个大类
+  assert.match(page.html(), /<span class="atlas-gname">没归到目录里的<\/span>/)
+  assert.match(page.html(), /<b class="atlas-id">封面与目录<\/b>/)
+  assert.match(page.html(), /<span class="atlas-range">P1—3<\/span>/)
 
-  // ⑤ 换「按最小单元」：模块那一块撤掉，一个个单元平铺；切回去还是模块视图
-  await page.clickAct({ act: 'atlas-mode', mode: 'point' })
-  assert.match(page.html(), /class="mini on" data-act="atlas-mode" data-mode="point"/)
-  assert.doesNotMatch(page.html(), /class="atlas-mod"/, '按最小单元就别再铺模块块了')
-  assert.match(page.html(), /<span class="atlas-id">M1\.1<\/span>/)
-  assert.match(page.html(), /<span class="atlas-id">M1\.2<\/span>/)
-  assert.match(page.html(), /<b class="atlas-tag" title="必修一 · 教辅">必修一<\/b>/)
-  await page.clickAct({ act: 'atlas-mode', mode: 'module' })
-  assert.match(page.html(), /class="atlas-mod"/)
-  assert.doesNotMatch(page.html(), /class="mini on" data-act="atlas-mode" data-mode="point"/)
+  // ⑤ 大类那一行点一下折起来（纯客户端，不再打服务端），再点摊开
+  const before = page.calls.length
+  await page.clickAct({ act: 'atlas-shut', key: 'g:0' })
+  assert.equal(page.calls.length, before, '折一下不该再问服务端')
+  assert.match(page.html(), /data-act="atlas-shut" data-key="g:0"[^>]*>\s*<span class="atlas-caret">▸<\/span>/)
+  assert.doesNotMatch(page.html(), /class="atlas-mtitle"/, '大类折起来，里面的模块跟着收')
+  assert.match(page.html(), /没归到目录里的/, '折的是那个大类，别的一块不受影响')
+  await page.clickAct({ act: 'atlas-shut', key: 'g:0' })
+  assert.match(page.html(), /class="atlas-mtitle"/)
 
-  // ⑥ 取消「必修一」：这份夹具里只有它覆盖 M1.1，退了就没人对得上了
-  await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
-  assert.equal((page.html().match(/class="mini on" data-act="atlas-pick"/g) || []).length, 2)
-  assert.match(page.html(), /覆盖 0\/2 个单元/)
-  const m11 = page.html().match(/atlas-id">M1\.1[\s\S]*?<\/li>/)[0]
-  assert.match(m11, /还没有材料对上/)
-  assert.doesNotMatch(m11, /atlas-tag/, '没选中的材料不该算进覆盖')
+  // ⑥ 模块那一行也能单独折：模块头还留着，它底下的单元收走
+  await page.clickAct({ act: 'atlas-shut', key: 'm:0:0' })
+  assert.match(page.html(), /<span class="atlas-mtitle">1\.1 集合<\/span>/)
+  assert.doesNotMatch(page.html(), /<b class="atlas-id">M1\.1<\/b>/)
+  await page.clickAct({ act: 'atlas-shut', key: 'm:0:0' })
+  assert.match(page.html(), /<b class="atlas-id">M1\.1<\/b>/)
 
-  // ⑦ 一份都没标的那份列在末尾，「让教练标一遍」把它投进对话
-  assert.match(page.html(), /还有 1 份没标到单元上/)
-  assert.match(page.html(), /<span class="atlas-kind">网课<\/span>/)
+  // ⑦ 换一份材料：三层重新去服务端摊（客户端不自己算骨架）
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-video' })
+  assert.ok(page.calls.some((c) => c === '/study/api/material/tree?materialId=mat-video'))
+  assert.match(page.html(), /class="mini on" data-act="atlas-pick" data-id="mat-video"/)
+  assert.match(page.html(), /按文件夹分/)
+  assert.match(page.html(), /<span class="atlas-gname">模块一 基础知识<\/span>/)
+  assert.match(page.html(), /<b class="atlas-id">02\.【必看】观看指南\.mp4<\/b>/)
+  assert.match(page.html(), /<b class="atlas-id">04\.基础知识&amp;基本例题\.mp4<\/b>/)
+  assert.match(page.html(), /<a class="mini" href="\/study\/file\?path=[^"]*\.mp4"[^>]*>打开视频<\/a>/)
+  // 一条都没挂到单元上：直说，并把这一份交给教练去标
+  assert.match(page.html(), /aria-label="已挂到单元 0%"/)
+  assert.match(page.html(), /<b>这份材料还没挂到最小单元上<\/b>/)
+  assert.match(page.html(), /交给教练去标<\/button>/)
+
+  // ⑧ 点「交给教练去标」：投进对话，正文带材料名和路径
   await page.clickAct({ act: 'atlas-annotate', id: 'mat-video' })
   assert.equal(page.posts.at(-1).path, '/study/api/chat/send')
   assert.match(page.posts.at(-1).body.text, /资料没标到知识图谱，交给你/)
+  assert.match(page.posts.at(-1).body.text, /一轮课程/)
   assert.match(page.posts.at(-1).body.text, /F:\\课件\\一轮课程/)
+  assert.match(page.posts.at(-1).body.text, /按知识地图的最小单元标一遍/)
   assert.match(page.boxes.get('toast').textContent, /让教练去标了/)
 
-  // ⑧ 点一个单元：问服务端它在各材料里第几页，就地铺开；再点收起
+  // ⑨ 换回教辅：那棵三层树回来了，催办那条也没了
   await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
-  await page.clickAct({ act: 'atlas-point', point: 'M1.1' })
-  assert.ok(page.calls.some((c) => c === '/study/api/point/pages?point=M1.1'))
-  assert.match(page.html(), /第 4 页/)
-  await page.clickAct({ act: 'atlas-point', point: 'M1.1' })
-  assert.doesNotMatch(page.html(), /第 4 页/)
+  assert.match(page.html(), /<b class="atlas-id">M1\.1<\/b>/)
+  assert.doesNotMatch(page.html(), /这份材料还没挂到最小单元上/)
 })

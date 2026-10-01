@@ -72,6 +72,8 @@ let student = null
 let review = null
 /* 书架：{ materials: [...], pagesRoot }；只有「资料」页拉 */
 let shelf = null
+/* 资料图谱：挑中的那份材料自己的目录摊成的三层（{material, basis, groups, loose}）；只有「学习」页拉 */
+let atlasTree = null
 /* 书架里正摊开哪一本（materialId），空串就是都折着 */
 let shelfOpen = ''
 /* 摊开那一本的页级索引：{ materialId, toc, spans, pages, chapters } */
@@ -116,11 +118,10 @@ const ui = {
   open: new Set(['today']),
   /* 材料卡里那段长说明摊开了没有（默认压三行，不然一页全是字） */
   matMore: false,
-  /* 「学习」页选中的材料（null = 还没选过，进来默认全选）；点开的那个单元在各材料里的页码 */
-  atlasPicked: null,
-  atlasPages: null,
-  /* 「学习」页怎么分组：module = 一行一个模块（M1 一块），point = 一行一个最小单元（平铺） */
-  atlasMode: 'module',
+  /* 「学习」页挑的是哪一份材料（null = 还没挑过，进来默认第一份） */
+  atlasPick: null,
+  /* 「学习」页折起来的大类 / 模块：键是 `g:大类序号` 与 `m:大类序号:模块序号`（null = 都摊着） */
+  atlasShut: null,
   /* 「对话」页正看着哪个会话；空串 = 服务端替我挑最近那个 */
   chatSession: '',
   /* 正在发的话（发出后先乐观占位，等服务端日志追上再换成真的） */
@@ -321,7 +322,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, treeAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -332,6 +333,8 @@ async function probeCapabilities() {
     alive('/study/api/materials'),
     alive('/study/api/toolbox'),
     alive('/study/api/memory'),
+    // 缺参数在新代码里回 400、旧代码回 404，正好分得开
+    alive('/study/api/material/tree'),
   ])
   return {
     ability,
@@ -344,6 +347,7 @@ async function probeCapabilities() {
     shelf: shelfAlive,
     toolbox: toolboxAlive,
     memory: memoryAlive,
+    tree: treeAlive,
     file: await fileAlive(),
   }
 }
@@ -560,6 +564,8 @@ async function load() {
     review = page === 'today' ? await loadReview() : null
     // 书架只有「资料」这一页要。
     shelf = page === 'materials' || page === 'atlas' ? await loadShelf() : null
+    // 资料图谱：拿挑中的那份材料自己的目录摊三层。只有「学习」页要。
+    atlasTree = page === 'atlas' ? await loadAtlas() : null
     // 工具栏目只有「工具」这一页要。
     toolbox = page === 'toolbox' ? await loadToolbox() : null
     // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
@@ -670,6 +676,25 @@ async function loadShelf() {
     const out = await api('/study/api/materials')
     if (!Array.isArray(out.materials)) return null
     return { materials: out.materials, pagesRoot: out.pagesRoot || '' }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 资料图谱：把**挑中的那一份**材料自己的目录（或文件夹）摊成三层。
+ * 一次只摊一份——几本书的目录叠在一起只会互相打架。挑哪一份记在 `ui.atlasPick`，
+ * 没挑过就默认书架上的第一份。
+ * 服务端是旧代码（没有这条路由）就返回 null，卡片上说明白要重启 DSH。
+ */
+async function loadAtlas() {
+  const mats = ((shelf && shelf.materials) || []).filter((m) => m && m.materialId)
+  if (!mats.length) return null
+  if (!ui.atlasPick || !mats.some((m) => m.materialId === ui.atlasPick)) ui.atlasPick = mats[0].materialId
+  if (!capabilities || !capabilities.tree) return null
+  try {
+    const out = await api('/study/api/material/tree?materialId=' + encodeURIComponent(ui.atlasPick))
+    return out && out.ok === false ? null : out
   } catch {
     return null
   }
@@ -812,7 +837,7 @@ const PAGES = [
   { id: 'home', path: '/study', label: '主页', hint: '当前进度与下一步' },
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
-  { id: 'atlas', path: '/study/atlas', label: '学习', hint: '选资料，看它覆盖了哪些单元' },
+  { id: 'atlas', path: '/study/atlas', label: '学习', hint: '挑一份材料，按它自己的目录摊成三层' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具、掌握度' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
@@ -2410,21 +2435,23 @@ function shelfCard() {
 
 /* ── 学习页（/study/atlas）：资料图谱 ──────────────────────────────────────
  *
- * 「哪些材料对上了哪些最小单元」——这句话只有跟知识地图摆在一起才有意义，所以
- * 这一页把 map 的层次摊开，每一级后面挂上覆盖它的材料。
+ * 骨架是**这份材料自己的目录**（或者网课那个文件夹），不再是知识地图：
  *
- * **摊到哪一级由学生自己挑**（`ui.atlasMode`）：`module` 一行一个模块（M1 一块，模块头
- * 带覆盖量尺和这一模块的材料筹码，底下列它的单元行），`point` 一行一个最小单元
- * （M1.1 / M1.2 … 平铺，不再分模块块）。前者看「哪几块还空着」，后者看「一个个单元
- * 到底有没有东西」。
+ *   大类 → 模块 → 最小单元，每一条都带链接。
  *
- * 数据全是现成的：`state.map` 给单元清单，书架的每一份材料带 `points`（它的分析里
- * 出现过的 pointId 并集，教辅按页归的、网课按讲次归的都算）。所以这里**不新增任何
- * 服务端路由**——选了哪几份、覆盖到哪一级，全在客户端算。
+ * · 教辅 / PDF：大类 = 目录一级（「专题一 …」），模块 = 二级（「1.1 集合」），
+ *   最小单元 = 页级索引落在这段里的每一段（讲解 / 例题 / 习题 / 答案），带页码、
+ *   「打开 PDF 第 N 页」和每一页的页图。
+ * · 网课 / 讲义夹：目录名「02.模块一 基础知识 集合」切成大类 + 模块，最小单元 =
+ *   里面的每个文件（一个 mp4 就是一段视频）。
  *
- * 材料在行里写**名字**（`shortMatTitle()` 去过前缀的那一截，全名在 `title` 里），不再用
- * A/B/C——一串字母看不出是哪本。没标注的材料单独列出来，一颗按钮交给教练去标（这正是
- * 「agent 在最小单元上标注它的位置」那条要求的入口）。
+ * 一次只摊一份材料（`ui.atlasPick`）——几本书的目录叠在一起只会互相打架。
+ * 形状由服务端摊好（`GET /study/api/material/tree`，见 lib/material-tree.js 的注释），
+ * 这边只管画、折、给链接；**不在客户端重算骨架**，也不再问「各材料里在第几页」。
+ *
+ * 材料名一律写全名，不用 A/B/C——一串字母看不出是哪本。这份材料一条都没挂到最小
+ * 单元上时，给一颗「交给教练」的按钮（这正是「agent 在最小单元上标注它的位置」
+ * 那条要求的入口）。
  */
 const MAT_KINDS = { book: '教辅', video: '网课', notes: '讲义', ai: 'AI 卷', past: '真题', other: '材料' }
 
@@ -2432,194 +2459,201 @@ function matKind(m) {
   return MAT_KINDS[(m && m.kind) || ''] || '材料'
 }
 
-/** 行里的筹码放不下全名：去掉年份、「数学」和那几样人人都有的前缀，留能区分的那一截；全名进 title。 */
-function shortMatTitle(title) {
-  const raw = String(title || '').replace(/\s+/g, '')
-  if (!raw) return '没名字的材料'
-  let t = raw
-    .replace(/^\d{4}[-年]?\d{0,2}[-月]?\d{0,2}日?[·.]?/, '') // 开头的日期（2026-10-01 · 随堂小测 → 随堂小测）
-    .replace(/[（(]\d{4}[^）)]{0,14}[）)]$/, '') // 结尾的年份括注（随堂小测 · M1.4（2026-10-01））
-    .replace(/^(新高考|高考|中考)/, '')
-    .replace(/数学/g, '')
-  if (t.length < 4) t = raw
-  // 还是太长就掐中间：留得下开头那截（M2.3…）和结尾那截（…随堂小测）
-  return t.length <= 11 ? t : `${t.slice(0, 5)}…${t.slice(-4)}`
+/** 折起来的大类 / 模块：键是 `g:大类序号` 与 `m:大类序号:模块序号`。 */
+function atlasShut() {
+  if (!ui.atlasShut) ui.atlasShut = new Set()
+  return ui.atlasShut
 }
 
-function atlasGroups() {
-  const mods = (state && state.map && state.map.modules) || []
-  const order = []
-  const byGroup = new Map()
-  for (const mod of mods) {
-    const name = mod.group || '未分类'
-    if (!byGroup.has(name)) {
-      byGroup.set(name, [])
-      order.push(name)
-    }
-    byGroup.get(name).push(mod)
+/** 一棵树摊平：所有最小单元（模块里的 + 直接挂在大类下的 + 没归到目录里的）。 */
+function atlasUnits(tree) {
+  const out = []
+  for (const g of (tree && tree.groups) || []) {
+    for (const u of g.units || []) out.push(u)
+    for (const m of g.modules || []) for (const u of m.units || []) out.push(u)
   }
-  return order.map((name) => ({ name, modules: byGroup.get(name) }))
+  for (const u of (tree && tree.loose) || []) out.push(u)
+  return out
 }
 
-/** 选中的材料。第一次进来默认全选——先让人看见「全都对上了什么」，再自己往下减。 */
-function atlasPicked() {
-  const ids = ((shelf && shelf.materials) || []).map((m) => m.materialId).filter(Boolean)
-  if (!ui.atlasPicked) ui.atlasPicked = new Set(ids)
-  return ui.atlasPicked
+/** 取一句话的头一截（材料分析里的 note 常常是一整章的小结，行里放不下）。 */
+function firstClause(text, max = 30) {
+  const raw = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  const cut = raw.split(/[；;。]/)[0].trim()
+  const one = cut.length > 6 ? cut : raw
+  return one.length <= max ? one : `${one.slice(0, max - 1)}…`
 }
 
+/**
+ * 原文件那条链接怎么写：看的是**文件本身**，不是内容类型。
+ * 教辅的一个单元 kind 多半是「讲解 / 习题」，但点开的是那一页 PDF；网课的才是视频。
+ */
+function linkLabel(u) {
+  if (u.kind === 'folder') return '打开文件夹'
+  const raw = String(u.url || '').split('#')[0].toLowerCase()
+  if (raw.endsWith('.pdf')) return '打开 PDF'
+  if (/\.(mp4|m4v|mov|mkv|flv|avi|wmv)$/.test(raw)) return '打开视频'
+  if (/\.(md|markdown|txt)$/.test(raw)) return '打开正文'
+  return '打开'
+}
+
+/** 一条最小单元右边那串链接：原文件（PDF 那一页 / 那段视频）+ 每一页的页图。 */
+function atlasLinks(u) {
+  const out = []
+  if (u.url) {
+    const label = linkLabel(u)
+    out.push(
+      `<a class="mini" href="${esc(u.url)}" target="_blank" rel="noopener" title="${esc(label === '打开文件夹' ? '打开这个文件夹' : label === '打开 PDF' ? '打开这份材料对应的那一页' : '打开这一份')}">${label}</a>`,
+    )
+  }
+  for (const p of (u.pages || []).filter((p) => p && p.url).slice(0, 4)) {
+    out.push(
+      `<a class="mini pg-btn" href="${esc(p.url)}" target="_blank" rel="noopener" title="第 ${esc(String(p.page))} 页的图">P${esc(String(p.page))}</a>`,
+    )
+  }
+  return out.length ? `<span class="atlas-links">${out.join('')}</span>` : ''
+}
+
+/** 一行最小单元：左边是它叫什么（单元 id + 一句说明），右边是类型 / 页码 / 链接。 */
+function atlasUnitRow(u) {
+  const kind = u.kind && u.kind !== 'folder' ? u.kind : ''
+  const range = u.from ? `P${u.from}${Number(u.to) > Number(u.from) ? `—${u.to}` : ''}` : ''
+  const note = firstClause(u.note)
+  return `<li class="atlas-unit${u.pointId ? '' : ' miss'}">
+    <span class="atlas-label">
+      <b class="atlas-id">${esc(u.title || kind || '内容')}</b>
+      ${note ? `<i class="atlas-name" title="${esc(u.note)}">${esc(note)}</i>` : ''}
+    </span>
+    <span class="atlas-meta">
+      ${kind ? `<span class="atlas-kind">${esc(kind)}</span>` : ''}
+      ${range ? `<span class="atlas-range">${esc(range)}</span>` : ''}
+      ${atlasLinks(u)}
+    </span>
+  </li>`
+}
+
+/**
+ * 「学习」页那张卡：先挑一份材料，再把它的三层摊出来。
+ * 折的只有大类 / 模块两级（`ui.atlasShut`）；最小单元不折——它就是要连着链接一起看的。
+ */
 function atlasCard() {
-  if (!shelf || !state || !state.map) {
+  if (!shelf || !state) {
     return `<section class="card">
       <div class="card-head"><h2>资料图谱</h2></div>
       <p class="dim">这份读不出来。刷新一下；要是刷新也不行，那多半是服务端还是旧代码，重启 DSH 再看。</p>
     </section>`
   }
-  const mats = (shelf.materials || []).filter((m) => m.materialId)
+  const mats = (shelf.materials || []).filter((m) => m && m.materialId)
   if (!mats.length) {
     return `<section class="card">
       <div class="card-head"><h2>资料图谱</h2></div>
-      <p class="dim">还没有材料可比。先去「资料」页登记一本教辅或一门网课——登记完回这儿，就能看出它覆盖了知识地图上的哪些单元。</p>
+      <p class="dim">还没有材料可比。先去「资料」页登记一本教辅或一门网课——登记完回这儿，就能按它自己的目录一层层看下去。</p>
     </section>`
   }
 
-  const picked = atlasPicked()
-  const mode = ui.atlasMode === 'point' ? 'point' : 'module'
-  const byId = new Map(mats.map((m) => [m.materialId, m]))
-  const on = mats.filter((m) => picked.has(m.materialId))
-  // 单元 → 覆盖它的材料（只算选中的那几份，按材料在书架上的顺序）
-  const cover = new Map()
-  for (const m of on) {
-    for (const id of m.points || []) {
-      if (!cover.has(id)) cover.set(id, [])
-      cover.get(id).push(m.materialId)
-    }
-  }
-
-  const groups = atlasGroups()
-  const allPoints = groups.flatMap((g) => g.modules.flatMap((mod) => mod.points || []))
-  const hit = allPoints.filter((p) => cover.has(p.id)).length
-  const pct = allPoints.length ? Math.round((hit / allPoints.length) * 100) : 0
-
-  /** 材料筹码：写名字（短的那一截），全名和类别进 title。 */
-  const tag = (id) => {
-    const m = byId.get(id)
-    if (!m) return ''
-    return `<b class="atlas-tag" title="${esc(m.title)} · ${esc(matKind(m))}">${esc(shortMatTitle(m.title))}</b>`
-  }
-  const covers = (ids) => `<div class="atlas-covers">${ids.map(tag).join('')}</div>`
-
+  const pick = ui.atlasPick && mats.some((m) => m.materialId === ui.atlasPick) ? ui.atlasPick : mats[0].materialId
+  const shut = atlasShut()
   const picker = `<div class="chips atlas-pick">
     ${mats
       .map((m) => {
-        const n = (m.points || []).length
-        const info = `${matKind(m)}${n ? ` · ${n} 个单元` : ' · 还没标注'}`
-        return `<button type="button" class="mini${picked.has(m.materialId) ? ' on' : ''}" data-act="atlas-pick" data-id="${esc(m.materialId)}" title="${esc(m.title)} · ${esc(info)}"><span class="mini-t">${esc(m.title || '没名字的材料')}</span><span class="mini-n">${n || '未标'}</span></button>`
+        const n = Number(m.total) || 0
+        const info = `${matKind(m)}${n ? ` · ${n} 页` : m.kind === 'video' ? ' · 按文件夹' : ' · 还没拆'}`
+        return `<button type="button" class="mini${m.materialId === pick ? ' on' : ''}" data-act="atlas-pick" data-id="${esc(m.materialId)}" title="${esc(m.title)} · ${esc(info)}"><span class="mini-t">${esc(m.title || '没名字的材料')}</span></button>`
       })
       .join('')}
-    <button type="button" class="mini" data-act="atlas-all">全选</button>
-    <button type="button" class="mini" data-act="atlas-none">清空</button>
   </div>`
 
-  const modeBox = `<div class="chips atlas-mode">
-    <span class="atlas-mlabel">按什么分组</span>
-    <button type="button" class="mini${mode === 'module' ? ' on' : ''}" data-act="atlas-mode" data-mode="module" title="一行一个模块：M1 一块，看哪几块还没有材料">按模块</button>
-    <button type="button" class="mini${mode === 'point' ? ' on' : ''}" data-act="atlas-mode" data-mode="point" title="一行一个最小单元：M1.1 / M1.2 … 平铺，看一个个单元有没有东西">按最小单元</button>
-  </div>`
+  const tree = atlasTree && atlasTree.material && atlasTree.material.materialId === pick ? atlasTree : null
+  const units = atlasUnits(tree)
+  const mapped = units.filter((u) => u.pointId).length
+  const pct = units.length ? Math.round((mapped / units.length) * 100) : 0
+  const mat = (tree && tree.material) || {}
+  const basisText = tree && tree.basis === 'folder' ? '按文件夹分' : tree && tree.basis === 'toc' ? '按它自己的目录分' : '按页级索引分'
 
-  /** 一行一个最小单元（两种分组共用这一行）。 */
-  const unitRow = (p, mod) => {
-    const who = cover.get(p.id) || []
-    const where = mod ? `${mod.id} ${mod.title || ''}`.trim() : ''
-    return `<li class="atlas-unit${who.length ? '' : ' miss'}"${
-      who.length ? ` data-act="atlas-point" data-point="${esc(p.id)}" title="${esc(where ? where + ' · ' : '')}看它在各材料里在第几页 / 第几讲"` : ''
-    }>
-      <span class="atlas-id">${esc(p.id)}</span>
-      <span class="atlas-name">${esc(p.title || '')}</span>
-      <span class="atlas-covers">${who.length ? who.map(tag).join('') : '<span class="dim">还没有材料对上</span>'}</span>
-      ${ui.atlasPages && ui.atlasPages.point === p.id ? `<div class="atlas-pages">${ui.atlasPages.html}</div>` : ''}
-    </li>`
-  }
+  const unitList = (list) => `<ul class="list atlas-units">${list.map(atlasUnitRow).join('')}</ul>`
 
-  /** 一块模块：模块头 + 量尺 + 这一块的材料筹码 + 它的单元行。 */
-  const modBlock = (mod) => {
-    const pts = mod.points || []
-    const mHit = pts.filter((p) => cover.has(p.id)).length
-    const done = pts.length ? Math.round((mHit / pts.length) * 100) : 0
-    const covered = new Set()
-    for (const p of pts) for (const id of cover.get(p.id) || []) covered.add(id)
-    const ids = on.map((m) => m.materialId).filter((id) => covered.has(id))
+  /** 一块模块：模块头 + 它的最小单元。 */
+  const moduleBlock = (m, gi, mi) => {
+    const key = `m:${gi}:${mi}`
+    const closed = shut.has(key)
+    const page = m.page ? `P${m.page}${Number(m.to) > Number(m.page) ? `—${m.to}` : ''}` : ''
     return `<div class="atlas-mod">
-      <div class="atlas-mod-head">
-        <span class="atlas-mid">${esc(mod.id)}</span>
-        <span class="atlas-mtitle">${esc(mod.title || '')}</span>
-        <span class="atlas-count${mHit ? '' : ' miss'}">${mHit}/${pts.length}</span>
+      <div class="atlas-mod-head" data-act="atlas-shut" data-key="${esc(key)}" title="点一下${closed ? '摊开' : '折起'}">
+        <span class="atlas-caret">${closed ? '▸' : '▾'}</span>
+        <span class="atlas-mtitle">${esc(m.title || '')}</span>
+        ${m.pointId ? `<span class="atlas-mid">${esc(m.pointId)}</span>` : ''}
+        <span class="dim">${(m.units || []).length} 条</span>
+        ${page ? `<span class="atlas-range">${esc(page)}</span>` : ''}
       </div>
-      <div class="atlas-gauge"><i style="width:${done}%"></i></div>
-      ${ids.length ? `<div class="atlas-covers atlas-mod-covers">${ids.map(tag).join('')}</div>` : ''}
-      <ul class="list atlas-units">${pts.map((p) => unitRow(p, mod)).join('')}</ul>
+      ${closed ? '' : unitList(m.units || [])}
     </div>`
   }
 
-  const body = !on.length
-    ? ''
-    : groups
-        .map((g) => {
-          const gPoints = g.modules.flatMap((mod) => mod.points || [])
-          const gHit = gPoints.filter((p) => cover.has(p.id)).length
-          // 按最小单元：模块那层不铺开，一个个单元挨着排（模块名留在每一行的 title 里）
-          const inner =
-            mode === 'point'
-              ? `<ul class="list atlas-units">${g.modules
-                  .map((mod) => (mod.points || []).map((p) => unitRow(p, mod)).join(''))
-                  .join('')}</ul>`
-              : g.modules.map(modBlock).join('')
-          return `<div class="atlas-group">
-            <div class="atlas-group-head">
-              <span class="atlas-gname">${esc(g.name)}</span>
-              <span class="dim">${g.modules.length} 个模块 · ${gHit}/${gPoints.length} 个单元有材料</span>
-            </div>
-            ${inner}
-          </div>`
-        })
-        .join('')
+  /** 一个大类：抬头 + 直接挂在这儿的内容 + 它下面的模块。 */
+  const groupBlock = (g, gi) => {
+    const key = `g:${gi}`
+    const closed = shut.has(key)
+    const page = g.page ? `P${g.page}${Number(g.to) > Number(g.page) ? `—${g.to}` : ''}` : ''
+    const parts = []
+    if ((g.units || []).length) parts.push(unitList(g.units))
+    parts.push((g.modules || []).map((m, mi) => moduleBlock(m, gi, mi)).join(''))
+    return `<div class="atlas-group">
+      <div class="atlas-group-head" data-act="atlas-shut" data-key="${esc(key)}" title="点一下${closed ? '摊开' : '折起'}">
+        <span class="atlas-caret">${closed ? '▸' : '▾'}</span>
+        <span class="atlas-gname">${esc(g.title || '（没名字的一段）')}</span>
+        <span class="dim">${(g.modules || []).length} 个模块 · ${g.count || 0} 条内容</span>
+        ${page ? `<span class="atlas-range">${esc(page)}</span>` : ''}
+      </div>
+      ${closed ? '' : parts.join('')}
+    </div>`
+  }
 
-  // 选中的材料里，一份标注都没有的（这台机器上的网课就是这样）：交给教练去标。
-  const blank = on.filter((m) => !(m.points || []).length)
-  const blankBox = !blank.length
-    ? ''
-    : `<div class="atlas-blank">
-        <b>还有 ${blank.length} 份没标到单元上</b>
-        ${blank
-          .map(
-            (m) => `<div class="atlas-blank-row">
-              <span><span class="atlas-kind">${esc(matKind(m))}</span><span class="atlas-bname" title="${esc(m.title)}">${esc(m.title || '没名字的材料')}</span></span>
-              ${forwardAct(m.materialId, m.path, { act: 'atlas-annotate', label: '让教练标一遍' })}
-            </div>`,
-          )
-          .join('')}
-        <p class="hint">教辅按页范围对、网课按讲次对，一处内容可以同时归好几个单元。让教练读过标一遍，回来刷新就能看见。</p>
+  const body = (tree ? tree.groups || [] : []).map(groupBlock).join('')
+  const loose = tree && (tree.loose || []).length
+    ? `<div class="atlas-group">
+        <div class="atlas-group-head"><span class="atlas-gname">没归到目录里的</span><span class="dim">${tree.loose.length} 条</span></div>
+        ${unitList(tree.loose)}
+      </div>`
+    : ''
+  const blank =
+    !tree || mapped
+      ? ''
+      : `<div class="atlas-blank">
+        <b>这份材料还没挂到最小单元上</b>
+        <p class="hint">上面三层是按它自己的目录摊的，但一条都没对到知识地图的单元（M1.1 这种）。让教练读过一遍、把每一段挂到对应的单元上，回来刷新就能看见。</p>
+        ${forwardAct(pick, mat.path, { act: 'atlas-annotate', label: '交给教练去标' })}
       </div>`
 
-  const sub =
-    mode === 'point'
-      ? '一行一个最小单元（M1.1 / M1.2 …）；上面挑了哪几份材料，下面就只看那几份覆盖到的单元'
-      : '一行一个模块（M1 一块）；模块头那行后面挂着对上它的材料，下面才是它的单元'
+  if (!tree) {
+    return `<section class="card atlas" data-card="atlas">
+      <div class="day-hero">
+        <p class="eyebrow">MATERIAL GRAPH · 资料图谱</p>
+        <div class="day-title-row"><h2 class="day-title">资料图谱</h2></div>
+      </div>
+      ${picker}
+      <p class="dim">这份材料的三层端不出来。服务端多半还是旧代码——重启一次 DSH 再看；要是刚登记、目录还没读过，让教练先读一遍。</p>
+    </section>`
+  }
 
   return `<section class="card atlas" data-card="atlas">
     <div class="day-hero">
       <p class="eyebrow">MATERIAL GRAPH · 资料图谱</p>
       <div class="day-title-row">
         <h2 class="day-title">资料图谱</h2>
-        <span class="day-pill">${on.length} 份材料 · 覆盖 ${hit}/${allPoints.length} 个单元</span>
+        <span class="day-pill">${mats.length} 份材料 · 这一份 ${units.length} 条内容</span>
       </div>
-      <p class="day-sub">${sub}</p>
-      <div class="day-gauge" role="img" aria-label="材料覆盖度 ${pct}%"><i style="width:${pct}%"></i></div>
+      <p class="day-sub">挑一份材料，下面就是它自己的目录摊成的三层：大类 → 模块 → 最小单元，每一层右边都能直接打开对应的那一页 / 那一段（${esc(basisText)}）。</p>
+      <div class="day-gauge" role="img" aria-label="已挂到单元 ${pct}%"><i style="width:${pct}%"></i></div>
     </div>
     ${picker}
-    ${modeBox}
+    <div class="chips atlas-mode">
+      <span class="atlas-mlabel">${(tree.groups || []).length} 个大类 · ${units.length} 条内容 · 已挂到单元 ${mapped} 条${tree.truncated ? ' · 太多了，先截了一段' : ''}</span>
+      <span class="dim">点大类 / 模块那一行能折起来</span>
+    </div>
     ${body}
-    ${blankBox}
+    ${loose}
+    ${blank}
   </section>`
 }
 
@@ -3611,22 +3645,20 @@ document.addEventListener('click', async (event) => {
       toast(sent ? '交给教练了，去「对话」页看看' : '没能交过去 —— 对话通道没通', !sent)
       render()
     } else if (act === 'atlas-pick') {
-      // 选中/取消一份材料，图谱当场重算——纯客户端，不惊动服务端。
+      // 换一份材料：它的三层要重新去服务端摊（形状是服务端算的，客户端不重算）。
       const id = el.dataset.id || ''
-      const picked = atlasPicked()
-      if (picked.has(id)) picked.delete(id)
-      else picked.add(id)
-      ui.atlasPages = null
+      if (!id || id === ui.atlasPick) return
+      ui.atlasPick = id
+      ui.atlasShut = null
+      atlasTree = await loadAtlas()
       render()
-    } else if (act === 'atlas-mode') {
-      // 按模块看 / 按最小单元看——纯客户端的分组方式，不惊动服务端。
-      ui.atlasMode = el.dataset.mode === 'point' ? 'point' : 'module'
-      ui.atlasPages = null
-      render()
-    } else if (act === 'atlas-all' || act === 'atlas-none') {
-      const ids = ((shelf && shelf.materials) || []).map((m) => m.materialId).filter(Boolean)
-      ui.atlasPicked = new Set(act === 'atlas-all' ? ids : [])
-      ui.atlasPages = null
+    } else if (act === 'atlas-shut') {
+      // 折 / 摊一个大类或模块——纯客户端，不惊动服务端。
+      const key = el.dataset.key || ''
+      if (!key) return
+      const shut = atlasShut()
+      if (shut.has(key)) shut.delete(key)
+      else shut.add(key)
       render()
     } else if (act === 'atlas-annotate') {
       const id = el.dataset.id || ''
@@ -3639,32 +3671,6 @@ document.addEventListener('click', async (event) => {
         annotate: true,
       })
       toast(sent ? '让教练去标了，标完刷新这一页' : '没能交过去 —— 对话通道没通', !sent)
-      render()
-    } else if (act === 'atlas-point') {
-      // 点一个单元：问服务端「它在各材料里是哪几页」，回来就地铺开。
-      const point = el.dataset.point || ''
-      if (!point) return
-      if (ui.atlasPages && ui.atlasPages.point === point) {
-        ui.atlasPages = null
-        render()
-        return
-      }
-      try {
-        const out = await api('/study/api/point/pages?point=' + encodeURIComponent(point))
-        const hits = (out && out.hits) || []
-        const html = hits.length
-          ? `<ul class="atlas-page-list">${hits
-              .map(
-                (h) => `<li><span class="path">${esc(h.title || h.materialId || '')}</span>${(h.pages || [])
-                  .map((p) => `<a class="mini" href="${esc(p.url)}" target="_blank" rel="noopener">第 ${esc(String(p.page))} 页</a>`)
-                  .join('')}</li>`,
-              )
-              .join('')}</ul>`
-          : '<span class="dim">这份材料里没找到这个单元——要么还没标，要么标的是别的单元。</span>'
-        ui.atlasPages = { point, html }
-      } catch (error) {
-        ui.atlasPages = { point, html: `<span class="dim bad">${esc(error.message)}</span>` }
-      }
       render()
     } else if (act === 'shelf-build') {
       const id = el.dataset.id || ''
