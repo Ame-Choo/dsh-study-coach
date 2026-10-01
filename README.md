@@ -477,16 +477,18 @@ node --test
 | --- | --- | --- |
 | `/study` | 主页 | 一屏说清「现在什么水平、今天还剩什么、下一步点哪儿」，只放入口不放编辑表单 |
 | `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
-| `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿 |
-| `/study/ability` | 能力 | 大盘数字、各大类、薄弱环节、待复习、最近七天、错题本 |
+| `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿；下面接**「掌握度」**那一节（整体饼图 + 各大类，行尾「档案」展开细账）；再下面是错题本，边栏是学生画像 |
+| `/study/atlas` | 学习 | 资料图谱：挑资料，看它覆盖了哪几个大类 / 模块 / 最小单元；没标注的交给教练 |
 | `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
 | `/study/materials` | 资料 | 资料书架：一本拆到哪、归到哪个单元，按页直达；右栏登记新资料 |
 | `/study/toolbox` | 工具 | 二级菜单装小工具：番茄钟、清单（以后往这儿加） |
 | `/study/coach` | 对话 | 整页就是一个聊天窗口：听教练说、直接回话；顶上能选 DSH 里哪个会话 |
 
+**「能力」那一页已经并进知识地图页了**（掌握度那一节就是它），老的 `/study/ability` 照旧能开——只是落到地图页上，别让收藏夹里那条链接 404。
+
 **面板服务自己的开关不在这儿**——它属于「这台插件怎么跑」，不是「这个学生学到哪了」，所以只有一个地方管它：**DSH 的设置**（见下面「补：设置界面」）。
 
-- 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。
+- 服务端认页靠 `lib/handler.js` 的 `PANEL_PAGES`：`/study` 和 `/study/<这些段>` 都送同一份 `panel.html`，页面自己按 `location.pathname` 认（`resolvePage()`）。认不出的段回 404，别的一概不变。这份名单**可以比导航多几项**，但多出来的必须是写明了的老地址（并掉的页面不能 404）：多出来的那几个要同时出现在 `resolvePage()` 的 `alias` 表里，`test/pages-consistency.test.js` 钉着这条。
 - 导航走 **`pushState` 前端切页**，不往服务端整页跳——因为服务端路由是 DSH 启动时加载的，改完 `lib/` 没重启时子页面会回 JSON 404，整页跳过去人看到的是一屏报错。前端切页让旧服务端也能用，地址栏仍是真地址。
 - 默认配色是**「罗德岛终端」**（近黑冷灰底 + 白字 + 一条信号青只指当前 / 动作 / 进度，方角、细规、角包、索引字），`html[data-theme="light"]` 是同一套造型的纸白版；`?theme=` / 顶栏那个按钮切换。规范见 `design.md`。
 
@@ -523,7 +525,7 @@ node --test
 - **规矩写在代码里，不写在提示词里**：`status` 只有 `待验证 / 已订正 / 已复做对` 三档，**标后两档必须同时有 `cause` 和 `fix`**，否则直接抛错；`origin` 缺失、`redoAt` 不是 `YYYY-MM-DD`、`status` 写了个不认识的词，一样抛。这条是整套设计里最值得抄的一条手法——业务规矩做成数据自校验，才真的是规矩，不然只是提醒。
 - **订正不算证据**：`study_record` 传 `mistakeId` 时只改那条错题（`patchMistake`），**不新增证据、不动档位**。「改对了答案」和「掌握了」是两件事，档位得靠另一条证据推。
 - **读的入口**：工具 `study_mistakes`（可按 `status` / `pointId` 筛）和 `GET /study/api/mistakes`，两边读同一个 `mistakesOf(map, mastery, {status, pointId, limit})`。排序键是 `at` 不是 `updatedAt`——改一下状态就把老错题顶到最上面，学生看到的第一条会跳来跳去。
-- **面板**：「能力」页多一张错题本卡（按状态筛 + 每条「再练」），`capabilities.mistakes` 探针失效时整张卡不出现；做题页多一个「这题做错了」入口（填题号 + 错在哪），走 `POST /study/api/practice/ask` 的第三个 `mode: 'mistake'`，投出去的 prompt 以 `【面板·错题】` 开头，里面直接写着「用 `study_record` 记下来」。
+- **面板**：知识地图页（图谱下面那张「掌握度」卡的下一节）多一张错题本卡（按状态筛 + 每条「再练」），`capabilities.mistakes` 探针失效时整张卡不出现；做题页多一个「这题做错了」入口（填题号 + 错在哪），走 `POST /study/api/practice/ask` 的第三个 `mode: 'mistake'`，投出去的 prompt 以 `【面板·错题】` 开头，里面直接写着「用 `study_record` 记下来」。
 - **档案跟着一起出**：`study_archive` 的证据行**有错题才带 `mistake` 字段**（写成 `mistake: item?.mistake ?? null` 会被宿主的 `additionalProperties: false` 拒掉，报 `"evidence[0].mistake" is not a declared property`）。
 - **一个踩过的坑**：`findMistake()` 返回的是 `{ pointId, item }`，错题在 `hit.item.mistake` 上——写成 `hit.mistake` 不会报错，只会静默拿到 `undefined`，症状是 `study_record` 更新完返回的 `mistakeStatus` 是空串。
 
@@ -1053,6 +1055,19 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **公开的 `--dsw-alias-*` 允许集只有 14 个**（`bg-base / bg-layer-1 / bg-layer-2 / bg-overlay / border-l1 / border-l2 / brand-primary / label-primary / label-secondary / state-{error,idle,success,warn}-primary / specific-sidebar-fill`），**里面没有「填充色之上那层文字色」**，所以这一页干脆不做实心填充：品牌色只描边 + 左侧一道 3px 信号条，文字走 `label-primary`。
 - **每个别名引用都要写实色兜底**：`var(--dsw-alias-brand-primary, #4f8cff)`。别名层不属于我们，谁都可能改写它。
 - 怎么验的（没有 DSH 也能看）：`F:\dshworkingspace(studyplugin\.shot\sc\harness.html` 是个离线壳子——迷你 React + `toDom()` + `window.fetch` 桩，`?bundle=old|new&theme=light|dark&we=0|1&state=running|stopped` 四个开关，两套 token（DSH 正典 / 壁纸插件改写）。旧 bundle 从 git 导出成 `.shot/sc/client-old.js`。壳子里还能直接把 computed style 打到页面上：**旧 bundle 量出 `.sc-btn.primary color = rgba(0, 0, 0, 0)`，新 bundle 是 `rgb(0, 0, 0)`**。截图在 `.shot/sc/`。顺带两条环境经验：Edge 必须用老 `--headless`（`--headless=new` 会报 `Multiple targets are not supported in headless mode`），`--dump-dom` 在它上面零输出、别指望。
+
+
+## 补：「能力」页并进知识地图页（整体饼图 + 各大类）
+
+用户说：「能力部分可以删掉，合并到知识图谱部分的下面，知识图谱下面本来就有个能力的同一种东西，这位于做成饼图，饼图的下面是大类名字，也是依据知识图谱的大类，掌握程度用不同颜色表示……然后档案按键保留，就在饼图下面的大类名字旁边，一点就展开掌握的详情，然后整体的掌握程度也要有个地方写出来」。
+
+- **导航里不再有「能力」**（`assets/panel.js` 的 `PAGES` 删掉那一项），它的两节并进 `PAGE_CARDS.map` 的 `main`：`[['map','知识地图',mapCard], ['ability','掌握度',abilityCard], ['mistakes','错题本',mistakesCard]]`，`aside` 是学生画像。地图页现在是「图谱 → 掌握度 → 错题本」三节 + 边上画像。
+- **图谱卡里那份重复的大类列表搬走了**：`mapCard()` 末尾的 `${groupedBlocks(modules)}` 去掉，`groupedBlocks()` 现在只由 `abilityCard()` 调用一次。之前两处各铺一份同样的「大类 + 进度条 + 档案」，看着像两件事，其实是一件事。
+- **饼图是「整体四档分布」**：`masteryBands(byStage, total)` 把六档并成四档（`MASTERY_BANDS`：熟练掌握 = 熟练稳定 + 能讲明白 → `--stage-6`；大概掌握 = 能独立做 → `--stage-4`；薄弱 = 能跟做 + 见过 → `--stage-2`；完全不会 = 没接触过 → `--stage-1`），`masteryPie()` 用 `stroke-dasharray` 画环（`pathLength="100"`，每段的 `stroke-dashoffset` 累加），圆心写「整体掌握度 N%」。颜色只取 `--stage-*` 那四个 token —— 深色和浅色两套色板都靠它们自动换。**「整体的掌握程度也要有个地方写出来」就是圆心那个数字 + 图例那一列百分比 + `一共 N 个单元：熟练掌握 …` 那行。**
+- **饼图下面是大类名字**（`<h3 class="sub">各大类</h3>` + `<div class="grouped">`），行尾还是那枚「档案」（`archiveBtn('group', name)`），点行首箭头就地展开模块 → 最小单元；按 `.sub` 分节往下是薄弱环节 / 待复习 / 最近七天。
+- **老地址不能 404**：`lib/handler.js` 的 `PANEL_PAGES` 里 `'ability'` 留着（服务端继续发 panel.html），`resolvePage()` 里加一张 `alias = { '/study/ability': 'map' }` 把它落到地图页。`test/pages-consistency.test.js` 从「两边一模一样」改成「PAGES 里的每一项都必须在 PANEL_PAGES 里；PANEL_PAGES 多出来的只能是 `LEGACY_PAGES` 里写明理由的老地址，而且 alias 表要对得上」。
+- 顺手改口的地方：主页入口卡 `总体能力` → `掌握度`（指 `/study/map`）；`STALE_NEED` 里那两句描述、体检卡那两处 `data-nav`；`lib/client.js` 的设置页链接表（去掉「能力」、补上「学习」）。
+- **这一批不用重启 DSH**：`PANEL_PAGES` 只删不增，`lib/client.js` 每次页面加载现读，`assets/*` 刷新即可。
 
 
 

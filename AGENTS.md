@@ -165,6 +165,25 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - `test/panel.test.js` 的 harness 用 `review` 选项喂图（`review: null` 才走得到空态分支）；
   断言别拿 `/api/review` 当条件——探活也会打这个路径，要写 `/api/review?date=`。
 
+## 「能力」页并进了知识地图页（`assets/panel.js` 的 `.mastery` / `.pie-*`）
+
+导航里**没有「能力」了**（用户要的）：那一页的两节落到知识地图页图谱下面，`PAGE_CARDS.map` =
+main `[['map','知识地图',mapCard], ['ability','掌握度',abilityCard], ['mistakes','错题本',mistakesCard]]`、
+aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` 靠 `resolvePage()` 的 `alias`
+落到地图页，`PANEL_PAGES` 里**留着**它（老 URL 不能 404）——`test/pages-consistency.test.js` 钉着这条。
+
+- **图谱卡里那份大类折叠列表只此一份**：`groupedBlocks(modules)` 现在只由 `abilityCard()` 调用
+  （`mapCard()` 末尾不再铺一遍）。图谱卡下面是掌握度卡，两处别各画一套大类。
+- 饼图是**整体**四档分布：`MASTERY_BANDS`（熟练掌握 = 熟练稳定 + 能讲明白 → `--stage-6`；
+  大概掌握 = 能独立做 → `--stage-4`；薄弱 = 能跟做 + 见过 → `--stage-2`；完全不会 = 没接触过 → `--stage-1`），
+  `masteryBands(byStage, total)` 把认不出的差额并进最后一档，`masteryPie()` 用
+  `pathLength="100"` + `stroke-dasharray="${pct+0.4} 100"` + `stroke-dashoffset="-acc"` 画在
+  `<g transform="rotate(-90 100 100)">` 里（0% 那档写 `0 100`，否则兜底线段会留一截）。
+  整体掌握度写三处：圆心 `<b>${pct}%</b>`、`aria-label`、图例下面的「一共 N 个单元：…」。
+- 颜色只许用 `--stage-1…6` 那几个 token（浅色主题那套在 `html[data-theme="light"]` 里也有值），
+  别写死色值。大类行的版式沿用 `.group-head`（caret + 名字 + 量尺 + 百分比 + `档案`），
+  只是 `档案` 按键落在行尾——用户说「就在大类名字旁边」，行尾那一串同属那一行，别再新起一套。
+
 ## 「学习」页 = 资料图谱（`assets/panel.js` 的 `.atlas-*`）
 
 拿知识图谱当骨架、看每份资料盖到哪里。**别为它新增服务端路由**——`/study/api/state` 的
@@ -173,6 +192,8 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 
 - **新加一个面板子页面要记账**：`lib/handler.js` 的 `PANEL_PAGES`（`:27`）里得添上那段路径名，
   否则那个网址直接 404（它只认列出来的那几个）。这是 `lib/` 改动 → 要重启 DSH。
+  **并掉一个页面则反过来**：从 `assets/panel.js` 的 `PAGES` 里删掉、`PANEL_PAGES` 里留着（老 URL 不能 404）、
+  在 `resolvePage()` 的 `alias` 表里指到活着的页上，并在 `test/pages-consistency.test.js` 的 `LEGACY_PAGES` 里写清为什么留着。
 - 抬头复用今日任务那套 `.day-hero`（眉标 `MATERIAL GRAPH · 资料图谱`、`.day-pill` 写「N 份材料 ·
   覆盖 x/y 个单元」、`.day-gauge` 的 `aria-label="材料覆盖度 P%"`）——**复盘图那套版式是这一族的唯一版式**。
 - 大类/模块/单元三级：`.atlas-group` / `.atlas-mod` / `li.atlas-unit`，字母块 `.atlas-tag` 对应材料筹码

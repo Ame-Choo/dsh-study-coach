@@ -45,9 +45,9 @@ const FLOAT_POS_KEY = 'study-coach:float-pos'
 let capabilities = null
 
 const STALE_NEED = [
-  ['ability', '总体能力判断', '能力页那张总评卡'],
+  ['ability', '总体能力判断', '知识地图页「掌握度」那张总评卡'],
   ['archive', '每级掌握档案', '点「档案」看单个单元的明细'],
-  ['student', '学生画像', '能力页的画像卡'],
+  ['student', '学生画像', '知识地图页边上的画像卡'],
   ['library', '学习目标库', '档案页切目标、新建目标'],
   ['practice', '做题页', '「做题」那一整页'],
   ['mistakes', '错题本', '错题本卡和每条的「再练」'],
@@ -438,7 +438,7 @@ function healthReport() {
     warn.push({
       title: `学生画像里 ${student.orphans.length} 条判断引的证据找不到了`,
       hint: '多半是地图重画换了单元号，或者那条证据被删了。不是坏事，但得核一下——在对话里让教练重新挂证据，或者删掉这条判断。',
-      nav: ['ability', '去能力页'],
+      nav: ['map', '去地图页'],
     })
   }
 
@@ -457,7 +457,7 @@ function healthReport() {
     warn.push({
       title: `错题本上有 ${pending} 道还挂着「待验证」`,
       hint: '订正了不等于会了。挑一两道隔几天重做一遍，做对了再标「已复做对」——不然这个本子只会越堆越长。',
-      nav: ['ability', '去错题本'],
+      nav: ['map', '去错题本'],
     })
   }
 
@@ -811,7 +811,6 @@ const PAGES = [
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'atlas', path: '/study/atlas', label: '学习', hint: '选资料，看它覆盖了哪些单元' },
-  { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
@@ -857,8 +856,10 @@ function resolvePage() {
   }
   const clean = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
   if (clean === '' || clean === '/study') return 'home'
+  // 「能力」那一页并进了知识地图（掌握度那一节），老地址照旧能开——别让收藏夹里那条链接 404。
+  const alias = { '/study/ability': 'map' }
   const hit = PAGES.find((p) => p.path === clean)
-  return hit ? hit.id : 'home'
+  return hit ? hit.id : alias[clean] || 'home'
 }
 
 /*
@@ -867,18 +868,16 @@ function resolvePage() {
  */
 const PAGE_CARDS = {
   today: { main: [['today', '今日任务', tasksCard], ['review', '今日复盘图', reviewCard]] },
-  map: { main: [['map', '知识地图', mapCard]] },
+  // 知识图谱这一页三节：图谱 → 掌握度（饼图 + 大类）→ 错题本；学生画像在边上。
+  // 「能力」那一页已经不单独存在了——它的内容就是下面那两节。
+  map: {
+    main: [['map', '知识地图', mapCard], ['ability', '掌握度', abilityCard], ['mistakes', '错题本', mistakesCard]],
+    aside: [['student', '学生画像', studentCard]],
+  },
   // 学习这一页：选资料 → 看「资料图谱」——哪个大类、哪个模块、哪个最小单元有材料对上。
   atlas: {
     main: [['atlas', '资料图谱', atlasCard]],
     aside: [['guide', '教练的指引', guideCard]],
-  },
-  ability: {
-    main: [
-      ['ability', '总体能力', abilityCard],
-      ['mistakes', '错题本', mistakesCard],
-    ],
-    aside: [['student', '学生画像', studentCard]],
   },
   library: {
     main: [['library', '学习档案', libraryCard], ['materials', '材料', materialsCard]],
@@ -1122,7 +1121,7 @@ function homePage() {
   const entries = [
     { id: 'today', title: '今日任务', hint: '逐条勾选完成情况', count: day.length ? `${done}/${day.length}` : '还没排' },
     { id: 'map', title: '知识地图', hint: '课程全貌，可逐单元自评', count: built ? `${points} 个单元` : '还没画' },
-    { id: 'ability', title: '总体能力', hint: '总体数据、薄弱环节、复习安排', count: total ? `碰过 ${pct}%` : '还没数据' },
+    { id: 'map', title: '掌握度', hint: '整体饼图、薄弱环节、复习安排', count: total ? `碰过 ${pct}%` : '还没数据' },
     { id: 'library', title: '学习档案', hint: '切换目标、登记材料、记录基本工具', count: materials.length ? `${materials.length} 份材料` : `${libs.length || 1} 份档案` },
     { id: 'materials', title: '资料书架', hint: '教辅拆成页图、每一页归到哪个单元', count: materials.length ? `${materials.length} 份` : '还没登记' },
     { id: 'coach', title: '与教练对话', hint: '有疑问、想换材料、时间有变，直接说', count: '' },
@@ -1384,20 +1383,64 @@ function archiveModal() {
 }
 
 /** 总体能力：横着看所有大类、所有工具，加最近七天的节奏。 */
+/**
+ * 四档掌握度。地图上是六档（点、色带、逐单元的标签），摊成饼太碎——饼上只看四块，
+ * 颜色从亮到暗：越亮越稳。合成规则只写在这一处。
+ */
+const MASTERY_BANDS = [
+  { key: 'solid', label: '熟练掌握', stages: ['熟练稳定', '能讲明白'], color: 'var(--stage-6)' },
+  { key: 'fair', label: '大概掌握', stages: ['能独立做'], color: 'var(--stage-4)' },
+  { key: 'weak', label: '薄弱', stages: ['能跟做', '见过'], color: 'var(--stage-2)' },
+  { key: 'none', label: '完全不会', stages: ['没接触过'], color: 'var(--stage-1)' },
+]
+
+/** 每一档几个单元、占多少。表里没认出来的档位差额算进「完全不会」，免得饼图缺一块。 */
+function masteryBands(byStage, total) {
+  const bands = MASTERY_BANDS.map((b) => ({
+    ...b,
+    count: b.stages.reduce((n, st) => n + (Number(byStage && byStage[st]) || 0), 0),
+  }))
+  const known = bands.reduce((n, b) => n + b.count, 0)
+  if (total > known) bands[bands.length - 1].count += total - known
+  return bands.map((b) => ({ ...b, pct: total ? (b.count / total) * 100 : 0 }))
+}
+
+/**
+ * 饼图。`pathLength="100"` 让每一段的 dash 长度直接就是百分比，不用自己算弧线；
+ * 段尾多给 0.4 是为了盖住抗锯齿留的那条缝（相邻两块相差大时那条缝会显成一根黑线）。
+ */
+function masteryPie(bands, overall) {
+  const r2 = (v) => Math.round(v * 100) / 100
+  let acc = 0
+  const slices = bands
+    .map((b) => {
+      const dash = b.pct > 0 ? `${r2(b.pct + 0.4)} 100` : '0 100'
+      const off = -acc
+      acc += b.pct
+      return `<circle class="pie-slice" data-band="${b.key}" cx="100" cy="100" r="66" pathLength="100" fill="none" stroke="${b.color}" stroke-width="34" stroke-dasharray="${dash}" stroke-dashoffset="${r2(off)}"></circle>`
+    })
+    .join('')
+  const said = bands.map((b) => `${b.label} ${Math.round(b.pct)}%`).join('、')
+  return `<svg class="pie" viewBox="0 0 200 200" role="img" aria-label="整体掌握度 ${overall}%：${said}">
+    <g transform="rotate(-90 100 100)">${slices}</g>
+  </svg>`
+}
+
 function abilityCard() {
   const a = state.ability
   if (!a) return ''
   const pct = Math.round(Number(a.overall) || 0)
   const judge = (a.judgement && a.judgement.text) || ''
 
-  const groups = (a.groups || [])
+  const modules = state.map && Array.isArray(state.map.modules) ? state.map.modules : []
+  const bands = masteryBands((summary && summary.byStage) || {}, (summary && summary.total) || 0)
+  const pie = masteryPie(bands, pct)
+  const legend = bands
     .map(
-      (g) => `<li>
-        <span class="gc-name">${esc(g.name)}</span>
-        <span class="gc-bar"><i style="width:${Math.round(g.progress)}%"></i></span>
-        <span class="gc-pct">${Math.round(g.progress)}%</span>
-        <span class="dim">${g.points} 单元${g.weak ? ` · 薄弱 ${g.weak}` : ''}${g.due ? ` · 该复习 ${g.due}` : ''}</span>
-        ${archiveBtn('group', g.name)}
+      (b) => `<li>
+        <span class="lg"><i class="lg-dot" style="background:${b.color}"></i>${b.label}</span>
+        <span class="pie-pct">${Math.round(b.pct)}%</span>
+        <span class="dim">${b.count} 个单元</span>
       </li>`,
     )
     .join('')
@@ -1436,18 +1479,26 @@ function abilityCard() {
 
   return `<section class="card ability">
     <div class="card-head">
-      <h2>总体能力</h2>
+      <h2>掌握度</h2>
       <span class="dim">${esc(a.today || '')}</span>
     </div>
-    <div class="stats">
-      <span><b>${pct}%</b> 整体进度</span>
-      <span><b>${a.touched}</b>/${a.total} 碰过</span>
-      <span>平均把握 <b>${Math.round((a.avgConfidence || 0) * 100)}%</b></span>
-      <span>薄弱 <b>${a.weakTotal}</b></span>
-      <span>该复习 <b>${a.dueTotal}</b></span>
-      ${typeof (a.goal && a.goal.daysLeft) === 'number' ? `<span>离目标 <b>${a.goal.daysLeft}</b> 天</span>` : ''}
+    <div class="mastery">
+      <div class="pie-wrap">
+        ${pie}
+        <div class="pie-center"><b>${pct}%</b><em>整体掌握度</em></div>
+      </div>
+      <div class="pie-side">
+        <ul class="pie-legend">${legend}</ul>
+        <div class="stats">
+          <span><b>${a.touched}</b>/${a.total} 碰过</span>
+          <span>平均把握 <b>${Math.round((a.avgConfidence || 0) * 100)}%</b></span>
+          <span>薄弱 <b>${a.weakTotal}</b></span>
+          <span>该复习 <b>${a.dueTotal}</b></span>
+          ${typeof (a.goal && a.goal.daysLeft) === 'number' ? `<span>离目标 <b>${a.goal.daysLeft}</b> 天</span>` : ''}
+        </div>
+        <p class="dim">一共 ${a.total} 个单元：${bands.map((b) => `${b.label} ${b.count}`).join(' · ')}</p>
+      </div>
     </div>
-    <div class="bar"><span class="seg" style="width:${pct}%;background:${STAGE_COLOR['能独立做']}"></span></div>
     ${
       judge
         ? `<div class="judgement"><span class="tag">总评</span><div>${esc(judge)}</div>
@@ -1455,7 +1506,9 @@ function abilityCard() {
         : `<p class="dim">尚无总评。可在对话中提问「我现在什么水平」，教练会依据以上数据给出评价。</p>`
     }
     <h3 class="sub">各大类</h3>
-    <ul class="list tight">${groups || '<li class="dim">尚未分类。在地图中为每个模块填写 group 即可。</li>'}</ul>
+    <div class="grouped">${
+      groupedBlocks(modules) || '<p class="dim">尚未分类。在地图中为每个模块填写 group 即可。</p>'
+    }</div>
     ${
       weak
         ? `<h3 class="sub">薄弱环节（共 ${a.weakTotal} 个）</h3><ul class="list tight">${weak}</ul>`
@@ -1755,16 +1808,20 @@ function mapCard() {
       </div>
       <div class="bar">${bar}</div>
       <div class="map-legend">${legend}</div>
-      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；滚轮可缩放（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下方列表按大类折叠，展开后显示掌握度。</p>
+      <p class="dim">图谱分三层：大类、模块、最小单元，逐层展开；滚轮可缩放（左上角那块索引板钉着不跟走），每个单元设「看课」「做题」两个入口。下面「掌握度」那一节是整体饼图和各大类的细账。</p>
     </div>
     <div class="graph-host" id="graph-host"></div>
-    ${groupedBlocks(modules)}
   </section>`
 }
 
-/** 列表跟图一样折三层：大类带百分比，点开是模块（也带百分比），再点开才是最小单元。 */
+/**
+ * 列表跟图一样折三层：大类带百分比，点开是模块（也带百分比），再点开才是最小单元。
+ * 它是「掌握度」那张卡里饼图下面那一段——**别再往知识地图卡里也铺一份**（同一份进度铺两处，
+ * 改一处忘一处就打架；用户就是把「能力」并进来的时候顺手把重复那份撤掉的）。
+ */
 function groupedBlocks(modules) {
   const progress = (state.progress && state.progress) || { groups: {}, modules: {} }
+  const abilityGroups = (state.ability && state.ability.groups) || []
   const buckets = new Map()
   for (const mod of modules) {
     const name = String(mod.group || '').trim() || '未分类'
@@ -1775,12 +1832,13 @@ function groupedBlocks(modules) {
     .map(([name, mods]) => {
       const open = ui.openGroups.has(name)
       const pct = Math.round(Number((progress.groups && progress.groups[name]) || 0))
+      const g = abilityGroups.find((x) => x.name === name) || {}
       return `<div class="group-head ${open ? 'open' : ''}" data-act="group-open" data-group="${esc(name)}">
           <span class="gc-caret">${open ? '▾' : '▸'}</span>
           <span class="gc-name">${esc(name)}</span>
           <span class="gc-bar"><i style="width:${pct}%"></i></span>
           <span class="gc-pct">${pct}%</span>
-          <span class="dim">${mods.length} 个模块</span>
+          <span class="dim">${mods.length} 个模块${g.weak ? ` · 薄弱 ${g.weak}` : ''}${g.due ? ` · 该复习 ${g.due}` : ''}</span>
           ${archiveBtn('group', name)}
         </div>
         ${open ? mods.map(moduleBlock).join('') : ''}`

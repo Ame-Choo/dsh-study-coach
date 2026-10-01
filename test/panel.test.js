@@ -535,11 +535,16 @@ test('主页面：只回答「现在什么情况、下一步点哪儿」，活�
   assert.doesNotMatch(html(), /服务端还是旧代码/)
 
   // 顶栏就是导航：六页一个不少，当前那页标出来
-  for (const p of ['/study', '/study/today', '/study/map', '/study/ability', '/study/library', '/study/coach']) {
+  for (const p of ['/study', '/study/today', '/study/map', '/study/atlas', '/study/library', '/study/coach']) {
     const want = p.replace(/\//g, '\\/')
     assert.match(html(), new RegExp(`class="nav-item[^"]*" href="${want}"`), `导航里该有 ${p}`)
   }
   assert.match(html(), /class="nav-item on" href="\/study"/)
+  // 「能力」整页并进地图页了：导航里不该再有它，老地址得落到地图页上
+  assert.doesNotMatch(html(), /class="nav-item[^"]*" href="\/study\/ability"/)
+  const old = await boot(fixture(), { path: '/study/ability' })
+  assert.match(old.html(), /data-card="map"/)
+  assert.match(old.html(), /class="nav-item on" href="\/study\/map"/)
 
   // 主页面三件套：hero、大盘数字、入口卡
   assert.match(html(), /class="hero"/)
@@ -602,18 +607,30 @@ test('今天页：任务能跳转、能改能删；看课的任务先看再练�
   assert.doesNotMatch(html(), /确认删除/)
 })
 
-test('能力页：大盘、卡住的地方、每级档案按键，点开是那一级的细账', async () => {
-  const { html, calls, clickAct } = await boot(fixture(), { path: '/study/ability' })
+test('地图页下面的掌握度：整体饼图 · 四档分布 · 大类点开是那一级的细账', async () => {
+  const { html, calls, clickAct } = await boot(fixture(), { path: '/study/map' })
 
   assert.match(html(), /card ability/)
   assert.match(html(), /底子还行，先把没碰过的补上。/)
   assert.match(html(), /待复习/)
   assert.match(html(), /最近七天/)
 
-  // 每级都有「档案」小按键：大类、单元总览里就有，模块级得在地图页展开大类才露出来
+  // 整体掌握度：饼图 + 中心那个百分比 + 四档图例
+  assert.match(html(), /<circle class="pie-slice" data-band="[a-z]+"/)
+  assert.match(html(), /class="pie-center"><b>\d+%<\/b><em>整体掌握度<\/em>/)
+  for (const band of ['熟练掌握', '大概掌握', '薄弱', '完全不会']) {
+    assert.ok(html().includes(band), `四档图例里该有「${band}」`)
+  }
+  assert.match(html(), /aria-label="整体掌握度 \d+%：[^"]*熟练掌握/)
+  // 饼图下面是大类名字，行尾还是那枚「档案」
+  assert.match(html(), /<h3 class="sub">各大类<\/h3>/)
+
+  // 每级都有「档案」小按键：大类、单元总览里就有，模块级得展开大类才露出来
   assert.match(html(), /data-act="archive-open" data-level="group"/)
   assert.match(html(), /data-act="archive-open" data-level="point"/)
   assert.doesNotMatch(html(), /data-act="archive-open" data-level="module"/)
+  await clickAct({ act: 'group-open', group: '第一大块' })
+  assert.match(html(), /data-act="archive-open" data-level="module"/)
 
   // 点「档案」把弹层拉起来，里面是这一级的细账
   await clickAct({ act: 'archive-open', level: 'module', key: 'M1' })
@@ -728,8 +745,8 @@ test('地图还是草稿时，地图页给出定稿按钮；没数据的能力�
   assert.match(map.html(), /data-act="map-confirm"/)
   assert.match(map.html(), /地图尚未定稿/)
 
-  // 能力卡没数据就不该渲染
-  const ability = await boot(data, { path: '/study/ability' })
+  // 掌握度卡没数据就不该渲染
+  const ability = await boot(data, { path: '/study/map' })
   assert.doesNotMatch(ability.html(), /card ability/)
 
   // 单档案的时候不出现目标库
@@ -749,7 +766,7 @@ test('服务端是旧代码时，面板把话说清楚，而不是让人对着�
   assert.match(home.html(), /重启 DSH/)
 
   // 东西还是照常渲染，不是一屏错误
-  const ability = await boot(fixture(), { stale: true, path: '/study/ability' })
+  const ability = await boot(fixture(), { stale: true, path: '/study/map' })
   assert.match(ability.html(), /data-act="archive-open" data-level="group"/)
   const today = await boot(fixture(), { stale: true, path: '/study/today' })
   assert.match(today.html(), /data-act="task-toggle"/)
@@ -774,7 +791,7 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
   assert.match(stale.html(), /class="hd-sec bad"/)
   // 处数会随能力项加减，别钉死数字；要钉的是「哪一样没了」都得点出来
   assert.match(stale.html(), /服务端还是旧代码，\d+ 处点下去会 404/)
-  assert.match(stale.html(), /学生画像——能力页的画像卡/)
+  assert.match(stale.html(), /学生画像——知识地图页边上的画像卡/)
   assert.match(stale.html(), /记忆卡——工具页的记忆卡/)
   assert.match(stale.html(), /重启 DSH/)
 
@@ -898,9 +915,15 @@ test('两种模式：窄屏默认侧栏、卡片折起来只留名字；点一�
   assert.match(lib.html(), /<div class="col aside">.*data-card="goal"/s)
   assert.doesNotMatch(lib.html(), /data-act="card-toggle"/)
 
-  // 只有一栏的页不硬凑一个空边栏
+  // 只有一栏的页不硬凑一个空边栏（「今日任务」页就一栏）
+  const one = await boot(fixture(), { path: '/study/today' })
+  assert.doesNotMatch(one.html(), /<div class="col aside">/)
+
+  // 地图页现在也是两栏：图谱 / 掌握度 / 错题本在主栏，学生画像在边栏
   const map = await boot(fixture(), { path: '/study/map' })
-  assert.doesNotMatch(map.html(), /<div class="col aside">/)
+  assert.match(map.html(), /<div class="col main">.*data-card="map"/s)
+  assert.match(map.html(), /<div class="col main">.*data-card="ability"/s)
+  assert.match(map.html(), /<div class="col aside">.*data-card="student"/s)
 
   // 反着来：宽屏默认浏览器模式
   const wide = await boot(fixture())
@@ -1220,9 +1243,9 @@ test('今日复盘图：在今日任务页；今天没动过就说清怎么让�
 
   // 别的页不拉这张图（一张 9 KB，没必要每页都拖）。
   // 注意 `probeCapabilities()` 会拿 `/api/review` 探一下路由在不在——那是探活、不带 date，不算「拉图」。
-  const ability = await boot(fixture(), { path: '/study/ability' })
+  const ability = await boot(fixture(), { path: '/study/map' })
   assert.doesNotMatch(ability.html(), /data-card="review"/)
-  assert.ok(!ability.calls.some((c) => c.includes('/api/review?date=')), '能力页不该真去拉复盘图')
+  assert.ok(!ability.calls.some((c) => c.includes('/api/review?date=')), '地图页不该真去拉复盘图')
 })
 
 test('今日任务与复盘图都不在主页：主页只留路口，活儿在各自那一页', async () => {
