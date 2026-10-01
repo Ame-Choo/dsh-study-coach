@@ -29,7 +29,8 @@ node scripts/check-live.mjs # 探一遍正在跑的 DSH，看哪些路由还是�
 node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前端时省一次重启）
 ```
 
-`assets/*` 是每次请求现读磁盘的，改完刷新就见效；`lib/*` 是 DSH 启动时加载的，**必须重启 DSH**。
+`assets/*` 与 `lib/client.js` 是每次请求 / 每次页面加载现读磁盘的，改完刷新就见效；
+`lib/` 里**其它**文件和 `package.json` 是 DSH 启动时加载的，**必须重启 DSH**。
 
 ## `lib/client.js` 不是普通模块
 
@@ -42,6 +43,17 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
    `dsh.client.inject` 是客户端模块包名，两码事。
 3. 样式走 DSH 主题 token `--dsw-alias-*`，**不要**用 `assets/style.css` 那套 `--ink` / `--card`
    ——那套在 DSH 页面里没有值。`test/client.test.js` 钉住了这一条。
+   另外两条铁律（都是被坑出来的）：
+   - **`--dsw-alias-bg-base` 是「背景」语义，永远不要拿它当文字色。** 装了
+     `dsh-plugin-wallpaper-engine` 之后它会被改成 `transparent`，`color: var(--dsw-alias-bg-base)`
+     的实心按钮就成了「有面没字」——用户报的「跳转按钮看不见内容」就是这个。文字只用
+     `label-primary` / `label-secondary`，面用 `bg-layer-1` / `bg-layer-2` / `bg-overlay`。
+   - **别名层随时可能被别的插件改写**（壁纸插件就把 `bg-layer-*` / `border-l2` / `brand-primary`
+     整套换掉，但**不碰** `bg-overlay`），所以每个 token 都要写实色兜底：`var(--dsw-alias-x, 兜底)`。
+     上面两条由 `test/client.test.js` 的 CSS 钉子守着（顺带：那个测试里别拿整份源码做断言，
+     文件头注释里也在讲这些坏话）。
 4. `package.json` 的 `dsh.client` / `exports["./client"]` 改了要重启 DSH 才认（bundle 清单是启动时读的）。
+   `/study/api/panel`（`lib/` 那一半）同样要重启；**`lib/client.js` 本身不用**——它是页面加载时现读的，
+   改完刷新设置页就见效。
 
 插件自己那个网页面板（`assets/`）仍然照 `design.md` 走，两套配色体系别互相串。

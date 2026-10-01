@@ -19,8 +19,12 @@ import { join } from 'node:path'
 const SOURCE = readFileSync(join(import.meta.dirname, '..', 'lib', 'client.js'), 'utf8')
 const PKG = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'))
 
-/** 按线上那样把 bundle 拉起来，回 { id, api }。 */
-function load() {
+/** 只取模板串里的那段 CSS：文件头的注释里也在讲这些 token 的坏话，别把注释当成规则。 */
+const CSS_START = SOURCE.indexOf('const CSS = `') + 'const CSS = `'.length
+const CSS = SOURCE.slice(CSS_START, SOURCE.indexOf('`', CSS_START))
+
+/** 按线上那样把 bundle 拉起来，回 { id, api }。opts.react 可以换一个会记账的假 React。 */
+function load(opts = {}) {
   let captured = null
   const window = {
     __ModuleLoader__: {
@@ -30,7 +34,7 @@ function load() {
     },
     open() {},
   }
-  const react = {
+  const react = opts.react || {
     createElement: (...args) => ({ type: args[0], props: args[1] || {}, children: args.slice(2) }),
     useState: () => [undefined, () => {}],
     useEffect: () => {},
@@ -132,9 +136,124 @@ test('客户端 bundle：跳转入口覆盖面板那几页，第一条是首页'
 
 test('客户端 bundle：样式只用 --dsw-alias-* 主题 token，不引插件自己面板那套', () => {
   // 面板的 --ink/--card/--accent 在 DSH 里根本没有值，混进来就是一片透明
-  assert.doesNotMatch(SOURCE, /var\(--(ink|card|card-2|text|dim|accent|line)\b/)
-  assert.match(SOURCE, /var\(--dsw-alias-label-primary\)/)
-  assert.match(SOURCE, /var\(--dsw-alias-brand-primary\)/)
+  assert.doesNotMatch(CSS, /var\(--(ink|card|card-2|text|dim|accent|line)\b/)
+  assert.match(CSS, /var\(--dsw-alias-label-primary, /)
+  assert.match(CSS, /var\(--dsw-alias-brand-primary, /)
+  assert.ok(CSS.includes('.sc-root'), '模板串得真被切出来，别切空了')
+})
+
+test('客户端 bundle：--dsw-alias-bg-base 一次都不许出现（它就是「跳转按钮看不见内容」的成因）', () => {
+  /*
+   * bg-base 是**背景**语义的 token。装了壁纸 / 主题类插件的宿主会把它改成 transparent
+   * （dsh-plugin-wallpaper-engine 的 lib/client.js 里就是 `--dsw-alias-bg-base: transparent`），
+   * 于是 `color: var(--dsw-alias-bg-base)` 的实心按钮：面在、字没了。
+   * 公开的 Theme token 表里又没有「填充色之上那层文字色」，所以这一页干脆不碰 bg-base：
+   * 文字走 label-primary，面走 bg-layer-*，强调走 brand 边框 + 左侧信号条。
+   */
+  assert.doesNotMatch(CSS, /--dsw-alias-bg-base/)
+  assert.match(CSS, /\.sc-btn\.primary[^}]*border-color: var\(--dsw-alias-brand-primary, /)
+  assert.doesNotMatch(CSS, /\.sc-btn\.primary[^}]*background: var\(--dsw-alias-brand-primary/)
+})
+
+test('客户端 bundle：每一个 --dsw-alias-* 都写兜底值（少一个就可能在别的宿主上凭空消失）', () => {
+  assert.doesNotMatch(CSS, /var\(--dsw-alias-[a-z0-9-]+\)/, 'var(--dsw-alias-x, 兜底值) —— 逗号后面那个兜底值不能省')
+})
+
+/** 摊平一棵假元素树，拿到所有文字。 */
+function text(node, out = []) {
+  if (node === null || node === undefined || typeof node === 'boolean') return out
+  if (typeof node === 'string' || typeof node === 'number') {
+    out.push(String(node))
+    return out
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) text(item, out)
+    return out
+  }
+  for (const child of node.children || []) text(child, out)
+  return out
+}
+
+/** 摊平出一堆按钮：{ label, className, disabled }。 */
+function buttons(node, out = []) {
+  if (!node || typeof node !== 'object') return out
+  if (Array.isArray(node)) {
+    for (const item of node) buttons(item, out)
+    return out
+  }
+  if (node.type === 'button') {
+    out.push({
+      label: text(node).join(''),
+      className: String((node.props || {}).className || ''),
+      disabled: Boolean((node.props || {}).disabled),
+    })
+  }
+  for (const child of node.children || []) buttons(child, out)
+  return out
+}
+
+const RUNNING = {
+  ok: true,
+  supported: true,
+  running: true,
+  port: 19388,
+  url: 'http://127.0.0.1:19388/study',
+  preferred: 19388,
+  hintUrl: 'http://127.0.0.1:19388/study',
+  error: '',
+  settings: { version: 1, panel: { autoStart: true, port: 19388 } },
+  note: '',
+}
+
+/** 把页签渲染一遍：按 useState 的调用顺序喂预设值（state/busy/error/port/autoStart）。 */
+function renderTab(state) {
+  const queue = [state, '', '', '19388', true]
+  const react = {
+    createElement: (...args) => ({ type: args[0], props: args[1] || {}, children: args.slice(2) }),
+    useState: (init) => {
+      const next = queue.length > 0 ? queue.shift() : init
+      return [next === undefined ? init : next, () => {}]
+    },
+    useEffect: () => {},
+    useCallback: (fn) => fn,
+  }
+  return load({ react }).api.StudyCoachTab({})
+}
+
+test('客户端 bundle：服务跑着时，「打开网页面板」是那个被强调的按钮', () => {
+  const tree = renderTab(RUNNING)
+  const labels = text(tree).join(' | ')
+  assert.match(labels, /面板服务/, '服务开关得有自己的块')
+  assert.match(labels, /打开网页面板/)
+  assert.match(labels, /127\.0\.0\.1:19388/)
+
+  const all = buttons(tree)
+  const primary = all.filter((btn) => btn.className.includes('primary'))
+  assert.equal(primary.length, 1, '同时只该有一个被强调的按钮，不然看不出该点哪个')
+  assert.equal(primary[0].label, '打开网页面板 ↗')
+  assert.equal(primary[0].disabled, false)
+  for (const label of ['启动', '停止', '重启']) {
+    assert.ok(all.some((btn) => btn.label === label), `服务开关里必须有「${label}」`)
+  }
+})
+
+test('客户端 bundle：服务停着时，「启动」被强调，「打开网页面板」没地址就灰着', () => {
+  const tree = renderTab({ ...RUNNING, running: false, url: '', error: '' })
+  const all = buttons(tree)
+  const primary = all.filter((btn) => btn.className.includes('primary'))
+  assert.equal(primary.length, 1)
+  assert.equal(primary[0].label, '启动')
+  const stop = all.find((btn) => btn.label === '停止')
+  assert.equal(stop.disabled, true, '没跑就没得停')
+  assert.match(text(tree).join(' | '), /面板现在没开/)
+})
+
+test('客户端 bundle：读不到状态也不炸，三块还在、按钮只是灰着', () => {
+  const tree = renderTab(null)
+  const all = buttons(tree)
+  assert.ok(all.length >= 4, '连不上接口也得把开关摆出来')
+  assert.ok(all.every((btn) => btn.disabled))
+  assert.match(text(tree).join(' | '), /读取中/)
 })
 
 test('package.json：client 半边声明齐了，bundle 文件真在', () => {
