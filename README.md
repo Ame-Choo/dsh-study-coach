@@ -219,6 +219,9 @@ node --test
 | `lib/tools.js` | 21 个 `study_*` 工具的定义与 execute |
 | `lib/review.js` | 今日复盘那张 2048×1180 的海报（服务端现拼 SVG） |
 | `lib/bridge.js`、`lib/chat.js` | 往 DSH 会话里投递、读会话快照。都是**可选**服务，拿不到就 `available:false` |
+| `lib/pages.js`、`lib/build-pages.mjs` | 把扫描版 PDF 一页一张渲成 `p0007.png`；拆书走子进程，免得把面板进程僵住 |
+| `lib/preset.js` | 「学习教练」这个 agent 预设的定义（直接 `agentPresets.register`，不走 patch） |
+| `lib/panel-server.js` | 插件自己起的那个本地小服务器，绕开 DSH 内嵌浏览器「不许开 DSH 自己」的限制 |
 | `assets/` | 面板 `panel.*`、做题页 `practice.*`、图谱 `graph.*`、六档表 `stages.js`、启动规则 `boot.js` |
 
 `assets/` 那一摊的规矩写在 [design.md](design.md) 里，**动 CSS 或新写页面之前先读它**。
