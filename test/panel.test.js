@@ -277,7 +277,7 @@ const STUDENT = {
 }
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null, messages = CHAT_MESSAGES } = {}) {
   const list = !chat ? [] : sessions === null ? SESSIONS : sessions
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
@@ -291,6 +291,28 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
   const posts = []
   globalThis.document = document
   globalThis.window = window
+  // 假的 EventSource：面板接通对话时会开一条广播通道（真浏览器里是 SSE）。
+  // 这里只记账，要「服务端推一帧」就手动 emit 一下。
+  const sources = []
+  globalThis.EventSource = class {
+    constructor(url) {
+      this.url = url
+      this.closed = false
+      this.fns = new Map()
+      sources.push(this)
+    }
+    addEventListener(name, fn) {
+      const list = this.fns.get(name) || []
+      list.push(fn)
+      this.fns.set(name, list)
+    }
+    close() {
+      this.closed = true
+    }
+    emit(name) {
+      for (const fn of this.fns.get(name) || []) fn({ data: '{}' })
+    }
+  }
   globalThis.fetch = async (path, options) => {
     calls.push(path)
     if (options && options.body) {
@@ -346,7 +368,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
       // 真服务端只在带 sessions=1 时才把清单捎回来，假的也照这个来——
       // 不然「浮窗该不该自己拉清单」这件事测不出来。
       body = chat
-        ? { ok: true, available: true, filtered: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: path.includes('sessions=1') ? list : [] }
+        ? { ok: true, available: true, filtered: true, sessionId: 's1', messages, sessions: path.includes('sessions=1') ? list : [] }
         : { ok: true, available: false, messages: [], sessions: [] }
     }
     return { ok: true, status: 200, json: async () => body }
@@ -410,7 +432,7 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     })
     return { jumped }
   }
-  return { html, calls, posts, boxes, clickAct, clickNav, changeAct, submitForm, listeners, window, documentElement: document.documentElement }
+  return { html, calls, posts, boxes, clickAct, clickNav, changeAct, submitForm, listeners, window, sources, documentElement: document.documentElement }
 }
 
 function fixture() {  return {
@@ -1083,6 +1105,36 @@ test('会话选择旁边那颗「＋ 新建」：清单空着也能自己开一�
   // 有会话的时候那颗按钮也还在（旁边多一句「只看学习模式」）
   const many = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true })
   assert.match(many.html(), /class="dim chat-only">只看学习模式<\/span><button class="mini chat-new"/)
+})
+
+test('表情包画成图（走图片通道）；新消息靠广播通道自己冒出来', async () => {
+  const CAPTION = '得意闭眼拳头，好耶，小鲸鱼娘很满意'
+  const messages = [
+    ...CHAT_MESSAGES,
+    { id: 'c3', seq: 20, role: 'bot', text: `[表情: ${CAPTION}] 就照这个来`, time: 1759300120000, tools: [] },
+  ]
+  const page = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true, messages })
+
+  // ① `[表情: 描述]` 换成图片通道那条路由，不再原样显示成一段文字
+  assert.match(page.html(), /<img class="chat-meme" src="\/study\/api\/meme\?q=[^"]+"/)
+  assert.match(page.html(), new RegExp(`alt="${CAPTION}"`), 'alt 就是那句描述，图挂了也不会留破图')
+  assert.doesNotMatch(page.html(), /\[表情:/, '那条记号不是给学生看的正文')
+  assert.match(page.html(), /就照这个来/, '同一句里别的字还得在')
+
+  // ② 广播通道开着——而且页面在后台也开着（推送正是给后台准备的）
+  assert.equal(page.sources.length, 1)
+  assert.equal(page.sources[0].url, '/study/api/events')
+
+  // ③ 服务端推一帧，面板立刻去拉一次：不用人手动刷新
+  const chatCalls = () => page.calls.filter((c) => c.startsWith('/study/api/chat?')).length
+  const before = chatCalls()
+  page.sources[0].emit('change')
+  for (let i = 0; i < 40 && chatCalls() === before; i += 1) await sleep(5)
+  assert.ok(chatCalls() > before, '推一帧就该拉一次')
+
+  // ④ 离开这一页（浮窗也关了）就把那条长连接收掉，别留着
+  await page.clickNav('home')
+  assert.equal(page.sources[0].closed, true)
 })
 
 test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() 靠它拼 class', async () => {

@@ -691,6 +691,10 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 .chat-new { margin-left: auto; font-size: 12px; white-space: nowrap; }
 .chat-only + .chat-new { margin-left: 0; }
 .float .chat-new { font-size: 11px; }
+/* 消息里的表情包（`[表情: 描述]`，服务端 /study/api/meme 出图）：方角、细边、别撑破气泡。
+   加载不出来时浏览器会显示 `alt`（就是那句描述），所以不会留一块破图。 */
+.chat-meme { display: block; max-width: 220px; max-height: 220px; margin: 2px 0; border: 1px solid var(--line-2); border-radius: 0; }
+.float .chat-meme { max-width: 160px; max-height: 160px; }
 
 .chat-log {
   display: flex;

@@ -79,6 +79,8 @@ let shelfIndex = null
 let chat = null
 /* 「对话」页开着时的轮询句柄；离开这一页就停 */
 let chatTimer = null
+/* 广播通道（SSE）那条长连接；同样是离开对话就收 */
+let chatEvents = null
 /* 上一份快照的指纹，用来判断要不要重画消息列表 */
 let chatStamp = ''
 /* 工具栏目那一份：{ focus, todos }；只有「工具」页拉 */
@@ -903,9 +905,12 @@ function render() {
   clampFloatToView()
 }
 
-/* ── 对话轮询 ─────────────────────────────────────────────────────────────
- * 「对话」页要跟着 DSH 那边的进度走，所以开着的时候定时拉一份新快照。
- * 离开这一页、或者标签页被切到后台，就把定时器停掉——不看的时候不该占着。
+/* ── 对话：轮询 + 广播通道 ───────────────────────────────────────────────
+ * 「对话」页要跟着 DSH 那边的进度走，所以开着的时候拉新快照。两条路一起走：
+ *   ①**服务端推**（SSE `/study/api/events`）：一有新东西就送一帧。浏览器会把后台标签页里的
+ *     `setInterval` 压到一分钟一次甚至冻住——「收到的消息要手动刷新才显示」主要就是这个，
+ *     推送不受那条节流管。
+ *   ②**2.5 秒轮询**兜底：通道没接通（老服务端 / 老浏览器）或者断线时照旧跟得上。
  * 只在指纹变了的时候重画消息列表，正在输的字和滚到一半的位置都不动。
  */
 function stopChatPolling() {
@@ -913,6 +918,41 @@ function stopChatPolling() {
     clearInterval(chatTimer)
     chatTimer = null
   }
+}
+
+/**
+ * 广播通道收掉。
+ *
+ * 只在**离开对话**的时候收：标签页切到后台**不收**——那正是最需要推送的时候
+ * （学生常常在 DSH 那边说完一句、切回来才看面板，定时器在后台是慢的）。
+ */
+function stopChatEvents() {
+  if (!chatEvents) return
+  try {
+    chatEvents.close()
+  } catch {
+    /* 关不上也无所谓，下面就重新建一个 */
+  }
+  chatEvents = null
+}
+
+function startChatEvents() {
+  if (chatEvents) return
+  const Source = typeof EventSource === 'function' ? EventSource : null
+  // 老浏览器、或者单测那种假 DOM 里没有 EventSource：只跑轮询，行为跟以前一样。
+  if (!Source) return
+  try {
+    chatEvents = new Source('/study/api/events')
+  } catch {
+    chatEvents = null
+    return
+  }
+  for (const name of ['hello', 'change', 'tick']) {
+    chatEvents.addEventListener(name, () => {
+      void refreshChat({ pushed: true })
+    })
+  }
+  // 断了不用管：浏览器自己会重连（重连成功会再发一帧 hello），这期间轮询接着兜。
 }
 
 function chatHidden() {
@@ -930,7 +970,15 @@ function chatVisible() {
 function syncChatPolling() {
   // 通道没接通就别空转定时器——那会让页面永远有个活动的 interval 停不下来。
   // 接通之前靠卡片上那颗「重新连接」手动再试一次。
-  if (!chatVisible() || chatHidden() || !chat || !chat.available) {
+  if (!chatVisible() || !chat || !chat.available) {
+    stopChatPolling()
+    stopChatEvents()
+    return
+  }
+  startChatEvents()
+  // 后台不挂定时器：浏览器本来就会把它压到一分钟一次甚至冻住，而推送那条一直开着。
+  // 切回前台由 visibilitychange 立刻补一次并重新挂上。
+  if (chatHidden()) {
     stopChatPolling()
     return
   }
@@ -940,11 +988,14 @@ function syncChatPolling() {
   }, 2500)
 }
 
-async function refreshChat() {
-  if (!chatVisible() || chatHidden()) {
+async function refreshChat({ pushed = false } = {}) {
+  if (!chatVisible()) {
     stopChatPolling()
+    stopChatEvents()
     return
   }
+  // 推送来的一帧照刷——后台标签页里也能把内容备好，切回来就是新的。
+  if (!pushed && chatHidden()) return
   const before = chatStamp
   await loadChat()
   if (!chatStamp || chatStamp !== before) paintChat()
@@ -2633,6 +2684,35 @@ function clockOf(time) {
 }
 
 /**
+ * 消息正文里的 `[表情: 描述]` 要出成图。
+ *
+ * 斗图插件在 Web 模式只回一行候选文字（`send_meme` 明说「不要加网址」），面板原来照原样画方括号，
+ * 学生看见的就是「什么也加载不出来」。服务端 `/study/api/meme?q=<描述>` 会去盘上的图库找那一张
+ * （见 lib/memes.js），这里换成 `<img>`；`alt` 就是那句描述——图挂了浏览器会把描述文字显示出来，
+ * 不会留个破图，所以老机器上没装图库也能看。
+ */
+const CHAT_MEME_RE = /\[表情:\s*([^\]\n]{1,200})\]/g
+
+function chatText(text) {
+  const raw = String(text ?? '')
+  const out = []
+  let last = 0
+  CHAT_MEME_RE.lastIndex = 0
+  let hit = CHAT_MEME_RE.exec(raw)
+  while (hit) {
+    out.push(esc(raw.slice(last, hit.index)))
+    const desc = String(hit[1] || '').trim()
+    out.push(
+      `<img class="chat-meme" src="/study/api/meme?q=${encodeURIComponent(desc)}" alt="${esc(desc)}" title="${esc(desc)}" loading="lazy">`,
+    )
+    last = hit.index + hit[0].length
+    hit = CHAT_MEME_RE.exec(raw)
+  }
+  out.push(esc(raw.slice(last)))
+  return out.join('')
+}
+
+/**
  * 消息列表。
  *
  * 服务端（lib/chat.js）现在只发 user / assistant 两种：工具事件在那边就筛掉了。
@@ -2665,12 +2745,12 @@ function chatLog(snapshot) {
     const time = clockOf(m.time)
     const meta = time ? `<span class="chat-time">${esc(time)}</span>` : ''
     if (m.role === 'user') {
-      out.push(`<div class="chat-msg user"><div class="chat-text">${esc(m.text)}</div>${meta}</div>`)
+      out.push(`<div class="chat-msg user"><div class="chat-text">${chatText(m.text)}</div>${meta}</div>`)
       continue
     }
     const used = Array.isArray(m.tools) && m.tools.length ? `<div class="chat-used">用了 ${esc([...new Set(m.tools)].join('、'))}</div>` : ''
     out.push(
-      `<div class="chat-msg bot"><div class="chat-text">${esc(m.text || '（这一步没有正文）')}</div>${used}${meta}</div>`,
+      `<div class="chat-msg bot"><div class="chat-text">${m.text ? chatText(m.text) : esc('（这一步没有正文）')}</div>${used}${meta}</div>`,
     )
   }
   flush()
@@ -3606,8 +3686,9 @@ window.addEventListener('popstate', () => {
 
 /* 切回这个标签页时补一次快照：后台期间轮询是停的。 */
 document.addEventListener('visibilitychange', () => {
-  if (chatHidden()) stopChatPolling()
-  else syncChatPolling()
+  // 切回前台立刻补一次，不等下一个 2.5 秒刻度——原来切回来可能还要盯着旧内容等一会儿。
+  if (!chatHidden()) void refreshChat({ pushed: true })
+  syncChatPolling()
 })
 
 openFirstCard(page)

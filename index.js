@@ -33,7 +33,9 @@ import { Library } from './lib/library.js'
 import { createRouter } from './lib/routes.js'
 import { createBridge } from './lib/bridge.js'
 import { createChat } from './lib/chat.js'
+import { createEvents } from './lib/events.js'
 import { createHandler } from './lib/handler.js'
+import { createMemes } from './lib/memes.js'
 import { DEFAULT_PORT, createPanelControl } from './lib/panel-server.js'
 import { PAGES_DIR, UPLOADS_DIR, dataRoot } from './lib/paths.js'
 import { patchSettings, readSettings } from './lib/settings.js'
@@ -80,6 +82,19 @@ export function apply(ctx) {
     resolve: () => (typeof ctx.get === 'function' ? ctx.get('sessionController') : null),
   })
 
+  /**
+   * 面板的广播通道。浏览器会把后台标签页里的定时器压慢甚至冻住，
+   * 「新消息得手动刷新」就是这么来的——改成服务端推给前端。
+   */
+  const events = createEvents()
+
+  /**
+   * 表情包图库（只读）。面板里 `[表情: 描述]` 要真出图，而 dsh-meme 的图片接口
+   * 挂在 DSH 自己 origin 上、`webServer` 又不给端口，所以自己去盘上读它的 index.db。
+   */
+  const memes = createMemes()
+  ctx.effect(() => () => events.stop(), 'dsh-study-coach: 广播通道（SSE）')
+
   /* 这台机器上这个插件怎么跑（端口 / 自启）。跟学习档案无关，所以不归 Library 管。 */
   let panelSettings = readSettings(DATA_ROOT)
 
@@ -100,6 +115,8 @@ export function apply(ctx) {
   const router = createRouter(store, {
     bridge,
     chat,
+    events,
+    memes,
     pagesRoot: PAGES_ROOT,
     /**
      * 设置页与客户端那半边都打 /study/api/panel，落地就在这儿。

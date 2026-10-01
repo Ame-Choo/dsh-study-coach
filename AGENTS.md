@@ -76,3 +76,19 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   `learningSessions` 与 `history` 都认它；预设号只在 `newSessionRequest()` 里出现一次，路由里别重写一遍。
 - 这些由 `test/session-preset.test.js` / `test/chat-sessions.test.js` / `test/chat.test.js` / `test/panel.test.js` / `test/bridge.test.js` 钉住。
 
+## 对话页的两条通道（表情包 / 广播）
+
+- **表情包不走 DSH 的 origin。** `dsh-meme` 把图挂在 `/dsh-memes*` 上，可那是 DSH 自己的端口；
+  面板那两个 origin 上这些路径一律 404，而 `webServer` 服务**没有** `port` 属性、也代理不了——
+  所以直接读盘上的图库：`lib/memes.js`（`node:sqlite` 只读打开每个包的 `index.db`，
+  `createRequire` 懒加载）。判据只在那一份里，别在路由里重写；**只读**，别往图库里写。
+  找不到就 404，让面板退回那句描述文字（`<img>` 的 `alt` 就是它，不会留破图）。
+- **广播通道也只有一份**：`lib/events.js` + `GET /study/api/events`（SSE）。没有订阅者不许跑定时器、
+  `close` / `error` 必须退订（否则长连接挂在进程里）、定时器 `unref()`。写操作想立刻刷面板就
+  `events.publish('chat')`。路由是被 `handler` 当 `{ handled: true }` 放过去的，别在它后面再写 JSON。
+- 面板侧：`chatText()` 是唯一把 `[表情: …]` 变成图的地方；推送那一帧**在后台也照刷**，
+  而轮询定时器**只在前台挂**——后台浏览器会节流（挂上纯属空转），而且活动的 interval 会让
+  `node --test` 卡着不退出（`test/panel.test.js` 里那些 `hidden: true` 就是为这条）。
+- 图片字节由 `lib/handler.js` 的 `sendRaw(res, raw)` 发：路由回 `{ code, raw: { type, body, cache } }`。
+
+

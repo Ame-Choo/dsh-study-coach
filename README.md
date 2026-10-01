@@ -937,6 +937,31 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **记账**：`lib/` 改了 → **要重启 DSH 才生效**（`assets/*` 那条刷新即可）。
 - 顺带记一笔没修的：`SessionSummary` 上没有 `title`，`lib/chat.js` 的 `summaryView` 读 `item.title` 永远是空串，清单那行就退化成「cwd 尾段 / 前 8 位」。要真标题得另想门路。
 
+## 补：表情包走图片通道、新消息靠广播通道
+
+用户报的两件事：**「表情包在 web 端加载不出来」**、**「收到的消息要手动刷新才显示」**。都在面板（`assets/panel.js`）这一侧，根子却一个在图库、一个在浏览器。
+
+**表情包为什么「加载不出来」。** 面板把消息当纯文本画，`[表情: 得意闭眼拳头…]` 只会原样显示成一段字。而 DSH 那边的图库在**另一个 origin** 上：`dsh-meme` 用 `webServer.register({ kind:'prefix', path:'/dsh-memes' })` 把图挂在 DSH 自己的端口（19387），`/dsh-memes-api?packId=all` 与 `/dsh-memes/<packId>/<path>` 都只有那边认；面板那两个 origin（19388 与 DSH 的 `/study` 前缀）上这些路径一律 404。也**没法做代理**——`webServer` 服务只有 `register` / `registerUpgrade` / `registerFallback` / `tapIndex` 那几个方法，**没有 `port` 属性**，插件里拿不到 DSH 的端口号。
+
+所以 `lib/memes.js` 直接**读盘上的图库**（`node:sqlite` 只读打开；`createRequire` 懒加载，老 Node 取不到 sqlite 就认成「没图库」，不炸）：
+
+- 两个根：用户包 `<DSH_MEME_HOME || homedir()>/.dsh/meme-packs`（注意跟 `DSH_HOME` 不是一回事），内置包扫每个 profile 的 `node_modules/dsh-meme/memes`。一个包 = `index.db` + `manifest.json` + `memes/<tag>/<file>`。
+- 表就是 dsh-meme 自己那张：`memes(path, tag, file_name, file_hash, caption, keywords, mtime, captioned_at)`——`caption` 正好是 `[表情: …]` 里那串描述，`path` 正好是相对包目录的图片路径。
+- 认图顺序：描述折成「去空白 / 去标点 / 小写」之后**逐字相等** → 包含（`row.fold.includes(q)`，或者描述里含着一小段、`q.includes(row.fold)`）→ 关键词全含；多个候选取最短那个。折过不到 2 个字不猜。非图片扩展名、以及 `path` 越出包目录的行一律丢。
+- 路由：`GET /study/api/meme?q=<描述>` 命中就发字节（`content-type` 按扩展名，`cache-control: public, max-age=86400`）；找不到 404（「图库里没有这一张」）、没给 `q` 400、这个进程没接图库 503。另有 `GET /study/api/meme/info`（几个包、多少张）方便排查。索引在内存里缓存 5 分钟（`createMemes({ ttlMs })`）。
+- 面板这一侧是 `chatText()`：把 `[表情: 描述]` 换成 `<img class="chat-meme" src="/study/api/meme?q=…" alt="描述" loading="lazy">`——**`alt` 就是那句描述**，图没命中时浏览器直接显示这行字，不留破图；`.chat-meme` 方角细边、最大 220px（浮窗 160px）。
+- 发图片字节走的是 `handler.js` 新加的 `sendRaw(res, raw)`；路由返回 `{ code, raw: { type, body, cache } }` 时 handler 直接写字节，不再 JSON 化。
+
+**「要手动刷新才显示」为什么不是加个轮询就完事。** 面板本来 2.5 秒轮询一次，但**浏览器会把后台标签页里的定时器压到一分钟一次甚至冻住**，切回来也不补一次——学生常常在 DSH 那边说完一句再切回面板，看见的自然是旧的。定时器节流是浏览器行为，改不掉；服务端的推送不受影响。所以加了 `lib/events.js`（唯一一份）与 `GET /study/api/events`：
+
+- 接上先发 `event: hello`（之前还写一行注释帧，免得代理压着响应头不放），之后每 2.5 秒一帧 `event: tick`；写操作想立刻刷面板可以 `events.publish('chat')`，会推 `event: change`。
+- **没有订阅者就不跑定时器**；`res` 的 `close` / `error` 一律退订（否则那条长连接会一直挂在进程里）；定时器 `unref()`，别拖住 `node --test` 退出。`ctx.effect` 里注册 `events.stop()`，插件卸载时把订阅全掐掉。
+- 面板 `new EventSource('/study/api/events')`，`hello` / `change` / `tick` 三个事件都去 `refreshChat({ pushed: true })`——**推送那一帧在后台也照刷**（切回来内容就是新的）。轮询定时器反过来只在**前台**挂着；切回前台由 `visibilitychange` 立刻补一次、再重新挂上。没有 `EventSource` 的老浏览器自动退回纯轮询，行为跟以前一样。
+- 路由按 HEAD 也算 GET 找（HTTP 语义：只要头不要体），所以 `/study/api/events` 可以直接 HEAD 探活。
+
+- **测试**：`test/memes.test.js` 6 条（折字、两个根、认图顺序、TTL 缓存、图被删、HTTP 段发真字节）、`test/events.test.js` 5 条（头与帧、心跳、退订、真 SSE 流读到 hello 与 tick、没接通道 503）、`test/panel.test.js` 加 1 条（`[表情: …]` 渲成 `<img class="chat-meme">` + 推一帧就拉一次 + 离开这一页把长连接收掉）。全量 303 条。
+- **记账**：`lib/` 与路由都改了 → **要重启 DSH**（新路由是启动时注册的）；`assets/*` 刷新即可。重启前面板里表情包还是文字（`/study/api/meme` 404），消息也还得手动刷。
+
 
 ### 七、跳转按钮「看不见内容」的病根（壁纸插件 + 别名层）
 
