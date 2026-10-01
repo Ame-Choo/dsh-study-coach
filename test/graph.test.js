@@ -724,13 +724,17 @@ test('工具按钮：全部收起清空展开，复位视图把 transform 复位
   svg.dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 7 })
   svg.dispatch('pointermove', { clientX: 60, clientY: 30 })
   assert.equal(viewTransform(host), 'translate(50 20) scale(1)')
-  // 索引板与工具箱是钉在视口上的：拖动时反向补一次，不然它们会跟着画布跑掉
-  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), 'translate(-50 -20) scale(1)')
-  assert.equal(byClass(host, 'kg-tools')[0].getAttribute('transform'), 'translate(-50 -20) scale(1)')
+  // 索引板与工具箱直接挂在 <svg> 上、不进视图层：它们压根不吃拖动的变换，
+  // 钉在视口上不动。**不许给它们补反向变换**——补了才会跟着鼠标乱飞。
+  assert.equal(byClass(host, 'kg-view')[0].getAttribute('transform'), 'translate(50 20) scale(1)')
+  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), null)
+  assert.equal(byClass(host, 'kg-tools')[0].getAttribute('transform'), null)
+  assert.ok(byClass(host, 'kg-plate')[0].parentNode === svgOf(host), '索引板要挂在 svg 上，别塞进视图层')
+  assert.ok(byClass(host, 'kg-tools')[0].parentNode === svgOf(host), '工具箱要挂在 svg 上，别塞进视图层')
 
   clickTool(host, '复位视图')
   assert.equal(viewTransform(host), 'translate(0 0) scale(1)')
-  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), 'translate(0 0) scale(1)')
+  assert.equal(byClass(host, 'kg-plate')[0].getAttribute('transform'), null)
 })
 
 test('滚轮缩放夹在 0.4x–2.4x，并 preventDefault', () => {

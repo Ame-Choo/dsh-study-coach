@@ -345,14 +345,12 @@ export function renderGraph(host, options) {
   view.appendChild(nodes)
   svg.appendChild(view)
 
-  /* HUD（索引板 / 工具箱）是钉在画布视口上的：给它们补一次反向变换，
-     拖动缩放时就不跟着走——正向是 translate(t) scale(k)，反过来就是 translate(-t/k) scale(1/k)。 */
-  const hud = []
+  /* HUD（索引板 / 工具箱 / 提示句）是直接挂在 <svg> 上的，跟视图层 `.kg-view` 平级——
+     它们天生就不吃 `translate(t) scale(k)`，拖动缩放时钉在视口上。
+     **别再给它们补什么反向变换**：补了反而会跟着鼠标乱飞（踩过）。 */
   const applyView = () => {
     const { tx, ty, k } = state.view
     view.setAttribute('transform', `translate(${tx} ${ty}) scale(${k})`)
-    const inverse = `translate(${-tx / k} ${-ty / k}) scale(${1 / k})`
-    for (const node of hud) node.setAttribute('transform', inverse)
   }
   applyView()
 
@@ -505,8 +503,8 @@ export function renderGraph(host, options) {
   const note = svgEl('text', { class: 'kg-plate-note', x: PLATE.x + 14, y: PLATE.y + PLATE.h + 14 })
   note.textContent = `已接触 ${touched}/${allPoints.length}${today ? ' · 斜纹＝该复习' : ''}`
   plate.appendChild(note)
+  /* 挂在 svg 上，不进 `.kg-view`：它就不吃拖动的变换，钉在视口左上角。 */
   svg.appendChild(plate)
-  hud.push(plate)
 
   /* ── 画 ────────────────────────────────────────────────────────────────── */
 
@@ -842,7 +840,6 @@ export function renderGraph(host, options) {
     tx -= 8
   }
   svg.appendChild(tools)
-  hud.push(tools)
   applyView()
 
   /* ── 拖和缩放 ─────────────────────────────────────────────────────────── */

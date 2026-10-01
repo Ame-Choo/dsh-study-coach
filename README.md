@@ -996,7 +996,7 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
 - **分区底板**：每个大类一块 `.kg-band` 板块（方角、1px `--line`、左上角包），左侧一条 `.kg-rail` 索引轨：两位索引号 `.kg-ord`（Rajdhani + `tabular-nums`）+ 每个单元一枚刻线 + 一段百分比量尺 `.kg-gauge`。**该复习的大类**在板块左边贴一条斜纹 `.kg-band-hatch`（`repeating-linear-gradient(115deg, var(--warn) …)`）——info 不靠颜色也能看出来。
 - **档位点是菱形**（`rect` + `rotate(45deg)`，圆角 0 那套手法的「菱形」），颜色仍取 `--stage-N`；**选中**的单元是放大的菱形光晕 `.kg-halo`（全图只有一个）加一条 `.kg-row-mark` 行标。
 - **进度**：大类沿板块底沿、模块贴左沿、索引板里一条 258×3 的条。**信号青只给「选中 / 进度」**，`0%` 时回灰（`.kg-pct.is-zero`）。
-- **索引板（HUD）**：`.kg-plate` 写 `KNOWLEDGE MAP` + 「N 大类 · N 模块 · N 单元」+ 总体进度 + 进度条 + 「已接触 x/y · 斜纹＝该复习」；**钉在画布视口上**——`.kg-view` 是 `translate(t) scale(k)`，HUD 反向补一次 `translate(-t/k) scale(1/k)`，所以拖动缩放时它不跟着走（`test/graph.test.js` 把这条钉住了）。工具「全部收起 / 复位视图」同理钉在右上。
+- **索引板（HUD）**：`.kg-plate` 写 `KNOWLEDGE MAP` + 「N 大类 · N 模块 · N 单元」+ 总体进度 + 进度条 + 「已接触 x/y · 斜纹＝该复习」；**钉在画布视口上**——它跟工具箱「全部收起 / 复位视图」、那句 `.kg-hint` 一样，**直接挂在 `<svg>` 上、不进视图层 `.kg-view`**，所以压根不吃 `translate(t) scale(k)`，拖动画布时它们一动不动。**别给 HUD 补反向变换**：早先误以为要补 `translate(-t/k) scale(1/k)`，结果它们反而跟着鼠标乱飞（用户报的就是这个），`test/graph.test.js` 现在改钉「HUD 的 `transform` 始终是空、parentNode 就是 `<svg>`」。
 - **面板那侧多了「简报条」**（`mapCard()`）：`KNOWLEDGE MAP` 眉标 + 总体进度 + 四格统计（模块 / 单元 / 已接触 / 平均把握）+ 六档色带 + 六档图例（菱形小点，不是胶囊）。原来那句解释图谱怎么用的 `<p class="dim">` 留着。
 - **几何常量全在 `assets/graph.js` 顶上**（`GROUP_W` / `MOD_W` / `STAGE_X` / `DUE_X` / `BTN_X` / `HEAD_Y` …）。加装饰请**另起 class**：`test/graph.test.js` 按 `.kg-box`（必须正好等于大类数）、`.kg-dot`（按可见单元数）、`.kg-halo`（全图 ≤1）的数量断言，别拿它们当底板或图例。
 - **两个坑**（都踩了）：①单元行的按钮与行槽原来用**绝对坐标**（忘了 `x +`）→ 全跑到模块列去；栏位宽度是定死的，按钮与行槽一律 `x + 常量` 起排。②折叠时也要报得出「N 个模块 / N 节」→ 用 `node.children.length`，不是这次画出来的子数（原来折叠着显示「空」）。

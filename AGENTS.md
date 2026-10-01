@@ -117,8 +117,11 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - **加装饰要另起 class**。`test/graph.test.js` 按数量断言：`.kg-box` 必须**正好等于大类数**、
   `.kg-halo` 全图 ≤ 1、`.kg-dot` 按可见单元数（菱形档位点）——底板、图例、刻线都别复用它们
   （`.kg-band` / `.kg-rail` / `.kg-tick` / `.kg-ord` / `.kg-gauge` / `.kg-mark` / `.kg-corner` 是这一类）。
-- **HUD 要反向补变换**：`.kg-view` 是 `translate(t) scale(k)`，索引板 `.kg-plate` 与工具箱 `.kg-tools`
-  在 `applyView()` 里补 `translate(-t/k) scale(1/k)`，拖动缩放时它们才钉在视口上（`hud` 数组在文件里）。
+- **HUD 不许补变换**：索引板 `.kg-plate`、工具箱 `.kg-tools`、提示句 `.kg-hint` 都**直接挂在 `<svg>`
+  上**、跟视图层 `.kg-view` 平级，所以天生不吃 `translate(t) scale(k)`，拖动画布时钉在视口上。
+  曾经以为要反向补 `translate(-t/k) scale(1/k)`——补了它们反而跟着鼠标乱飞（用户报的 bug）。
+  `test/graph.test.js` 钉住「HUD 的 `transform` 是空、`parentNode` 就是 `<svg>`」。
+  画序：网格 → `.kg-view`（板块/连线/单元）→ HUD，所以 HUD 永远压在最上面。
 - **栏位宽度是定死的**（`STAGE_X` / `DUE_X` / `BTN_X`）：单元行里的按钮、行槽、行标一律 `x + 常量` 起排。
   写绝对坐标会让它们整片跑到模块列去（踩过一次，样张上才看出来）。
 - **连线的基线要算对父节点那一截**：子节点的绝对 y 是 `baseY + node.y - node.subH / 2 + node.top + kid.y`
