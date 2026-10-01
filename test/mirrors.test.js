@@ -87,6 +87,25 @@ test('记忆卡类型：面板少一个「其他」是有意的，但前几项�
   assert.ok(!ui.includes('其他'), '面板那份不该有「其他」——它由空串代表')
 })
 
+/* ── 复盘图那张纸 ───────────────────────────────────────────────────────── */
+
+test('复盘图的色值只许写在文件顶上那一块，不许散进拼 SVG 的代码里', () => {
+  const src = stripComments(readFileSync(join(import.meta.dirname, '..', 'lib', 'review.js'), 'utf8'))
+
+  /* 分界：第一个函数（或函数值）声明。顶上那些 const 都只是资料，不含 `(`。 */
+  const boundary = src.search(/\n\s*(?:export\s+)?(?:async\s+)?function\s|\n\s*const\s+\w+\s*=\s*\(/)
+  assert.ok(boundary > 0, 'lib/review.js 里没找到第一个函数声明，正则多半失效了')
+
+  const head = src.slice(0, boundary)
+  const tail = src.slice(boundary)
+
+  assert.match(head, /const PALETTE\s*=/, '顶上那块分类色板不见了')
+  assert.match(head, /const INK\s*=/, '顶上那块文字色不见了')
+
+  const stray = [...tail.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0])
+  assert.deepEqual(stray, [], '这些色值跑到了拼 SVG 的地方，该收回顶上那一块：' + stray.join(' '))
+})
+
 /* ── CSS 兜底值 ─────────────────────────────────────────────────────────── */
 
 /** 把 `:root { … }` 那一块解析成 { '--name': '值' }。行尾那种块注释要一并剥掉。 */
