@@ -399,7 +399,10 @@ function healthReport() {
   const materials = Array.isArray(profile.materials) ? profile.materials : []
   const byMaterial = ((state && state.analysis && state.analysis.byMaterial) || {})
   const masteryPoints = ((state && state.mastery && state.mastery.points) || {})
-  const target = Number(profile.minutesPerDay) || 0
+  /* 目标在 `profile.goal` 里，不在 `profile` 上——别在这儿读平铺的字段，
+     那会让每个学生的体检卡都写「学习目标还缺 3 项」（2026-10-02 修）。 */
+  const goal = (profile && profile.goal) || {}
+  const target = Number(goal.minutesPerDay) || 0
 
   // ── 挡路的：服务端旧代码 ───────────────────────────────────────────────
   if (capabilities) {
@@ -425,8 +428,8 @@ function healthReport() {
 
   if (Object.keys(profile).length) {
     const gaps = []
-    if (!String(profile.outcome || '').trim()) gaps.push('要掌握到什么程度（outcome）')
-    if (!String(profile.deadline || '').trim()) gaps.push('最晚哪天（deadline）')
+    if (!String(goal.outcome || '').trim()) gaps.push('要掌握到什么程度（outcome）')
+    if (!String(goal.deadline || '').trim()) gaps.push('最晚哪天（deadline）')
     if (!target) gaps.push('每天能学多久（minutesPerDay）')
     if (gaps.length) {
       warn.push({

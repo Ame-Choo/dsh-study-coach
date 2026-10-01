@@ -1,11 +1,37 @@
 # dsh-study-coach
 
+[![CI](https://github.com/Ame-Choo/dsh-study-coach/actions/workflows/ci.yml/badge.svg)](https://github.com/Ame-Choo/dsh-study-coach/actions/workflows/ci.yml)
+![node](https://img.shields.io/badge/node-%E2%89%A522.13.0-3c873a)
+![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.0--rc.1-18d1ff)
+![license](https://img.shields.io/badge/license-MIT-blue)
+
 DSH 的学习教练插件。把一门课拆成知识地图，逐单元记掌握度、排每日任务，并给学生一个看得见进度的网页面板。同源挂在 DSH 自己的 web 服务器上，面板地址 `/study`。
+
+![知识地图：大类 / 模块 / 最小单元三层，每单元两颗按钮，底下是四层掌握度](docs/map.png)
+
+<table>
+<tr>
+<td width="50%"><img src="docs/today.png" alt="今日任务：抬头是复盘图那一套版式，每条任务一行只留「打开 / 改 / 删除」"></td>
+<td width="50%"><img src="docs/atlas.png" alt="资料图谱：按材料自己的目录摊成大类 → 模块 → 最小单元，每层右边都是能直接打开的链接"></td>
+</tr>
+<tr>
+<td><b>今日任务</b>：抬头用复盘图那套版式（眉标 + 大字 + 状态块 + 量尺），一行任务只留「打开 / 改 / 删除」。</td>
+<td><b>资料图谱</b>：三层按材料自己的目录来，每一条内容都挂着打开那一页 / 那一讲的链接。</td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/library.png" alt="档案页：综合学生档案 + 学习目标 + 学生画像"></td>
+</tr>
+<tr>
+<td colspan="2"><b>档案页</b>：上面是综合学生档案（总体评价、四层掌握度、七天节奏、画像、基本工具），右边是学习目标与学生画像——每一条判断都挂着它引的那次证据。</td>
+</tr>
+</table>
 
 - 对话里的 agent 用 21 个 `study_*` 工具读写全部数据；
 - 学生只在面板上看：自评档位、勾任务，以及在面板里直接跟教练对话（整页一个聊天窗口，顶上能选是 DSH 里哪个会话；右下角还有一颗悬浮窗）。
 
 **这个仓库里只有代码，一条学习内容都没有**——学生的目标、地图、掌握度全在数据目录里（见下面「插件是框架，数据在别处」）。
+
+改动历史看 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 安装
 
@@ -294,7 +320,7 @@ node --test
 - 展开状态和视图位置存在模块级的 `state` 里，跨调用保留：自评一下不会把画布弹回原位。
 - 面板是**动态** import 它的——图谱模块没了或者写坏了，顶多少画一张图，自评那些按钮不受影响。
 - 每个任务多了 `open` 字段（要打开的那份东西：本地绝对路径或 http 链接）。面板上非空就渲染成一个「打开」链接，走 `GET /study/file?path=...`，`target="_blank"`。
-- `GET /study/file` 只放行**已登记材料里的文件，或者材料文件夹底下的文件**——不然面板就成了随便读硬盘的后门。找不到或不在范围内回 404。
+- `GET /study/file` 只放行**已登记材料里的文件，或者材料文件夹底下的文件**——不然面板就成了随便读硬盘的后门。不在范围内回 404；**登记过、但盘上已经没了（移动硬盘没插、网盘没挂）回 410**（`registeredTarget()`）——面板的探活正是拿 404 判「服务端还是旧代码」的，这两种「打不开」混在一起，体检卡就会举着红条喊「重启 DSH」（2026-10-02 修的）。
 - 点到的如果是**文件夹**（看课入口给的正是一节课的文件夹）就渲染一个目录页：`目录` 标记、文件名一条行、点进去接着开、上面有「上一层」。学生因此能从一节网课里自己挑要播哪个题型，而不是被按在一个 mp4 上。
 - 它支持 Range 请求（206 + `content-range`），所以视频能拖进度条；`content-type` 按扩展名给：mp4 / m4v / webm / mov / mkv / mp3 / pdf / txt / md。
 
@@ -348,6 +374,7 @@ node --test
 - **能自己修的都配一颗跳转按钮**，`data-nav` 直接换页（点击处理器读的是 `event.target.closest('[data-nav]')`，所以 `<button>` 也行，不限于 `<a>`）。**挡路那一档偏偏不给按钮**：这不是学生点得回去的问题，给了反而是误导。
 - **三档全空就整张卡消失**，不占地方。所以主页上有没有体检卡、多长，本身就是一句「现在这摊子有多干净」。
 - **判据全部来自已有的数据**（`state.map.status`、`profile` 的三个字段、`analysis.byMaterial`、`student.orphans`、今天的 `minutes` 合计、`mistakes.byStatus['待验证']`、`memory.dueTotal`），没有为这张卡新加任何字段——能算出来的东西不存第二份。
+- **目标那三项读的是 `profile.goal.*`，不是平铺的 `profile.*`**。踩过一次：`healthReport()` 读 `profile.outcome` / `profile.deadline` / `profile.minutesPerDay`，而 `emptyProfile()` 把它们放在 `goal` 里，于是**每个目标填全的学生都被报「学习目标还缺 3 项」**（2026-10-02 修，`test/panel.test.js` 那条既钉「填全了不报缺」、又钉「真缺了要报出来」）。
 
 ## 补：面板能指挥对话了，练什么在做题页里定
 

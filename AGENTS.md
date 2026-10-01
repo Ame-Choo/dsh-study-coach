@@ -314,6 +314,13 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
   `.md|markdown|txt` → 打开正文、`u.kind === 'folder'` → 打开文件夹、其余 → 打开。
   判扩展名**只许切 `#`，别切 `?`**——`String(u.url).split('#')[0]`；写成 `split(/[?#]/)` 会把 query 一起切掉，
   `/study/file?path=…pdf` 里的 `.pdf` 就看不见了（踩过）。链接走 `assets/urls.js` 的 `openPath()`，别自己拼。
+- `/study/file` 的两种「打不开」要分开回：**不在已登记材料里 = 404，登记过但盘上没了（硬盘没插、网盘没挂）= 410**
+  （`lib/handler.js` 的 `registeredTarget()` 只管范围、不查存在）。面板的 `fileAlive()` 就是拿 404 判
+  「服务端还是旧代码」的——把「文件不在」也回 404，体检卡就会举着红条喊「重启 DSH」（2026-10-02 修，
+  `test/dir.test.js` 与 `test/file.test.js` 各钉一条）。
+- **目标的三个字段在 `profile.goal` 里**（`lib/schema.js` 的 `emptyProfile()`），不在 `profile` 上。
+  面板里一律 `state.profile.goal.*` 地读；`healthReport()` 曾经读平铺的 `profile.outcome/deadline/minutesPerDay`，
+  于是**每个目标填全的学生都被报「学习目标还缺 3 项」**（2026-10-02 修）。
 - `tree.loose`（封面、目录、答案这些没归到任何模块的页）单开一块「没归到目录里的」，
   **标题退回内容类型**（`moduleTitle` 传 `''`，别写「其余」）；一条 pointId 都没有的那几份收进 `.atlas-blank`
   （「这份材料还没挂到最小单元上」）+ 一颗「交给教练去标」。

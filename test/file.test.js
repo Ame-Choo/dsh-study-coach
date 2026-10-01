@@ -97,7 +97,11 @@ test('材料登记的是个不存在的路径，也别炸', async () => {
   const server = await startPanelServer(handler, { port: 0 })
   try {
     const res = await fetch(`${server.url}/file?path=${encodeURIComponent('Z:\\没有这个目录\\a.mp4')}`)
-    assert.equal(res.status, 404)
+    // 410 而不是 404：面板的探活就是拿 404 判「服务端还是旧代码」的，
+    // 移动硬盘没插时回 404 会让它举着红条喊「重启 DSH」
+    assert.equal(res.status, 410)
+    const body = await res.json()
+    assert.equal(body.error.code, 'gone')
   } finally {
     await server.close()
   }

@@ -11,7 +11,7 @@ cd dsh-study-coach
 npm pack --dry-run
 ```
 
-看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `PUBLISHING.md` / `AGENTS.md` / `design.md` / `LICENSE` / `package.json`。
+看输出的文件清单。**应该只有** `index.js` / `lib/**` / `assets/**` / `skills/**` / `cordis.patch.yml` / `README.md` / `CHANGELOG.md` / `docs/**` / `PUBLISHING.md` / `AGENTS.md` / `design.md` / `DEV.md` / `LICENSE` / `package.json`。
 
 `README.md` 里链到 `design.md`，所以 `design.md` 必须在包里，不然装完那个链接是死的；`AGENTS.md` 同理（它写的是「改界面前先读 design.md」这条规矩）。
 
@@ -145,7 +145,10 @@ npm publish
    `npm run setup-repo` 一次填掉——需要你的 GitHub 用户名（或仓库全名）。
 3. **topic 只能手动打**：`dsh-plugin`（必打）+ `deepseek-harness`。本机没装 `gh`，仓库网页 About 齿轮里填最快。
 4. **公开还是私有**：要进 `dshmarket` 目录**必须公开**，爬虫只看得见公开仓库。
-5. **首屏还缺**：README 顶上没有截图、没有徽章；也没有 `CHANGELOG.md`。要不要我加一张面板截图 + 几颗徽章？
+5. **首屏**（已补，2026-10-02）：README 顶上是 CI / node / DSH / license 四颗徽章，
+   下面一张知识地图大图 + 今日任务 / 资料图谱 / 档案三张并排，图在 `docs/`（也进了 `files` 白名单，
+   所以 npm 上的 README 能显示出来）；另有一份 `CHANGELOG.md`。
+   底图是拿演示数据在 `node scripts/preview.mjs` 上拍的，仓库里没有那些数据。
 6. **本机路径已清过一遍**：`DEV.md` / `README.md` / `AGENTS.md` 里那几处
    `F:\dshworkingspace(studyplugin…` 与 `C:\Users\zongy\…` 已改成通用写法（`D:\code\…` / `C:\Users\<你>\…`）；
    只剩 `test/panel.test.js` 两处夹具字符串还故意带着那个括号目录名——那条用例测的就是「cwd 里带括号」。
@@ -157,6 +160,8 @@ npm publish
 - [ ] git 身份不是占位（`git log -1 --format='%an <%ae>'`），否则 GitHub 上没人认领这些提交
 - [ ] `node --test` 全绿，`skipped` 是 0
 - [ ] `npm pack --dry-run` 的文件清单干净（没有 `node_modules` / `test` / `scratch`）
+- [ ] README 顶上那几颗徽章的仓库名对得上（CI 徽章指向 `Ame-Choo/dsh-study-coach`），`docs/` 那几张图在包里
+- [ ] `CHANGELOG.md` 里给这次要发的版本补一条（`npm version patch` 之前）
 - [ ] `package.json` 里 `name` / `version` / `license` / `keywords`（含 `dsh-plugin`）都对，`repository` / `homepage` / `bugs` **不再是 `OWNER` 占位**（`npm run setup-repo` 跑过一次）
 - [ ] `dsh.manifestVersion: 1` 和 `dsh.bundle.patch: ./cordis.patch.yml` 还在
 - [ ] `engines.node` 和 `engines.dsh` 跟实际测过的环境一致

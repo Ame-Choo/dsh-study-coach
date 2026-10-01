@@ -1053,13 +1053,21 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
   const ok = await boot(fixture())
   assert.match(ok.html(), /class="card health"/)
   assert.match(ok.html(), /件该修的/)
-  assert.match(ok.html(), /学习目标还缺 3 项/)
-  assert.match(ok.html(), /minutesPerDay/)
+  // 目标在 profile.goal 里，别读平铺的 outcome/deadline/minutesPerDay——
+  // 读错了会让每个目标填全的人都被说「还缺 3 项」（2026-10-02 修）
+  assert.doesNotMatch(ok.html(), /学习目标还缺/, '目标填全了就不该报缺')
   assert.match(ok.html(), /顺手能做的/)
   assert.doesNotMatch(ok.html(), /挡路的/, '服务端是新的就不该有挡路那一档')
   assert.doesNotMatch(ok.html(), /class="hd-sec bad"/)
   // 每条都配一个能点回去的地方
   assert.match(ok.html(), /data-nav="materials"/)
+
+  // 目标真缺的时候还得报出来，并且写清缺的是哪几项
+  const bare = fixture()
+  bare.profile = { ...bare.profile, goal: { subject: '高等数学', outcome: '', deadline: '', minutesPerDay: 0 } }
+  const gaps = await boot(bare)
+  assert.match(gaps.html(), /学习目标还缺 3 项/)
+  assert.match(gaps.html(), /minutesPerDay/)
 
   // 服务端是旧的：升成「挡路的」，并且逐条写清是哪一样、坏在哪儿
   const stale = await boot(fixture(), { stale: true })

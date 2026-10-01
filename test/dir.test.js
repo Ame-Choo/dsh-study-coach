@@ -44,6 +44,25 @@ test('点开一节课的文件夹，把里面的文件列出来', async () => {
   }
 })
 
+test('登记过的材料、盘上没了：410，不是 404', async () => {
+  // 404 是面板判「服务端还是旧代码」的信号（`fileAlive()`）；移动硬盘没插的时候
+  // 文件本来就该找不到，那时候回 404 会让体检卡举着红条喊「重启 DSH」。
+  const root = mkdtempSync(join(tmpdir(), 'study-dir-'))
+  try {
+    const store = { read: () => ({ materials: [{ path: root }] }) }
+    const handler = createHandler(store, () => ({ code: 404, body: {} }), { assetsDir })
+    const gone = join(root, '还没插硬盘就找不到的那本.pdf')
+    const req = { method: 'GET', url: '/study/file?path=' + encodeURIComponent(gone), headers: {} }
+    const res = fakeRes()
+    await handler(req, res)
+    assert.equal(res.code, 410)
+    assert.match(res.body, /找不到了/)
+    assert.match(res.body, /"code":"gone"/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('登记材料范围外的文件夹不给看', async () => {
   const root = mkdtempSync(join(tmpdir(), 'study-dir-'))
   const outside = mkdtempSync(join(tmpdir(), 'study-out-'))
