@@ -227,7 +227,11 @@ aside `[['student','学生画像',studentCard]]`。老网址 `/study/ability` �
 - **这张卡还挂在「档案」页**（用户说「掌握度在档案页面也要加一个」）：`PAGE_CARDS.library` 的 main =
   `[['who','学生档案',studentFileCard], ['library','学习档案',libraryCard], ['ability','掌握度',abilityCard], ['materials','材料',materialsCard]]`，
   跟地图页**同一张** `abilityCard()`、同一个展开 id `ability`（别复制一份改改，那会开始漂）。
-  `test/panel.test.js` 的档案页那条钉着 `data-card="ability"` + `pie-slice` + 「整体掌握度」。
+  **边栏是 `[['goal','学习目标',goalCard], ['student','学生画像',studentCard], ['tools','基本工具',toolsCard]]`**——
+  学生画像就摆在「学习目标」下面（用户 m21687 原话：「学生画像加到档案里，学习目标下面」），
+  跟地图页那张是同一个 `studentCard()`、同一个展开 id `student`（两份数据源不共享的做法见下条）。
+  `test/panel.test.js` 的档案页那条钉着 `data-card="ability"` + `pie-slice` + 「整体掌握度」，
+  以及边栏次序 `goal → student → tools`。
 - **四层掌握度每一级都给一条**（用户原话：「掌握度模块针对每个大类、模块、最小单元都要给一个四层掌握度」）：
   `bandIndexOf(stage)`（`MASTERY_BANDS.findIndex`，认不出按「没接触过」）→ `bandCounts(points)`（`{counts, total}`）
   → `bandStrip(points)`（大类头、模块头那一条 72×6 的四段色带，`title` 写

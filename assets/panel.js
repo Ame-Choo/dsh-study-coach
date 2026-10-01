@@ -47,7 +47,7 @@ let capabilities = null
 const STALE_NEED = [
   ['ability', '总体能力判断', '知识地图页「掌握度」那张总评卡'],
   ['archive', '每级掌握档案', '点「档案」看单个单元的明细'],
-  ['student', '学生画像', '知识地图页边上的画像卡'],
+  ['student', '学生画像', '档案页「学习目标」下面那张画像卡（知识地图页边上也有一张）'],
   ['library', '学习目标库', '档案页切目标、新建目标'],
   ['practice', '做题页', '「做题」那一整页'],
   ['mistakes', '错题本', '错题本卡和每条的「再练」'],
@@ -845,7 +845,7 @@ const PAGES = [
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
   { id: 'atlas', path: '/study/atlas', label: '学习', hint: '挑一份材料，按它自己的目录摊成三层' },
-  { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具、掌握度' },
+  { id: 'library', path: '/study/library', label: '档案', hint: '学生档案、学习目标、学生画像、材料、掌握度' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
   { id: 'toolbox', path: '/study/toolbox', label: '工具', hint: '番茄钟、清单，还有以后往里加的小工具' },
   { id: 'coach', path: '/study/coach', label: '对话', hint: '直接和教练说话，这一页就是聊天窗口' },
@@ -922,7 +922,9 @@ const PAGE_CARDS = {
       ['ability', '掌握度', abilityCard],
       ['materials', '材料', materialsCard],
     ],
-    aside: [['goal', '学习目标', goalCard], ['tools', '基本工具', toolsCard]],
+    // 边上先摆「学习目标」，紧跟着「学生画像」（用户：学生画像加到档案里，学习目标下面），
+    // 再是基本工具——跟地图页那张是同一个 studentCard()、同一个展开 id `student`。
+    aside: [['goal', '学习目标', goalCard], ['student', '学生画像', studentCard], ['tools', '基本工具', toolsCard]],
   },
   // 资料这一页：主栏是书架，边栏是导入入口。
   materials: {

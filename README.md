@@ -483,7 +483,7 @@ node --test
 | `/study/today` | 今日任务 | 逐条勾、改、删，加一条 |
 | `/study/map` | 知识地图 | 三层下钻、单元自评、确认草稿；下面接**「掌握度」**那一节（整体饼图 + 各大类，行尾「档案」展开细账）；再下面是错题本，边栏是学生画像 |
 | `/study/atlas` | 学习 | 资料图谱：挑一份材料，按它自己的目录摊成大类 → 模块 → 最小单元三层，每层都能直接打开对应那一页 / 那一段；没标的交给教练 |
-| `/study/library` | 档案 | 换目标 / 改名 / 删除（进回收站可恢复）、材料、学习目标、基本工具 |
+| `/study/library` | 档案 | 综合学生档案（这个人现在什么水平）→ 学习档案 → 掌握度 → 材料；边栏是学习目标、**学生画像**、基本工具 |
 | `/study/materials` | 资料 | 资料书架：一本拆到哪、归到哪个单元，按页直达；右栏登记新资料 |
 | `/study/toolbox` | 工具 | 二级菜单装小工具：番茄钟、清单（以后往这儿加） |
 | `/study/coach` | 对话 | 整页就是一个聊天窗口：听教练说、直接回话；顶上能选 DSH 里哪个会话 |
@@ -1213,5 +1213,20 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   全量 `node --test` = **333 pass / 0 fail / 0 skipped**（少了 `test/watched.test.js` 那 3 条）。
 - 这一批动了 `lib/`（`schema.js` / `store.js` / `routes.js` 里删掉 watched 那一套、`map.js` 的 `taskLinks`）
   → **要重启 DSH**；`assets/*` 刷新即可。
+
+### 六、学生画像也摆一份到档案页
+
+用户说（m21687）：「学生画像加到档案里，学习目标下面」。所以档案页边栏是
+`[['goal','学习目标',goalCard], ['student','学生画像',studentCard], ['tools','基本工具',toolsCard]]`，
+画像卡就在「学习目标」正下方。
+
+- 跟知识地图页边上那张是**同一个 `studentCard()`、同一个展开 id `student`**——别复制一份改改，那会开始漂；
+  数据源仍是 `student.json`（写走对话里的 `study_student`），两张卡只是同一个东西出现在两页。
+- `STALE_NEED` 里那条的说明也跟着改成「档案页「学习目标」下面那张画像卡（知识地图页边上也有一张）」，
+  `PAGES` 的 `library.hint` 补上「学生画像」；`test/panel.test.js` 的档案页那条钉住边栏次序
+  `goal → student → tools` 与 `<h2>学生画像</h2>`。
+- 地图页边栏那张**先留着**（用户说的是「加到」，没说搬走）；哪天嫌地图页侧栏重复，再单独问。
+- 只动 `assets/panel.js` + 测试 + 文档 → **刷新页面即可，不用重启 DSH**；全量 `node --test` 仍是 333 pass。
+
 
 

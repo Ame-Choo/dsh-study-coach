@@ -911,6 +911,13 @@ test('档案页：目标库、学习目标、材料、基本工具各就各位�
   assert.match(html(), /<div class="col aside">.*data-card="goal"/s)
   assert.match(html(), /<div class="col aside">.*data-card="tools"/s)
 
+  // 学生画像也搬到边栏了，就摆在「学习目标」下面、「基本工具」上面（用户：学生画像加到档案里，
+  // 学习目标下面）。跟地图页那张是同一个 studentCard()、同一个展开 id `student`。
+  assert.match(html(), /data-card="goal"[\s\S]*data-card="student"[\s\S]*data-card="tools"/)
+  assert.match(html(), /<h2>学生画像<\/h2>/)
+  assert.match(html(), /data-act="fact-filter"/)
+  assert.match(html(), /data-act="fact-del"/)
+
   // 最上面那张是综合的学生档案：一句话总评 + 分数 + 四层色带 + 画像 + 工具 + 错题
   assert.match(html(), /data-card="who"/)
   assert.match(html(), /<h2>学生档案<\/h2>/)
@@ -1012,7 +1019,7 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
   assert.match(stale.html(), /class="hd-sec bad"/)
   // 处数会随能力项加减，别钉死数字；要钉的是「哪一样没了」都得点出来
   assert.match(stale.html(), /服务端还是旧代码，\d+ 处点下去会 404/)
-  assert.match(stale.html(), /学生画像——知识地图页边上的画像卡/)
+  assert.match(stale.html(), /学生画像——档案页「学习目标」下面那张画像卡/)
   assert.match(stale.html(), /记忆卡——工具页的记忆卡/)
   assert.match(stale.html(), /按资料图谱找那一讲/, '知识地图那颗「看课」没了也得说出来')
   assert.match(stale.html(), /重启 DSH/)
