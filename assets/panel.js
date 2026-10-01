@@ -116,6 +116,9 @@ const ui = {
   open: new Set(['today']),
   /* 材料卡里那段长说明摊开了没有（默认压三行，不然一页全是字） */
   matMore: false,
+  /* 「学习」页选中的材料（null = 还没选过，进来默认全选）；点开的那个单元在各材料里的页码 */
+  atlasPicked: null,
+  atlasPages: null,
   /* 「对话」页正看着哪个会话；空串 = 服务端替我挑最近那个 */
   chatSession: '',
   /* 正在发的话（发出后先乐观占位，等服务端日志追上再换成真的） */
@@ -555,7 +558,7 @@ async function load() {
     // 其余页不拉，省一趟请求和 9 KB。
     review = page === 'today' || page === 'home' ? await loadReview() : null
     // 书架只有「资料」这一页要。
-    shelf = page === 'materials' ? await loadShelf() : null
+    shelf = page === 'materials' || page === 'atlas' ? await loadShelf() : null
     // 工具栏目只有「工具」这一页要。
     toolbox = page === 'toolbox' ? await loadToolbox() : null
     // 记忆卡只有切到那个小工具时才拉——看番茄钟的时候不白跑一趟。
@@ -808,6 +811,7 @@ const PAGES = [
   { id: 'home', path: '/study', label: '主页', hint: '当前进度与下一步' },
   { id: 'today', path: '/study/today', label: '今日任务', hint: '今日任务，逐条完成' },
   { id: 'map', path: '/study/map', label: '知识地图', hint: '课程全貌，可逐单元自评' },
+  { id: 'atlas', path: '/study/atlas', label: '学习', hint: '选资料，看它覆盖了哪些单元' },
   { id: 'ability', path: '/study/ability', label: '能力', hint: '总体进度、薄弱环节、待复习' },
   { id: 'library', path: '/study/library', label: '档案', hint: '学习目标、材料、基本工具' },
   { id: 'materials', path: '/study/materials', label: '资料', hint: '登记教辅、拆成页、看每一页归到哪个单元' },
@@ -865,6 +869,11 @@ function resolvePage() {
 const PAGE_CARDS = {
   today: { main: [['today', '今日任务', tasksCard], ['review', '今日复盘图', reviewCard]] },
   map: { main: [['map', '知识地图', mapCard]] },
+  // 学习这一页：选资料 → 看「资料图谱」——哪个大类、哪个模块、哪个最小单元有材料对上。
+  atlas: {
+    main: [['atlas', '资料图谱', atlasCard]],
+    aside: [['guide', '教练的指引', guideCard]],
+  },
   ability: {
     main: [
       ['ability', '总体能力', abilityCard],
@@ -1017,8 +1026,13 @@ async function refreshChat({ pushed = false } = {}) {
 /**
  * 只换消息列表那一块，不整页重画。
  * 整页那个日志和悬浮窗那个日志都挂 `[data-chat-log]`，谁在页面上就填谁。
+ *
+ * 位置得自己管：换 `innerHTML` 的时候浏览器不保证替我们留住 `scrollTop`，
+ * 一不留神就停回顶上——学生报的「发完消息跳到最上面，得手动拖下来」。
+ * 所以换之前先记下原来贴不贴底、原来在哪，换完放回去；`bottom: true`
+ * （刚发出去一条、刚切会话）一律落到底。
  */
-function paintChat() {
+function paintChat({ bottom = false } = {}) {
   const snapshot = chat || { messages: [] }
   chatStamp = chatFingerprint(snapshot)
   const hosts = ['chat-log', 'float-log'].map((id) => document.getElementById(id)).filter(Boolean)
@@ -1028,8 +1042,16 @@ function paintChat() {
   }
   for (const host of hosts) {
     const stick = host.scrollHeight - host.scrollTop - host.clientHeight < 60
+    const keep = host.scrollTop
+    const toBottom = bottom || stick
     host.innerHTML = chatLog(snapshot)
-    if (stick) host.scrollTop = host.scrollHeight
+    host.scrollTop = toBottom ? host.scrollHeight : keep
+    // 图与公式是插进去之后才量出高度的，落到底得再等一帧。
+    if (toBottom && typeof setTimeout === 'function') {
+      setTimeout(() => {
+        host.scrollTop = host.scrollHeight
+      }, 0)
+    }
   }
 }
 
@@ -2105,6 +2127,58 @@ function materialsCard() {
  */
 const PAGE_KIND_LABEL = { 讲解: '讲', 例题: '例', 习题: '练', 目录: '目', 答案: '答', 其他: '他' }
 
+/**
+ * web 端读不动一份资料时，把它**交给教练**：这一份是哪一本、路径是什么、为什么读不动，
+ * 原样投进学习教练那个会话，让 agent 用自己的工具去读（PDF 拆页看、网课目录按讲次解）。
+ * 顺带把「读完按最小单元归位」也写进那句话里——这正是资料图谱要的那份标注。
+ *
+ * 同一份、同一个理由只投一次（`FORWARDED`），免得每次刷新往对话里灌一条一样的。
+ */
+const FORWARDED = new Set()
+const forwardKey = (materialId, path, reason) => `${materialId || path || '?'}|${reason || ''}`
+
+function isForwarded(materialId, path) {
+  if (!materialId && !path) return false
+  for (const key of FORWARDED) if (key.startsWith(`${materialId || path}|`)) return true
+  return false
+}
+
+async function forwardToCoach({ materialId = '', title = '', path = '', reason = '', annotate = false } = {}) {
+  const key = forwardKey(materialId, path, reason)
+  if (FORWARDED.has(key)) return false
+  const where = title || path || materialId || '一份资料'
+  const why = annotate
+    ? reason
+      ? `现在的情况：${reason}`
+      : '这份资料还没按最小单元标过。'
+    : reason
+      ? `web 端自动读取失败：${reason}`
+      : 'web 端自动读取失败。'
+  const ask = annotate
+    ? '请你把这份资料按知识地图的最小单元标一遍：M1.1 这种 id，一处内容可以同时归好几个（同一讲既讲 M1.1 也讲 M1.2 就都写上）。教辅按页范围对、网课按讲次对，读完写进材料分析里——面板的「学习」页就能按大类、模块看它覆盖了哪些单元。'
+    : '请你直接用工具去读这份资料（PDF 可以拆页、一页一页看；网课目录按文件名把讲次解出来）。读完把内容按知识地图的最小单元归位——M1.1 这种 id，一处内容可以同时归好几个。归完写进材料分析里，面板上就能按单元翻页、做题页也就找得到页码了。'
+  const text = [annotate ? `【资料没标到知识图谱，交给你】${where}` : `【资料读不动，交给你】${where}`, path ? `路径：${path}` : '', why, ask]
+    .filter(Boolean)
+    .join('\n')
+  try {
+    const out = await api('/study/api/chat/send', {
+      text,
+      sessionId: (chat && chat.sessionId) || ui.chatSession || '',
+    })
+    if (!out || !out.ok) return false
+    FORWARDED.add(key)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 交给教练那颗按钮；已经交过了就换成一句说明，别让人反复点。 */
+function forwardAct(materialId, path = '', { act = 'mat-forward', label = '交给教练去读' } = {}) {
+  if (isForwarded(materialId, path)) return '<span class="dim">已经交给教练了 —— 去「对话」页看看他怎么说</span>'
+  return `<button class="mini" data-act="${esc(act)}" data-id="${esc(materialId)}">${esc(label)}</button>`
+}
+
 function shelfState(s) {
   // AI 出的卷子没有本机文件、也没有页图，别按「原件不在了」报错。
   if (s.kind === 'ai') return { text: 'AI 出的卷', cls: '' }
@@ -2125,7 +2199,12 @@ function shelfDetail(s) {
   if (shelfIndex && shelfIndex.materialId !== s.materialId) return ''
   const idx = shelfIndex
   if (!idx || idx.loading) return '<p class="dim">读取中…</p>'
-  if (idx.error) return `<p class="dim bad">读不出来：${esc(idx.error)}</p>`
+  if (idx.error) {
+    return `<p class="dim bad">读不出来：${esc(idx.error)}</p>
+      <div class="row-acts">
+        ${forwardAct(s.materialId, s.path)}
+      </div>`
+  }
 
   // 一段一段：左边「12—17 页 · 练 · M1.4」，右边每一页一颗能点开的按钮。
   const spans = idx.spans.length
@@ -2211,6 +2290,7 @@ function renderShelfRow(s) {
                 !s.rendered ? '拆成页图' : s.rendered < s.total ? '继续拆' : '重新拆一遍'
               }</button>`
         }
+        ${st.cls === 'bad' ? forwardAct(s.materialId, s.path) : ''}
       </div>`
   return `<li class="shelf-row${open ? ' open' : ''}${isAi ? ' ai' : ''}">
     <div class="shelf-head">
@@ -2264,6 +2344,171 @@ function shelfCard() {
     <p class="dim">按类别分组。教辅看两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）；AI 出的卷子直接打开就能做。</p>
     ${body}
     ${root}
+  </section>`
+}
+
+/* ── 学习页（/study/atlas）：资料图谱 ──────────────────────────────────────
+ *
+ * 「哪些材料对上了哪些最小单元」——这句话只有跟知识地图摆在一起才有意义，所以
+ * 这一页把 map 的三层（大类 / 模块 / 单元）摊开，每一行单元后面挂上覆盖它的材料。
+ *
+ * 数据全是现成的：`state.map` 给单元清单，书架的每一份材料带 `points`（它的分析里
+ * 出现过的 pointId 并集，教辅按页归的、网课按讲次归的都算）。所以这里**不新增任何
+ * 服务端路由**——选了哪几份、覆盖到哪一级，全在客户端算。
+ *
+ * 一份材料一个字母（A/B/C…），跟图例对上；没标注的材料单独列出来，一颗按钮交给教练
+ * 去标（这正是「agent 在最小单元上标注它的位置」那条要求的入口）。
+ */
+function atlasGroups() {
+  const mods = (state && state.map && state.map.modules) || []
+  const order = []
+  const byGroup = new Map()
+  for (const mod of mods) {
+    const name = mod.group || '未分类'
+    if (!byGroup.has(name)) {
+      byGroup.set(name, [])
+      order.push(name)
+    }
+    byGroup.get(name).push(mod)
+  }
+  return order.map((name) => ({ name, modules: byGroup.get(name) }))
+}
+
+/** 选中的材料。第一次进来默认全选——先让人看见「全都对上了什么」，再自己往下减。 */
+function atlasPicked() {
+  const ids = ((shelf && shelf.materials) || []).map((m) => m.materialId).filter(Boolean)
+  if (!ui.atlasPicked) ui.atlasPicked = new Set(ids)
+  return ui.atlasPicked
+}
+
+function atlasCard() {
+  if (!shelf || !state || !state.map) {
+    return `<section class="card">
+      <div class="card-head"><h2>资料图谱</h2></div>
+      <p class="dim">这份读不出来。刷新一下；要是刷新也不行，那多半是服务端还是旧代码，重启 DSH 再看。</p>
+    </section>`
+  }
+  const mats = (shelf.materials || []).filter((m) => m.materialId)
+  if (!mats.length) {
+    return `<section class="card">
+      <div class="card-head"><h2>资料图谱</h2></div>
+      <p class="dim">还没有材料可比。先去「资料」页登记一本教辅或一门网课——登记完回这儿，就能看出它覆盖了知识地图上的哪些单元。</p>
+    </section>`
+  }
+
+  const picked = atlasPicked()
+  const letters = new Map()
+  mats.forEach((m, i) => letters.set(m.materialId, String.fromCharCode(65 + (i % 26))))
+  const on = mats.filter((m) => picked.has(m.materialId))
+  // 单元 → 覆盖它的材料字母（只算选中的那几份）
+  const cover = new Map()
+  for (const m of on) {
+    for (const id of m.points || []) {
+      if (!cover.has(id)) cover.set(id, [])
+      cover.get(id).push(m.materialId)
+    }
+  }
+
+  const groups = atlasGroups()
+  const allPoints = groups.flatMap((g) => g.modules.flatMap((mod) => mod.points || []))
+  const hit = allPoints.filter((p) => cover.has(p.id)).length
+  const pct = allPoints.length ? Math.round((hit / allPoints.length) * 100) : 0
+
+  const picker = `<div class="chips atlas-pick">
+    ${mats
+      .map((m) => {
+        const l = letters.get(m.materialId)
+        const kind = m.kind === 'video' ? '网课' : m.kind === 'ai' ? 'AI 卷' : m.kind === 'notes' ? '讲义' : '教辅'
+        const n = (m.points || []).length
+        return `<button type="button" class="mini${picked.has(m.materialId) ? ' on' : ''}" data-act="atlas-pick" data-id="${esc(m.materialId)}" title="${esc(m.title)}">${l} · ${kind} · ${n ? `${n} 个单元` : '还没标注'}</button>`
+      })
+      .join('')}
+    <button type="button" class="mini" data-act="atlas-all">全选</button>
+    <button type="button" class="mini" data-act="atlas-none">清空</button>
+  </div>`
+
+  const legend = on.length
+    ? `<ul class="legend atlas-legend">${on
+        .map((m) => `<li><b>${letters.get(m.materialId)}</b>${esc(m.title)}${m.kind === 'video' ? '<span class="dim">网课</span>' : ''}</li>`)
+        .join('')}</ul>`
+    : '<p class="dim">一份都没选。上面点一下材料把它加进来。</p>'
+
+  const body = !on.length
+    ? ''
+    : groups
+        .map((g) => {
+          const gPoints = g.modules.flatMap((mod) => mod.points || [])
+          const gHit = gPoints.filter((p) => cover.has(p.id)).length
+          const mods = g.modules
+            .map((mod) => {
+              const pts = mod.points || []
+              const mHit = pts.filter((p) => cover.has(p.id)).length
+              const rows = pts
+                .map((p) => {
+                  const who = cover.get(p.id) || []
+                  const tags = who.map((id) => `<b class="atlas-tag">${letters.get(id)}</b>`).join('')
+                  return `<li class="atlas-unit${who.length ? '' : ' miss'}"${
+                    who.length ? ` data-act="atlas-point" data-point="${esc(p.id)}" title="看它在各材料里在第几页 / 第几讲"` : ''
+                  }>
+                    <span class="atlas-id">${esc(p.id)}</span>
+                    <span class="atlas-name">${esc(p.title || '')}</span>
+                    <span class="atlas-covers">${who.length ? tags : '<span class="dim">还没有材料对上</span>'}</span>
+                    ${ui.atlasPages && ui.atlasPages.point === p.id ? `<div class="atlas-pages">${ui.atlasPages.html}</div>` : ''}
+                  </li>`
+                })
+                .join('')
+              return `<div class="atlas-mod">
+                <div class="atlas-mod-head">
+                  <span class="atlas-mid">${esc(mod.id)}</span>
+                  <span class="atlas-mtitle">${esc(mod.title || '')}</span>
+                  <span class="atlas-count${mHit ? '' : ' miss'}">${mHit}/${pts.length}</span>
+                </div>
+                <div class="atlas-gauge"><i style="width:${pts.length ? Math.round((mHit / pts.length) * 100) : 0}%"></i></div>
+                <ul class="list atlas-units">${rows}</ul>
+              </div>`
+            })
+            .join('')
+          return `<div class="atlas-group">
+            <div class="atlas-group-head">
+              <span class="atlas-gname">${esc(g.name)}</span>
+              <span class="dim">${g.modules.length} 个模块 · ${gHit}/${gPoints.length} 个单元有材料</span>
+            </div>
+            ${mods}
+          </div>`
+        })
+        .join('')
+
+  // 选中的材料里，一份标注都没有的（这台机器上的网课就是这样）：交给教练去标。
+  const blank = on.filter((m) => !(m.points || []).length)
+  const blankBox = !blank.length
+    ? ''
+    : `<div class="atlas-blank">
+        <b>还有 ${blank.length} 份没标到单元上</b>
+        ${blank
+          .map(
+            (m) => `<div class="atlas-blank-row">
+              <span><b>${letters.get(m.materialId)}</b>${esc(m.title)}</span>
+              ${forwardAct(m.materialId, m.path, { act: 'atlas-annotate', label: '让教练标一遍' })}
+            </div>`,
+          )
+          .join('')}
+        <p class="hint">教辅按页范围对、网课按讲次对，一处内容可以同时归好几个单元。让教练读过标一遍，回来刷新就能看见。</p>
+      </div>`
+
+  return `<section class="card atlas" data-card="atlas">
+    <div class="day-hero">
+      <p class="eyebrow">MATERIAL GRAPH · 资料图谱</p>
+      <div class="day-title-row">
+        <h2 class="day-title">资料图谱</h2>
+        <span class="day-pill">${on.length} 份材料 · 覆盖 ${hit}/${allPoints.length} 个单元</span>
+      </div>
+      <p class="day-sub">A / B / C 是材料；上面挑了哪几份，下面就只看那几份覆盖到的单元</p>
+      <div class="day-gauge" role="img" aria-label="材料覆盖度 ${pct}%"><i style="width:${pct}%"></i></div>
+    </div>
+    ${picker}
+    ${legend}
+    ${body}
+    ${blankBox}
   </section>`
 }
 
@@ -3179,6 +3424,68 @@ document.addEventListener('click', async (event) => {
         await loadShelfIndex(id)
       }
       render()
+    } else if (act === 'mat-forward') {
+      const id = el.dataset.id || ''
+      const mat = ((shelf && shelf.materials) || []).find((m) => m.materialId === id) || {}
+      const sent = await forwardToCoach({
+        materialId: id,
+        title: mat.title || '',
+        path: mat.path || '',
+        reason: '面板这边读不到它的内容',
+      })
+      toast(sent ? '交给教练了，去「对话」页看看' : '没能交过去 —— 对话通道没通', !sent)
+      render()
+    } else if (act === 'atlas-pick') {
+      // 选中/取消一份材料，图谱当场重算——纯客户端，不惊动服务端。
+      const id = el.dataset.id || ''
+      const picked = atlasPicked()
+      if (picked.has(id)) picked.delete(id)
+      else picked.add(id)
+      ui.atlasPages = null
+      render()
+    } else if (act === 'atlas-all' || act === 'atlas-none') {
+      const ids = ((shelf && shelf.materials) || []).map((m) => m.materialId).filter(Boolean)
+      ui.atlasPicked = new Set(act === 'atlas-all' ? ids : [])
+      ui.atlasPages = null
+      render()
+    } else if (act === 'atlas-annotate') {
+      const id = el.dataset.id || ''
+      const mat = ((shelf && shelf.materials) || []).find((m) => m.materialId === id) || {}
+      const sent = await forwardToCoach({
+        materialId: id,
+        title: mat.title || '',
+        path: mat.path || '',
+        reason: '这份还没按最小单元标过',
+        annotate: true,
+      })
+      toast(sent ? '让教练去标了，标完刷新这一页' : '没能交过去 —— 对话通道没通', !sent)
+      render()
+    } else if (act === 'atlas-point') {
+      // 点一个单元：问服务端「它在各材料里是哪几页」，回来就地铺开。
+      const point = el.dataset.point || ''
+      if (!point) return
+      if (ui.atlasPages && ui.atlasPages.point === point) {
+        ui.atlasPages = null
+        render()
+        return
+      }
+      try {
+        const out = await api('/study/api/point/pages?point=' + encodeURIComponent(point))
+        const hits = (out && out.hits) || []
+        const html = hits.length
+          ? `<ul class="atlas-page-list">${hits
+              .map(
+                (h) => `<li><span class="path">${esc(h.title || h.materialId || '')}</span>${(h.pages || [])
+                  .map((p) => `<a class="mini" href="${esc(p.url)}" target="_blank" rel="noopener">第 ${esc(String(p.page))} 页</a>`)
+                  .join('')}</li>`,
+              )
+              .join('')}</ul>`
+          : '<span class="dim">这份材料里没找到这个单元——要么还没标，要么标的是别的单元。</span>'
+        ui.atlasPages = { point, html }
+      } catch (error) {
+        ui.atlasPages = { point, html: `<span class="dim bad">${esc(error.message)}</span>` }
+      }
+      render()
     } else if (act === 'shelf-build') {
       const id = el.dataset.id || ''
       el.disabled = true
@@ -3193,7 +3500,15 @@ document.addEventListener('click', async (event) => {
         }
         shelf = await loadShelf()
       } catch (error) {
-        toast('没能开始拆：' + error.message, true)
+        // web 端自己读不动——按约定直接转给教练，让他用自己的工具去读。
+        const mat = ((shelf && shelf.materials) || []).find((m) => m.materialId === id) || {}
+        const sent = await forwardToCoach({
+          materialId: id,
+          title: mat.title || '',
+          path: mat.path || '',
+          reason: error.message,
+        })
+        toast(sent ? `web 端拆不了（${error.message}），已经交给教练去读` : '没能开始拆：' + error.message, true)
       } finally {
         el.disabled = false
         render()
@@ -3220,7 +3535,9 @@ document.addEventListener('click', async (event) => {
           }
         } catch (error) {
           ui.importPreview = null
-          toast('看不了：' + error.message, true)
+          // 路径读不动（不在本机、没权限、格式不认）也一样转给教练。
+          const sent = await forwardToCoach({ path: path.trim(), reason: error.message })
+          toast(sent ? `web 端读不了这个路径（${error.message}），已经交给教练看看` : '看不了：' + error.message, true)
         } finally {
           ui.importing = false
           render()
@@ -3398,7 +3715,7 @@ document.addEventListener('click', async (event) => {
         const made = await api('/study/api/chat/new', {})
         ui.chatSession = made.sessionId
         await loadChat({ sessionId: made.sessionId, withSessions: true })
-        paintChat()
+        paintChat({ bottom: true })
         toast('开好了，直接说话就行')
       } catch (error) {
         toast('开不出来：' + error.message, true)
@@ -3494,7 +3811,8 @@ document.addEventListener('change', async (event) => {
   if (el.dataset.act === 'chat-session') {
     ui.chatSession = el.value
     await loadChat({ sessionId: el.value, withSessions: true })
-    paintChat()
+    // 换会话就当翻到最新一条：新开的那个会话本来就该从底下看起。
+    paintChat({ bottom: true })
     return
   }
   if (el.dataset.act !== 'task-toggle') return
@@ -3633,9 +3951,10 @@ document.addEventListener('submit', async (event) => {
       } finally {
         ui.chatSending = false
       }
-      // 等日志追上：立刻拉一次，过一秒再拉一次，别让人盯着空白等
+      // 等日志追上：立刻拉一次，过一秒再拉一次，别让人盯着空白等。
+      // 刚发出去的那一条一定落到底——不然学生还得自己往下拖。
       await loadChat()
-      paintChat()
+      paintChat({ bottom: true })
       setTimeout(() => void refreshChat(), 1200)
     } else if (kind === 'task-edit') {
       const id = form.dataset.id

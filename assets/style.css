@@ -492,6 +492,62 @@ html[data-mode="sidebar"] .list.tasks li > .dim { flex: 1 1 auto; }
 .day-gauge > i { display: block; height: 100%; background: var(--accent); }
 .day-gauge.over > i { background: var(--warn); }
 
+/* ── 学习页（资料图谱）：把知识地图摊开，一行单元挂上覆盖它的材料 ────────
+ * 抬头整块复用 .day-hero（跟今日任务、复盘图是一家）；下面三样是自己攒的：
+ * 材料选择条、A/B/C 图例、大类 → 模块 → 单元的覆盖清单。
+ * 一份材料一个字母，同一行的字母就是「这份材料也讲这个单元」。
+ * 量尺一条都不许渐变；材料没对上的单元写灰，别用红——那不是错，是还没标。
+ */
+.atlas .chips { margin: 0 0 var(--sp-2); }
+.atlas .mini.on { border-color: var(--accent); color: var(--accent); }
+.atlas .legend {
+  list-style: none; margin: 0 0 var(--sp-4); padding: 0;
+  display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3);
+}
+.atlas .legend li { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-label); color: var(--dim); }
+.atlas .legend li > b,
+.atlas-tag {
+  flex: none; width: 18px; height: 18px;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  color: var(--ink); background: var(--card-2); border: 1px solid var(--line);
+}
+.atlas-group { padding: var(--sp-3) 0 var(--sp-1); border-top: 1px solid var(--line-2); }
+.atlas-group:first-of-type { border-top: 0; padding-top: 0; }
+.atlas-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.atlas-gname { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.atlas-mod { margin: 0 0 var(--sp-3) var(--sp-2); padding-left: var(--sp-3); border-left: 1px solid var(--line-2); }
+.atlas-mod-head { display: flex; align-items: baseline; gap: var(--sp-1); font-size: var(--fs-label); }
+.atlas-mid { font-family: var(--font-display); font-size: var(--fs-label); letter-spacing: .04em; color: var(--dim); }
+.atlas-mtitle { flex: 1 1 auto; min-width: 0; color: var(--text); }
+.atlas-count { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+.atlas-count.miss { color: var(--warn); }
+.atlas-gauge { height: 4px; margin: 5px 0 6px; background: color-mix(in srgb, var(--line-2) 45%, transparent); }
+.atlas-gauge > i { display: block; height: 100%; background: var(--accent); }
+.atlas-units { margin: 0; }
+.atlas-units li.atlas-unit {
+  display: grid; grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center; gap: var(--sp-1) var(--sp-2);
+  padding: 5px var(--sp-2); background: transparent; border-radius: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.atlas-units li.atlas-unit:last-child { border-bottom: 0; }
+.atlas-unit[data-act]:hover { background: var(--card-2); cursor: pointer; }
+.atlas-id { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--dim); font-variant-numeric: tabular-nums; }
+.atlas-name { min-width: 0; font-size: var(--fs-label); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.atlas-covers { display: flex; gap: 3px; }
+.atlas-unit.miss .atlas-name { color: var(--faint); }
+.atlas-pages { grid-column: 1 / -1; }
+.atlas-page-list { list-style: none; margin: var(--sp-1) 0 2px; padding: 0; display: grid; gap: var(--sp-1); }
+.atlas-page-list li { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: var(--fs-micro); }
+.atlas-blank { margin-top: var(--sp-3); padding: var(--sp-3); background: var(--card-2); border-left: 2px solid var(--warn); }
+.atlas-blank > b { display: block; margin-bottom: 6px; color: var(--ink); }
+.atlas-blank-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-1) 0; font-size: var(--fs-label); }
+.atlas-blank-row > span { min-width: 0; }
+.atlas-blank-row > span > b { margin-right: 6px; font-family: var(--font-display); color: var(--dim); }
+.atlas-blank .hint { margin: var(--sp-2) 0 0; }
+html[data-mode="sidebar"] .atlas-units li.atlas-unit { grid-template-columns: 42px minmax(0, 1fr); }
+
 /*
  * 任务行：序号索引字 | 勾 + 标题 | 元信息 |（换行）备注 |（换行）操作。
  * 左边一道 2px 信号条——「现在该做的那条」是青的，做过的压暗，一屏只给一条青。

@@ -277,7 +277,7 @@ const STUDENT = {
 }
 
 /** 起一次面板，喂一份假档案，等它渲染完，把 HTML 和交互句柄交出来。 */
-async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null, messages = CHAT_MESSAGES, review = REVIEW } = {}) {
+async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, search = '', path = '/study', chat = false, hidden = false, sessions = null, messages = CHAT_MESSAGES, review = REVIEW, shelf = SHELF, fail = [] } = {}) {
   const list = !chat ? [] : sessions === null ? SESSIONS : sessions
   const { document, window, boxes, listeners } = stubDom()
   window.innerWidth = innerWidth
@@ -325,6 +325,15 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     if (stale && PROBE_PATHS.includes(path)) {
       return { ok: false, status: 404, json: async () => ({ ok: false, error: { code: 'not-found', message: 'unknown study route' } }) }
     }
+    // 要让某一条写接口当场失败（比如拆图时说「文件不在那个位置了」），
+    // 把路径片段放进 fail；服务端的 bad() 文案就是 api() 抛出来的 message。
+    if (fail.some((f) => path.includes(f))) {
+      return {
+        ok: false,
+        status: 500,
+        json: async () => ({ ok: false, error: { code: 'boom', message: '文件不在那个位置了：F:\\课件\\没了.pdf' } }),
+      }
+    }
     let body = { ok: true, state: fixture }
     if (path.includes('/api/summary')) body = { ok: true, summary: { total: 2, touched: 1, avgConfidence: 0.5, byStage: {} }, stage: [] }
     if (path.includes('/api/archive')) body = { ok: true, archive: { ...ARCHIVE, key: new URL('http://x' + path).searchParams.get('key') } }
@@ -347,8 +356,16 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     // 资料页那几条。顺序要紧：/api/material? 是 /api/materials 的子串，得放在后面判。
     if (path.includes('/api/materials/build')) body = { ok: true, started: true, pid: 4242, total: 20 }
     else if (path.includes('/api/materials/import')) body = { ok: true, dir: false, added: [{ title: '必修一' }] }
-    else if (path.includes('/api/materials')) body = { ok: true, ...SHELF }
+    else if (path.includes('/api/materials')) body = { ok: true, ...shelf }
     else if (path.includes('/api/material?')) body = SHELF_INDEX
+    // 学习页点一个单元：它在各材料里在第几页
+    else if (path.includes('/api/point/pages')) {
+      body = {
+        ok: true,
+        pointId: new URL('http://x' + path).searchParams.get('point') || '',
+        hits: [{ materialId: 'mat-1', title: '必修一', pages: [{ page: 4, url: '/study/page?path=C%3A%2Fdata%2Fp0004.png' }, { page: 5, url: '' }] }],
+      }
+    }
     else if (path.includes('/api/material/upload')) body = { ok: true, added: [{ title: '上传的.pdf' }] }
     // 工具栏目：番茄钟跟清单各两条写接口，回的同构，够面板接着往下走就行。
     if (path.includes('/api/toolbox')) body = { ok: true, ...TOOLBOX }
@@ -1155,6 +1172,29 @@ test('消息正文走 markdown + 数学；表情包画成图（图片通道）�
   assert.equal(page.sources[0].closed, true)
 })
 
+test('对话：换会话落到底，刷新不把人甩回最上面', async () => {
+  const page = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true })
+  // 假 DOM 没有布局，高度得自己喂：900 的内容、300 的窗口。
+  // 面板那一侧是 `getElementById('chat-log')` 现取的，先把这个盒子放进 map 就接上了。
+  const log = { id: 'chat-log', innerHTML: '', scrollHeight: 900, clientHeight: 300, scrollTop: 0 }
+  page.boxes.set('chat-log', log)
+
+  // ① 学生正翻上面的旧消息（离底很远），换会话就该从最新一条看起
+  log.scrollTop = 100
+  await page.changeAct({ act: 'chat-session' }, 's2')
+  assert.equal(log.scrollTop, 900, '换会话要落到底')
+
+  // ② 手动刷新只换列表、不挪位置——原来停哪儿还停哪儿
+  log.scrollTop = 100
+  await page.clickAct({ act: 'chat-reload' })
+  assert.equal(log.scrollTop, 100, '刷新不许把人甩回顶上')
+
+  // ③ 本来贴着底，刷新之后还得贴着底
+  log.scrollTop = 600
+  await page.clickAct({ act: 'chat-reload' })
+  assert.equal(log.scrollTop, 900, '贴着底就该继续贴着底')
+})
+
 test('今日复盘图：常驻在主页与今日任务两页；今天没动过就说清怎么让它有内容', async () => {
   const today = await boot(fixture(), { path: '/study/today' })
   assert.match(today.html(), /<section class="card review" data-card="review">/)
@@ -1283,6 +1323,51 @@ test('资料页：书架按类别分组，AI 出题跟教辅平级；AI 卷不�
 
   // 教辅那边不受影响
   assert.match(html, /data-act="shelf-build" data-id="mat-1"/)
+})
+
+test('资料读不动就交给教练：原件不在了有一颗按钮，点了把出处投进对话', async () => {
+  const shelf = {
+    ...SHELF,
+    materials: [
+      {
+        ...SHELF.materials[0],
+        materialId: 'mat-gone',
+        title: '找不到的那本',
+        path: 'F:\\课件\\没了.pdf',
+        file: false,
+      },
+    ],
+  }
+  const page = await boot(fixture(), { path: '/study/materials', shelf })
+
+  assert.match(page.html(), /原件不在了/)
+  assert.match(page.html(), /data-act="mat-forward" data-id="mat-gone"/, 'web 端读不动就得能一键甩给教练')
+
+  await page.clickAct({ act: 'mat-forward', id: 'mat-gone' })
+  const sent = page.posts.filter((p) => p.path === '/study/api/chat/send')
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].body.text, /资料读不动，交给你/)
+  assert.match(sent[0].body.text, /F:\\课件\\没了\.pdf/, '路径要原样带上，不然教练找不到')
+  assert.match(sent[0].body.text, /M1\.1/, '顺带把「按最小单元归位」说清楚——这正是资料图谱要的标注')
+
+  // 投过之后换成一句说明，别让人反复点
+  assert.match(page.html(), /已经交给教练了/)
+  assert.doesNotMatch(page.html(), /data-act="mat-forward"/)
+})
+
+test('拆图失败（文件不在那个位置了）自动转给教练，不用人再点一遍', async () => {
+  const page = await boot(fixture(), { path: '/study/materials', fail: ['/api/materials/build'] })
+
+  await page.clickAct({ act: 'shelf-build', id: 'mat-1' })
+
+  const sent = page.posts.filter((p) => p.path === '/study/api/chat/send')
+  assert.equal(sent.length, 1, 'web 端拆不了就该自动交给教练')
+  assert.match(sent[0].body.text, /文件不在那个位置了/)
+  assert.match(sent[0].body.text, /请你直接用工具去读/)
+
+  // 同一个理由只投一次：再点一遍不会再往对话里灌一条
+  await page.clickAct({ act: 'shelf-build', id: 'mat-1' })
+  assert.equal(page.posts.filter((p) => p.path === '/study/api/chat/send').length, 1)
 })
 
 test('资料页的 AI 入口：挑类型、挑单元、递一句话，投给对话而不是自己出卷', async () => {
@@ -1434,4 +1519,73 @@ test('记忆卡：正面朝上不给答案；背完自己翻下一张，排期�
   await page.clickAct({ act: 'card-del', id: 'c-3' })
   assert.equal(page.posts.at(-1).path, '/study/api/memory')
   assert.deepEqual(page.posts.at(-1).body, { action: 'remove', id: 'c-3' })
+})
+
+test('学习页：选材料就看它覆盖了哪些单元；没标的交给教练', async () => {
+  // 再加一份「一份都没标过」的网课——这就是这台机器上那份一轮课程的样子
+  const video = {
+    materialId: 'mat-video',
+    title: '一轮课程',
+    kind: 'video',
+    path: 'F:\\课件\\一轮课程',
+    file: true,
+    pageDir: '',
+    total: 0,
+    rendered: 0,
+    rendering: false,
+    scanned: false,
+    dpi: 0,
+    toc: [],
+    indexed: 0,
+    chapters: 0,
+    points: [],
+    kinds: [],
+    coverage: '只翻目录',
+  }
+  const page = await boot(fixture(), { path: '/study/atlas', shelf: { ...SHELF, materials: [...SHELF.materials, video] } })
+
+  // ① 抬头跟今日任务、复盘图是一家：眉标 → 大标题 + 状态块 → 一条量尺
+  assert.match(page.html(), /MATERIAL GRAPH · 资料图谱/)
+  assert.match(page.html(), /<h2 class="day-title">资料图谱<\/h2>/)
+  assert.match(page.html(), /<span class="day-pill">3 份材料 · 覆盖 1\/2 个单元<\/span>/)
+  assert.match(page.html(), /aria-label="材料覆盖度 50%"/)
+
+  // ② 三份材料各一个字母，默认全选；没标注的那份写出来
+  assert.equal((page.html().match(/data-act="atlas-pick" data-id=/g) || []).length, 3)
+  assert.match(page.html(), /A · 教辅 · 2 个单元/)
+  assert.match(page.html(), /C · 网课 · 还没标注/)
+  assert.match(page.html(), /data-act="atlas-all">全选/)
+
+  // ③ 按大类 → 模块 → 单元摊开：M1.1 被两份材料对上，M1.2 还没有
+  assert.match(page.html(), /第一大块/)
+  assert.match(page.html(), /<span class="atlas-mid">M1<\/span>/)
+  assert.match(page.html(), /1\/2<\/span>/)
+  assert.match(page.html(), /<li class="atlas-unit" data-act="atlas-point" data-point="M1\.1"/)
+  assert.match(page.html(), /<li class="atlas-unit miss">/)
+  assert.match(page.html(), /还没有材料对上/)
+  assert.match(page.html(), /第二个单元/)
+
+  // ④ 取消「必修一」：这份夹具里只有它覆盖 M1.1，退了就没人对得上了
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
+  assert.equal((page.html().match(/class="mini on" data-act="atlas-pick"/g) || []).length, 2)
+  assert.match(page.html(), /覆盖 0\/2 个单元/)
+  const m11 = page.html().match(/atlas-id">M1\.1[\s\S]*?<\/li>/)[0]
+  assert.match(m11, /还没有材料对上/)
+  assert.doesNotMatch(m11, /atlas-tag/, '没选中的材料不该算进覆盖')
+
+  // ⑤ 一份都没标的那份列在末尾，「让教练标一遍」把它投进对话
+  assert.match(page.html(), /还有 1 份没标到单元上/)
+  await page.clickAct({ act: 'atlas-annotate', id: 'mat-video' })
+  assert.equal(page.posts.at(-1).path, '/study/api/chat/send')
+  assert.match(page.posts.at(-1).body.text, /资料没标到知识图谱，交给你/)
+  assert.match(page.posts.at(-1).body.text, /F:\\课件\\一轮课程/)
+  assert.match(page.boxes.get('toast').textContent, /让教练去标了/)
+
+  // ⑥ 点一个单元：问服务端它在各材料里第几页，就地铺开；再点收起
+  await page.clickAct({ act: 'atlas-pick', id: 'mat-1' })
+  await page.clickAct({ act: 'atlas-point', point: 'M1.1' })
+  assert.ok(page.calls.some((c) => c === '/study/api/point/pages?point=M1.1'))
+  assert.match(page.html(), /第 4 页/)
+  await page.clickAct({ act: 'atlas-point', point: 'M1.1' })
+  assert.doesNotMatch(page.html(), /第 4 页/)
 })

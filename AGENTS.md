@@ -163,6 +163,27 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
 - `test/panel.test.js` 的 harness 用 `review` 选项喂图（`review: null` 才走得到空态分支）；
   断言别拿 `/api/review` 当条件——探活也会打这个路径，要写 `/api/review?date=`。
 
+## 「学习」页 = 资料图谱（`assets/panel.js` 的 `.atlas-*`）
+
+拿知识图谱当骨架、看每份资料盖到哪里。**别为它新增服务端路由**——`/study/api/state` 的
+`state.map.modules`（大类/模块/单元）加上 `/study/api/materials` 每份的 `points`（它分析里出现过的
+单元 id 并集）就够在客户端拼出来；页码那一层用现成的 `GET /study/api/point/pages?point=`。
+
+- **新加一个面板子页面要记账**：`lib/handler.js` 的 `PANEL_PAGES`（`:27`）里得添上那段路径名，
+  否则那个网址直接 404（它只认列出来的那几个）。这是 `lib/` 改动 → 要重启 DSH。
+- 抬头复用今日任务那套 `.day-hero`（眉标 `MATERIAL GRAPH · 资料图谱`、`.day-pill` 写「N 份材料 ·
+  覆盖 x/y 个单元」、`.day-gauge` 的 `aria-label="材料覆盖度 P%"`）——**复盘图那套版式是这一族的唯一版式**。
+- 大类/模块/单元三级：`.atlas-group` / `.atlas-mod` / `li.atlas-unit`，字母块 `.atlas-tag` 对应材料筹码
+  （`atlas-pick`，字母 A…H）。没材料对上的单元加 `.miss` 并写「还没有材料对上」；`points` 为空的那几份
+  收进末尾的 `.atlas-blank`，每份一颗「让教练标一遍」。
+- **转给教练只有一个出口**：`forwardToCoach({materialId, title, path, reason, annotate})`。
+  `annotate: false` 是「读不动」的措辞，`true` 是「没标到单元上」的措辞——两套话都写在那一个函数里，
+  别在其它地方再拼一遍。**同一份 + 同一个理由只投一次**（`acted` 表），否则刷新会刷出一串重复消息。
+- 对话滚动：`paintChat()` 自己负责「换 DOM 前后把 `scrollTop` 放回去」（贴底时要落底），
+  **别指望浏览器换 `innerHTML` 时替你保住位置**——这就是「发一条就跳回顶部」的根。
+  换会话（不是刷新）强制落到底。`test/panel.test.js` 的『对话：换会话落到底…』钉着这条。
+
+
 
 
 
