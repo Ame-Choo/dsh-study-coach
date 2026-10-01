@@ -18,13 +18,19 @@ const box = (id, agentPreset, extra = {}) => ({
   projections: { kind: 'cached', asOfSeq: 3, values: { agentPreset } },
 })
 
-function fakeController({ items = [] } = {}) {
-  const calls = { list: 0, follow: [] }
+function fakeController({ items = [], createValue = null } = {}) {
+  const calls = { list: 0, follow: [], create: [] }
   return {
     calls,
     async list() {
       calls.list += 1
-      return { items }
+      // items 也可以给一个函数：宿主是把新会话的投影异步写下来的，测试要能中途换清单。
+      return { items: typeof items === 'function' ? items() : items }
+    },
+    async create(request) {
+      calls.create.push(request)
+      if (!createValue) throw new Error('这台宿主不能建会话')
+      return createValue
     },
     follow(request) {
       calls.follow.push(request)
@@ -126,4 +132,43 @@ test('一个学习模式的会话都没有：清单空着，也不去读别人�
   assert.equal(one.sessionId, '')
   assert.deepEqual(one.messages, [])
   assert.deepEqual(asked(controller.calls), [], '宁可不读，也别把别人的日志画到这一页上')
+})
+
+test('面板自己新建的会话：报学习教练预设，投影没跟上也照样读得到', async () => {
+  // 宿主是异步把新会话的投影写下来的：create 之后清单里才多一行，而且那行还没带预设。
+  let rows = [box('code-1', 'coder', { updatedAt: 9 })]
+  const controller = fakeController({
+    items: () => rows,
+    createValue: { sessionId: 'made-1', agentPreset: PRESET_ID },
+  })
+  const chat = createChat({ resolve: () => controller })
+
+  const made = await chat.create()
+  assert.equal(made.ok, true)
+  assert.equal(made.sessionId, 'made-1')
+  assert.deepEqual(controller.calls.create, [{ agentPreset: PRESET_ID }], '新建时报的预设号得跟判据同一个')
+
+  rows = [box('code-1', 'coder', { updatedAt: 9 }), { sessionId: 'made-1', updatedAt: 20 }]
+  const out = await chat.sessions()
+  assert.equal(out.filtered, true)
+  assert.deepEqual(out.sessions.map((s) => s.sessionId), ['made-1'], '刚建出来的那个不能被自己的筛子筛掉')
+
+  const one = await chat.history({ sessionId: 'made-1' })
+  assert.equal(one.ok, true)
+  assert.equal(one.sessionId, 'made-1')
+  assert.deepEqual(asked(controller.calls), ['made-1'])
+})
+
+test('建不出来就说清楚：宿主不认、或者根本没有会话服务', async () => {
+  const controller = fakeController({ items: [] })
+  const chat = createChat({ resolve: () => controller })
+  const made = await chat.create()
+  assert.equal(made.ok, false)
+  assert.equal(made.sessionId, '')
+  assert.match(made.error, /不能建会话/)
+
+  const none = await createChat({ resolve: () => null }).create()
+  assert.equal(none.ok, false)
+  assert.equal(none.available, false, '面板据此退回「未接通」那一套')
+  assert.equal(none.sessionId, '')
 })

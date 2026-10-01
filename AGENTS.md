@@ -70,5 +70,9 @@ node scripts/preview.mjs    # 不用 DSH，直接把面板起在 19390（改前�
   面板据此决定说不说「只看学习模式」，别把老宿主筛成一片空白。
 - `chat.history({sessionId})` 对显式带进来的 id 也要核一遍，不在名单里就直接拒绝、**不去读那条日志**；
   投递挑不到学习会话时宁可回 `ok:false`（话还在 `inbox.json` 里），也不许掉进别的会话。
-- 这些由 `test/session-preset.test.js` / `test/chat-sessions.test.js` / `test/bridge.test.js` 钉住。
+- 面板自己开得出来一个：对话页那颗「＋ 新建」走 `POST /study/api/chat/new` → `chat.create()` →
+  `sessionController.create(newSessionRequest())`。**刚建出来的会话投影还没落地**，严格筛会把学生自己刚开的那一个筛掉——
+  `rememberFresh(sessionId)` / `isFresh(sessionId)`（同样只在 `lib/session-preset.js` 里）就是那张放行表，
+  `learningSessions` 与 `history` 都认它；预设号只在 `newSessionRequest()` 里出现一次，路由里别重写一遍。
+- 这些由 `test/session-preset.test.js` / `test/chat-sessions.test.js` / `test/chat.test.js` / `test/panel.test.js` / `test/bridge.test.js` 钉住。
 

@@ -73,6 +73,7 @@ const LOG = [
 ]
 
 const pushed = []
+const created = []
 const sessionsCalls = []
 let failFollow = false
 
@@ -92,6 +93,10 @@ const sessionController = {
   async prompt(request) {
     pushed.push(request)
     return { accepted: true }
+  },
+  async create(request) {
+    created.push(request)
+    return { sessionId: 'made-1', agentPreset: 'study-coach' }
   },
   follow(request, signal) {
     const seen = { request, aborted: false }
@@ -215,6 +220,25 @@ test('对话读进面板：只留两种消息类型，工具、系统消息、�
   assert.match(five.error, /日志读不出来/)
   assert.deepEqual(five.messages, [])
   failFollow = false
+})
+
+test('面板自己新建会话：走 /study/api/chat/new，报的是学习教练那一号预设', async () => {
+  const made = await (
+    await fetch(base + '/study/api/chat/new', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+  ).json()
+  assert.equal(made.ok, true)
+  assert.equal(made.sessionId, 'made-1')
+  assert.equal(made.agentPreset, 'study-coach')
+  assert.deepEqual(created, [{ agentPreset: 'study-coach' }], '预设号只有一个来源，别在路由里再写一遍')
+
+  // 刚建出来的那个：投影还没落地（这份夹具的清单里根本没有它），也得读得到
+  const one = await (await fetch(base + '/study/api/chat?sessionId=made-1')).json()
+  assert.equal(one.ok, true)
+  assert.equal(one.sessionId, 'made-1')
 })
 
 test('没有会话服务时：插件照样装得上，接口只回一句「没接通」', async () => {

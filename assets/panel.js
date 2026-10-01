@@ -2591,15 +2591,19 @@ function whenText(at) {
  * **只有一个会话时也把它写出来**——不然学生根本看不出自己在跟哪一个说话，
  * 这是他上一次提的毛病。多个会话才给下拉，选项里带上「最后活动时间」，
  * 因为 DSH 的会话标题常常是空的或者两条一样。
+ *
+ * 右边那颗「＋ 新建」一直都在：这台机器上可能一个学习教练会话都没有（刚装插件），
+ * 让他自己回 DSH 新建对话、还得记得挑预设，太绕。这里替他开一个。
  */
 function chatPicker(snapshot) {
   const list = (snapshot && snapshot.sessions) || []
+  const add = '<button class="mini chat-new" data-act="chat-new" title="在 DSH 里开一个新的「学习教练」会话">＋ 新建</button>'
   if (!list.length) {
     // 一个都没有：要么真没有学习模式的对话，要么这台宿主不给会话预设信息（老 DSH）。
     const why = snapshot && snapshot.filtered === false
       ? '没读到会话清单。'
-      : '还没有「学习教练」模式的对话 —— 在 DSH 里新建对话时把预设选成「学习教练」，这一页就接上了。'
-    return `<div class="chat-pick"><span class="dim">${why}</span></div>`
+      : '还没有「学习教练」模式的对话 —— 点右边那颗 ＋ 新建 开一个，这一页就接上了。'
+    return `<div class="chat-pick"><span class="dim">${why}</span>${add}</div>`
   }
   const rows = list.map((s) => {
     const name = s.title || (s.blank ? '（新会话）' : s.cwd ? String(s.cwd).split(/[\\/]/).pop() : String(s.sessionId).slice(0, 8))
@@ -2611,12 +2615,12 @@ function chatPicker(snapshot) {
   // 只列学习模式的时候说一句，学生才知道别的会话为什么不在下拉里。
   const only = snapshot && snapshot.filtered ? '<span class="dim chat-only">只看学习模式</span>' : ''
   if (rows.length === 1) {
-    return `<div class="chat-pick"><span class="dim">当前会话</span><b class="pick-now">${esc(rows[0].label)}</b>${only}</div>`
+    return `<div class="chat-pick"><span class="dim">当前会话</span><b class="pick-now">${esc(rows[0].label)}</b>${only}${add}</div>`
   }
   const options = rows
     .map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.label)}</option>`)
     .join('')
-  return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select>${only}</div>`
+  return `<div class="chat-pick"><label class="dim">会话</label><select data-act="chat-session">${options}</select>${only}${add}</div>`
 }
 
 function clockOf(time) {
@@ -3238,6 +3242,17 @@ document.addEventListener('click', async (event) => {
       await loadChat({ withSessions: true })
       paintChat()
       toast('已刷新')
+    } else if (act === 'chat-new') {
+      // 开一个新的学习教练会话，然后立刻切到它 —— 学生点完就该能直接说话。
+      try {
+        const made = await api('/study/api/chat/new', {})
+        ui.chatSession = made.sessionId
+        await loadChat({ sessionId: made.sessionId, withSessions: true })
+        paintChat()
+        toast('开好了，直接说话就行')
+      } catch (error) {
+        toast('开不出来：' + error.message, true)
+      }
     } else if (act === 'float-open') {
       ui.float = true
       // 浮窗里也要能选会话：清单还没拉过就趁这次拉一份——load() 那次只问了快照，

@@ -9,7 +9,14 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { PRESET_ID } from '../lib/preset.js'
-import { hasPresetChannel, learningSessions, presetOf } from '../lib/session-preset.js'
+import {
+  hasPresetChannel,
+  isFresh,
+  learningSessions,
+  newSessionRequest,
+  presetOf,
+  rememberFresh,
+} from '../lib/session-preset.js'
 
 const withPreset = (id, agentPreset, extra = {}) => ({
   sessionId: id,
@@ -59,4 +66,21 @@ test('learningSessions：清单不是数组也不炸', () => {
   assert.deepEqual(learningSessions(null), { items: [], filtered: false })
   assert.deepEqual(learningSessions(undefined), { items: [], filtered: false })
   assert.deepEqual(learningSessions('nope'), { items: [], filtered: false })
+})
+
+test('learningSessions：面板自己刚开的那个先放行（会话投影还没落地）', () => {
+  assert.equal(isFresh('fresh-1'), false, '没记过的不算')
+  assert.equal(rememberFresh('fresh-1'), 'fresh-1')
+  assert.equal(isFresh('fresh-1'), true)
+  assert.equal(isFresh(''), false, '空 id 不算')
+  assert.equal(rememberFresh(''), '', '拿不到 id 就回空串，调用方当失败处理')
+
+  const items = [withPreset('code-1', 'coder'), bare('fresh-1'), withPreset('live-1', PRESET_ID)]
+  const out = learningSessions(items)
+  assert.equal(out.filtered, true, '这台宿主发投影，该筛还是得筛')
+  assert.deepEqual(out.items.map((s) => s.sessionId), ['fresh-1', 'live-1'], '刚建出来的那个不能被自己的筛子筛掉')
+})
+
+test('newSessionRequest：新建会话时报的预设号跟判据同一个', () => {
+  assert.deepEqual(newSessionRequest(), { agentPreset: PRESET_ID })
 })

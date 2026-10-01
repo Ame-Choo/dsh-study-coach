@@ -687,6 +687,10 @@ html[data-mode="sidebar"] .judgement { font-size: 13px; }
 /* 「只看学习模式」贴到右边：下拉拉满宽度之后它是最后一项，不推一下会挤着选区 */
 .chat-only { margin-left: auto; font-size: 12px; white-space: nowrap; }
 .float .chat-only { font-size: 11px; }
+/* 「＋ 新建」永远贴右边：前面有「只看学习模式」那一句时，让那句吃掉空隙就行。 */
+.chat-new { margin-left: auto; font-size: 12px; white-space: nowrap; }
+.chat-only + .chat-new { margin-left: 0; }
+.float .chat-new { font-size: 11px; }
 
 .chat-log {
   display: flex;

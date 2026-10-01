@@ -336,15 +336,17 @@ async function boot(fixture, { stale = false, agenda = null, innerWidth = 1200, 
     }
     // 对话通道默认按「没接通」回：接通了面板会开一个轮询定时器，
     // 测试进程就永远退不出去。要测接通的样子，传 { chat: true, hidden: true }。
+    // filtered:true 是这台宿主的样子——桌面那份 profile 会发会话投影，服务端因此按预设筛过，
+    // 面板要照它写一句「只看学习模式」。
     if (path.includes('/api/chat/sessions')) {
       body = chat
-        ? { ok: true, available: true, sessionId: 's1', sessions: list }
+        ? { ok: true, available: true, filtered: true, sessionId: 's1', sessions: list }
         : { ok: true, available: false, sessions: [] }
     } else if (path.includes('/api/chat')) {
       // 真服务端只在带 sessions=1 时才把清单捎回来，假的也照这个来——
       // 不然「浮窗该不该自己拉清单」这件事测不出来。
       body = chat
-        ? { ok: true, available: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: path.includes('sessions=1') ? list : [] }
+        ? { ok: true, available: true, filtered: true, sessionId: 's1', messages: CHAT_MESSAGES, sessions: path.includes('sessions=1') ? list : [] }
         : { ok: true, available: false, messages: [], sessions: [] }
     }
     return { ok: true, status: 200, json: async () => body }
@@ -1060,6 +1062,27 @@ test('会话选择：只有一个会话也写出来，多个才给下拉，浮�
   const off = await boot(fixture(), { path: '/study' })
   assert.doesNotMatch(off.html(), /data-act="chat-session"/)
   assert.doesNotMatch(off.html(), /当前会话/)
+})
+
+test('会话选择旁边那颗「＋ 新建」：清单空着也能自己开一个学习教练会话', async () => {
+  // 一个学习教练会话都没有时，那一行得给条出路——面板自己去 create，别让学生回 DSH 绕一圈。
+  const page = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true, sessions: [] })
+  assert.match(page.html(), /data-act="chat-new"/)
+  assert.match(page.html(), /＋ 新建/)
+  assert.match(page.html(), /还没有「学习教练」模式的对话/)
+
+  await page.clickAct({ act: 'chat-new' })
+  assert.equal(page.posts.at(-1).path, '/study/api/chat/new', '走的是新建那条路由')
+  assert.deepEqual(page.posts.at(-1).body, {}, '不用带参数：预设和落点都由服务端定')
+  assert.match(
+    page.calls.filter((c) => c.startsWith('/study/api/chat?')).at(-1),
+    /sessionId=s1/,
+    '开完就切到刚建的那个会话',
+  )
+
+  // 有会话的时候那颗按钮也还在（旁边多一句「只看学习模式」）
+  const many = await boot(fixture(), { path: '/study/coach', chat: true, hidden: true })
+  assert.match(many.html(), /class="dim chat-only">只看学习模式<\/span><button class="mini chat-new"/)
 })
 
 test('今日复盘图：卡片工厂必须吐 <section class="card">，fold() 靠它拼 class', async () => {
