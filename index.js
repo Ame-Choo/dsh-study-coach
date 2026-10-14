@@ -14,12 +14,15 @@
  * settings.json（见 lib/settings.js）——那是「这台机器上这个插件怎么跑」，跟学习档案无关。
  * 同源那条 /study 一直在，独立端口那条才是可以关掉的那个（内嵌浏览器要它）。
  *
- * 注册 21 个模型面向的工具，清单以 lib/tools.js 里 buildTools() 返回的那个数组为唯一依据：
+ * 21 个模型面向的工具**不在这儿注册**：它们在「学习教练」预设的作用域里注册
+ * （见 lib/preset-tools.js）。清单以 lib/tools.js 里 buildTools() 返回的那个数组为唯一依据：
  *   study_report / study_goal / study_map / study_record / study_mistakes / study_plan /
  *   study_material / study_analysis / study_book / study_archive / study_ability /
  *   study_student / study_library / study_files / study_pages / study_tool_level /
  *   study_focus / study_todo / study_card / study_guide / study_inbox，
  * 让教练在对话里就能读写档案、给面板留话、收面板上的留言。
+ * 这一步只把这一行需要的家什用服务 `studyCoachHost` 递出去——挂在本插件自己的 ctx 上就是
+ * 全局注册，普通会话的工具目录里也会多出这 21 个（2026-10-02 修掉的越界）。
  *
  * 再把「学习教练」agent 预设登记进 host 的 agentPresets 注册表（见 lib/preset.js），
  * 这样 Web 上新建会话的模式列表里会多一个「学习教练」。
@@ -172,23 +175,20 @@ export function apply(ctx) {
     }
   }, 'dsh-study-coach: 面板独立端口')
 
-  ctx.effect(() => {
-    // study_pages 把页图渲到 pagesRoot，跟页面出口 /study/page 是同一个目录，渲完就能点开看。
-    // `scratchDir` 那个老名字已经删了：谁也没在用，留着只会让人以为有两套目录。
-    const disposers = registerTools(ctx, store, defineTool, {
-      panel,
-      pagesRoot: PAGES_ROOT,
-    })
-    return () => {
-      for (const dispose of disposers) {
-        try {
-          dispose()
-        } catch {
-          /* 单个工具注销失败不该拦住别的 */
-        }
-      }
-    }
-  }, 'dsh-study-coach: 学习档案工具')
+  /**
+   * 工具那半边的家什，递给「学习教练」预设里的那一行（lib/preset-tools.js）。
+   *
+   * 用服务递而不是直接在那个模块里 new：store 必须跟 /study 接口、面板是**同一个** Library 实例，
+   * 两份实例就是两份内存缓存（面板刚勾的任务，工具读不到）。
+   * 服务按名字全局可见（跨分支也读得到，跟 agentPresets 那条路一样），所以不用挂到 root 上。
+   */
+  ctx.effect(() => ctx.provide('studyCoachHost', {
+    store,
+    defineTool,
+    panel,
+    pagesRoot: PAGES_ROOT,
+    registerTools,
+  }), 'dsh-study-coach: 递家什给预设里的工具那行')
 
   registerPreset(ctx)
 }

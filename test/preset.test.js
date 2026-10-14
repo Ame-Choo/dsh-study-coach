@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { PRESET_ID, buildPreset, registerPreset } from '../lib/preset.js'
 
@@ -60,6 +61,22 @@ test('平台开关：本机只留一个 shell 工具，删掉的那几个仍显�
   assert.equal(byId['tool-pwsh'].disabled, !win)
   assert.equal(byId['tool-ralph'].disabled, true)
   assert.equal(byId['tool-plugin-manager'].disabled, true)
+})
+
+test('工具那一行指向本仓的 lib/preset-tools.js（不能是裸包名）', async () => {
+  const row = flatten(buildPreset().plugins).find((r) => r.id === 'study-tools')
+  assert.ok(row, '没有 study-tools 这一行：工具会掉回 host 平面，普通会话又看得见 study_*')
+  /*
+   * 预设注册表 mount 子插件时给的 baseUrl 是它自己那份（asar / web-app bundle），
+   * 行里写裸包名 `dsh-study-coach` 解析不到，只能写绝对路径 / file: URL。
+   */
+  assert.match(row.name, /^file:/, `这一行的 name 得是 file URL，实际：${row.name}`)
+  const file = fileURLToPath(row.name)
+  assert.ok(existsSync(file), `这一行指的文件不在：${file}`)
+  const mod = await import(row.name)
+  assert.equal(typeof mod.apply, 'function')
+  assert.ok(Array.isArray(mod.inject), '这一行要声明 inject，等服务到位再注册')
+  assert.ok(mod.inject.includes('studyCoachHost'), '这一行要等 host 半边递 store 过来')
 })
 
 test('人设交代了先读档案、面板只读、地图要学生过目', () => {

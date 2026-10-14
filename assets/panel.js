@@ -53,6 +53,7 @@ const STALE_NEED = [
   ['mistakes', '错题本', '错题本卡和每条的「再练」'],
   ['review', '今日复盘图', '今天页那张图'],
   ['shelf', '资料书架', '资料页的书架'],
+  ['folders', '资料文件夹', '资料页上把材料分组的文件夹'],
   ['toolbox', '工具栏目', '工具页'],
   ['memory', '记忆卡', '工具页的记忆卡'],
   ['file', '打开网课 / 讲义', '任务里所有「打开」按钮'],
@@ -77,6 +78,8 @@ let shelf = null
 let atlasTree = null
 /* 书架里正摊开哪一本（materialId），空串就是都折着 */
 let shelfOpen = ''
+/* 书架上摊开了哪几个文件夹（id 的集合）。默认全折着——一屏先看见有哪些夹子。 */
+let folderOpen = new Set()
 /* 摊开那一本的页级索引：{ materialId, toc, spans, pages, chapters } */
 let shelfIndex = null
 /* 对话那份快照：{ available, sessionId, messages, sessions, filtered, error } */
@@ -232,13 +235,16 @@ const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 /**
- * 今天。**跟服务端一套口径**（`lib/routes.js` 的 `todayIso()` 也是 `toISOString().slice(0, 10)`）。
+ * 今天。**跟服务端一套口径**：北京时间（UTC+8），服务端在 `lib/clock.js` 的 `beijingDate()`。
  *
- * 别改成本地日期：东八区一过 16:00，本地日期就跳到第二天，而任务、番茄钟、证据全是按 UTC
- * 日期存的——面板会显示「今天还没排任务」，实际上今天的活儿就在那儿（踩过）。
+ * 别改回 `new Date().toISOString().slice(0, 10)`：那是 UTC 日期，东八区本地 00:00—08:00
+ * 还停在前一天，面板会说「今天还没排任务」，而今天的清单就在那儿（踩过）。这里固定按
+ * UTC+8 平移后再取年月日，所以跨午夜就翻页，跟学生的墙上时间一致。
  */
 function today() {
-  return new Date().toISOString().slice(0, 10)
+  const t = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`
 }
 
 /** 周几。复盘图顶上写「2026-10-01 · 周四」，今日任务那页照同一口径，所以两边共用一个助手。 */
@@ -327,7 +333,7 @@ async function probeCapabilities() {
       return false
     }
   }
-  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, treeAlive, mediaAlive] = await Promise.all([
+  const [ability, archive, library, practice, mistakes, studentAlive, review, shelfAlive, toolboxAlive, memoryAlive, treeAlive, mediaAlive, foldersAlive] = await Promise.all([
     alive('/study/api/ability'),
     alive('/study/api/archive?level=group&key='),
     alive('/study/api/library'),
@@ -341,6 +347,8 @@ async function probeCapabilities() {
     // 缺参数在新代码里回 400、旧代码回 404，正好分得开
     alive('/study/api/material/tree'),
     alive('/study/api/point/media'),
+    // 资料文件夹（书架分组）：新代码有这条、旧代码 404
+    alive('/study/api/folders'),
   ])
   return {
     ability,
@@ -351,6 +359,7 @@ async function probeCapabilities() {
     student: studentAlive,
     review,
     shelf: shelfAlive,
+    folders: foldersAlive,
     toolbox: toolboxAlive,
     memory: memoryAlive,
     tree: treeAlive,
@@ -702,7 +711,13 @@ async function loadShelf() {
   try {
     const out = await api('/study/api/materials')
     if (!Array.isArray(out.materials)) return null
-    return { materials: out.materials, pagesRoot: out.pagesRoot || '' }
+    // 文件夹是服务端算的（谁在哪个夹子里），客户端只负责画和折——别在这儿重算一遍。
+    return {
+      materials: out.materials,
+      folders: Array.isArray(out.folders) ? out.folders : [],
+      groups: out.groups || null,
+      pagesRoot: out.pagesRoot || '',
+    }
   } catch {
     return null
   }
@@ -2622,6 +2637,7 @@ function renderShelfRow(s) {
                 .join('')
             : ''
         }
+        ${moveAct(s)}
       </div>`
     : `<div class="row-acts">
         <button class="mini" data-act="shelf-toggle" data-id="${esc(s.materialId)}">${open ? '收起归类' : '看页级归类'}</button>
@@ -2632,6 +2648,7 @@ function renderShelfRow(s) {
                 !s.rendered ? '拆成页图' : s.rendered < s.total ? '继续拆' : '重新拆一遍'
               }</button>`
         }
+        ${moveAct(s)}
         ${st.cls === 'bad' ? forwardAct(s.materialId, s.path) : ''}
       </div>`
   return `<li class="shelf-row${open ? ' open' : ''}${isAi ? ' ai' : ''}">
@@ -2650,6 +2667,35 @@ function renderShelfRow(s) {
   </li>`
 }
 
+/**
+ * 「移到…」那一颗。服务端还没上文件夹（旧代码）就不画——
+ * 画了也是点了 404，不如不出现。
+ */
+function moveAct(s) {
+  if (!capabilities || !capabilities.folders) return ''
+  const folders = (shelf && shelf.folders) || []
+  const here = folders.find((f) => f.id === (s.folder || ''))
+  return `<button class="mini" data-act="mat-move" data-id="${esc(s.materialId)}">${here ? '换文件夹' : '移到…'}</button>`
+}
+
+/** 一个文件夹那一段：折着的时候只有一行标题。 */
+function folderSection(folder, items, rowsById) {
+  const open = folderOpen.has(folder.id)
+  const head = `<div class="folder-head">
+      <button class="mini fold" data-act="folder-toggle" data-id="${esc(folder.id)}" aria-expanded="${open ? 'true' : 'false'}">
+        <span class="caret">${open ? '▾' : '▸'}</span><span class="fold-t">${esc(folder.title)}</span>
+      </button>
+      <span class="dim">${items.length} 份</span>
+      <span class="row-acts">
+        <button class="mini" data-act="folder-rename" data-id="${esc(folder.id)}">改名</button>
+        <button class="mini" data-act="folder-remove" data-id="${esc(folder.id)}">删掉</button>
+      </span>
+    </div>`
+  if (!open) return head
+  if (!items.length) return `${head}<p class="dim">这个夹子还空着——材料那一行点「移到…」把它挪进来。</p>`
+  return `${head}<ul class="list shelf">${items.map((s) => rowsById.get(s.materialId)).join('')}</ul>`
+}
+
 function shelfCard() {
   if (!shelf) {
     return `<section class="card">
@@ -2658,32 +2704,47 @@ function shelfCard() {
     </section>`
   }
   const list = shelf.materials || []
+  const newFolder = capabilities && capabilities.folders
+    ? `<button class="mini" data-act="folder-new">新建文件夹</button>`
+    : ''
   if (!list.length) {
     return `<section class="card">
-      <div class="card-head"><h2>书架</h2></div>
+      <div class="card-head"><h2>书架</h2>${newFolder}</div>
       <p class="dim">还没有登记资料。右边可以粘贴一个本机路径，或者选个文件夹上传。</p>
     </section>`
   }
 
-  // 按类别分组：教辅、AI 出题、讲义…… 每组一个小标题。
-  // 学生嘴里说的「一本通」和「你昨天给我出的小测」在书架上是平级的，分组别把它们摞成主次。
-  const groups = KIND_ORDER
-    .map((kind) => [kind, list.filter((s) => (KIND[s.kind] ? s.kind : 'other') === kind)])
-    .filter(([, items]) => items.length)
+  const rowsById = new Map(list.map((s) => [s.materialId, renderShelfRow(s)]))
+  const folders = Array.isArray(shelf.folders) ? shelf.folders : []
+  const inFolder = (id) => list.filter((s) => String(s.folder || '') === id)
+  const loose = list.filter((s) => !folders.some((f) => f.id === String(s.folder || '')))
 
-  const rowsByGroup = new Map(list.map((s) => [s.materialId, renderShelfRow(s)]))
-
-  const body = groups
-    .map(([kind, items]) => {
-      const head = groups.length > 1 ? `<h3 class="sub">${esc(KIND[kind])}<span class="dim">${items.length} 份</span></h3>` : ''
-      return `${head}<ul class="list shelf">${items.map((s) => rowsByGroup.get(s.materialId)).join('')}</ul>`
-    })
-    .join('')
+  // 1) 有文件夹：夹子在上（默认折着，点开摊），没归组的兜在最后。
+  // 2) 一个夹子都没有：退回按类别分组（跟以前一样）——没在用这个功能就别改他的界面。
+  let body = ''
+  if (folders.length) {
+    body = folders.map((f) => folderSection(f, inFolder(f.id), rowsById)).join('')
+    if (loose.length) {
+      body += `<h3 class="sub">未分组<span class="dim">${loose.length} 份</span></h3>
+        <ul class="list shelf">${loose.map((s) => rowsById.get(s.materialId)).join('')}</ul>`
+    }
+  } else {
+    // 学生嘴里说的「一本通」和「你昨天给我出的小测」在书架上是平级的，分组别把它们摞成主次。
+    const groups = KIND_ORDER
+      .map((kind) => [kind, list.filter((s) => (KIND[s.kind] ? s.kind : 'other') === kind)])
+      .filter(([, items]) => items.length)
+    body = groups
+      .map(([kind, items]) => {
+        const head = groups.length > 1 ? `<h3 class="sub">${esc(KIND[kind])}<span class="dim">${items.length} 份</span></h3>` : ''
+        return `${head}<ul class="list shelf">${items.map((s) => rowsById.get(s.materialId)).join('')}</ul>`
+      })
+      .join('')
+  }
 
   const root = shelf.pagesRoot ? `<p class="hint">页图存在 <span class="path">${esc(shelf.pagesRoot)}</span>，改了路径也不会动你的原文件。</p>` : ''
   return `<section class="card">
-    <div class="card-head"><h2>书架</h2><span class="dim">共 ${list.length} 份</span></div>
-    <p class="dim">按类别分组。教辅看两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）；AI 出的卷子直接打开就能做。</p>
+    <div class="card-head"><h2>书架</h2><span class="dim">共 ${list.length} 份</span>${newFolder}</div>
+    <p class="dim">${folders.length ? '文件夹只管收纳，跟进度无关：点夹子摊开，材料那一行的「移到…」换夹子。' : '按类别分组。教辅看两份进度：<b>拆到第几页</b>（PDF 转成带页码的图）和<b>归了多少页</b>（每一页归到哪个单元）；AI 出的卷子直接打开就能做。'}</p>
     ${body}
     ${root}
   </section>`
@@ -3913,6 +3974,67 @@ document.addEventListener('click', async (event) => {
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 2000)
       toast('已下载今日复盘图（SVG，浏览器直接双击就能看）')
+    } else if (act === 'folder-toggle') {
+      // 折 / 摊一个文件夹——纯客户端，不惊动服务端。
+      const id = el.dataset.id || ''
+      if (!id) return
+      if (folderOpen.has(id)) folderOpen.delete(id)
+      else folderOpen.add(id)
+      render()
+    } else if (act === 'folder-new') {
+      if (!capabilities || !capabilities.folders) return toast('服务端是旧代码，重启 DSH 之后才能用文件夹', true)
+      const title = (window.prompt('新建一个文件夹，叫什么？', '') || '').trim()
+      if (!title) return
+      try {
+        await api('/study/api/folders', { action: 'add', title })
+        shelf = await loadShelf()
+        toast(`建好了：「${title}」`)
+        render()
+      } catch (error) {
+        toast(error.message, true)
+      }
+    } else if (act === 'folder-rename') {
+      const id = el.dataset.id || ''
+      const now = (((shelf && shelf.folders) || []).find((f) => f.id === id) || {}).title || ''
+      const title = (window.prompt('改成什么名字？', now) || '').trim()
+      if (!title || title === now) return
+      try {
+        await api('/study/api/folders', { action: 'rename', id, title })
+        shelf = await loadShelf()
+        toast(`改成「${title}」了`)
+        render()
+      } catch (error) {
+        toast(error.message, true)
+      }
+    } else if (act === 'folder-remove') {
+      const id = el.dataset.id || ''
+      const hit = ((shelf && shelf.folders) || []).find((f) => f.id === id) || {}
+      if (!window.confirm(`删掉文件夹「${hit.title || ''}」？里头的材料不会被删，会退到「未分组」。`)) return
+      try {
+        const out = await api('/study/api/folders', { action: 'remove', id })
+        shelf = await loadShelf()
+        folderOpen.delete(id)
+        toast(out.moved ? `删掉了，${out.moved} 份材料退到未分组` : '删掉了')
+        render()
+      } catch (error) {
+        toast(error.message, true)
+      }
+    } else if (act === 'mat-move') {
+      const id = el.dataset.id || ''
+      const mat = ((shelf && shelf.materials) || []).find((m) => m.materialId === id) || {}
+      const names = (((shelf && shelf.folders) || []).map((f) => f.title) || []).join('、')
+      const hint = names ? `现在已经有的：${names}。\n留空 = 未分组；写个新名字会现建一个。` : '留空 = 未分组；写个新名字会现建一个。'
+      const answer = window.prompt(`把「${mat.title || ''}」挪到哪个文件夹？\n${hint}`, '')
+      if (answer === null) return
+      const folder = answer.trim()
+      try {
+        await api('/study/api/materials/folder', { id, folder })
+        shelf = await loadShelf()
+        toast(folder ? `挪到「${folder}」了` : '挪回未分组了')
+        render()
+      } catch (error) {
+        toast(error.message, true)
+      }
     } else if (act === 'shelf-toggle') {
       const id = el.dataset.id || ''
       if (shelfOpen === id) {

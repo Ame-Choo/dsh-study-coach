@@ -378,6 +378,32 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
 下面的 `return` 会掉到函数外面——21 个测试文件会一起挂在 `SyntaxError: Illegal return statement`。
 真踩过（`lib/routes.js`，还原靠 `git checkout --`）。批量替换用 `edit` 的 `replace_all: true`。
 
+## 21 个 `study_*` 工具只在「学习教练」预设的作用域里（2026-10-02）
+
+工具目录是模型**每一轮都看得见**的东西，不是「不用就看不见」的仓储货。以前这 21 个工具在 `index.js` 里
+用插件自己的 ctx `ctx.tools.register` 注册——那是 host 平面，等于**全局注册**：普通会话、别的预设的会话，
+工具目录里都会多出 21 个 `study_*`。用户看过一眼就问了「这个插件的配置是不是会影响除了教练模式以外的会话」。
+
+- 注册在 **`lib/preset-tools.js`**（预设 `plugins` 里的一行，见 `lib/preset.js` 的 `study-tools`），
+  `index.js` **不再**注册工具，只 `ctx.provide('studyCoachHost', {store, defineTool, panel, pagesRoot, registerTools})`
+  把家什递过去。增删工具只改 `lib/tools.js` + 同步 `index.js` 顶部那份清单注释。
+- 依据：`dsh-agent-preset-registry`「Plugin registrations inherit the preset scope」（`createScope()` 出来的作用域）；
+  `dsh-tools` 的 `ctx.tools.restrict()` 只能给一个 agent **减**工具、不能给别人加，所以「只让教练会话看见」
+  只能靠**注册作用域**。`dsh-scope`：「The registration context determines both visibility and ownership」。
+- 那一行的 `name` 必须写**本仓文件的绝对路径 / `file:` URL**（用 `new URL('./preset-tools.js', import.meta.url).href`）：
+  预设注册表 mount 子插件时给的 baseUrl 是它自己那份（asar），裸包名 `dsh-study-coach` 解析不到。
+- 服务是**按名字全局可见**的（跨分支读得到，跟 `agentPresets` 那条路一样，2026-10-02 用一个只 import 真 cordis
+  的探针验过：root 提供 → 兄弟分支读得到；某分支自己 provide → 兄弟分支 `get(name, false)` 也读得到，
+  严格模式才会因为「提供者 fiber 此刻活没活」返回 undefined）。所以 `studyCoachHost` 不用挂到 root 上，
+  但那一行里要用 `ctx.get('studyCoachHost', false)` 读。**store 必须是同一个 `Library` 实例**——
+  在那一行里 `new Library()` 就是两份内存缓存，面板刚勾的任务工具读不到。
+- 验收（改完 `lib/` 要重启 DSH）：**普通会话**里调 `cordis_inspect_query(host/Tool/listTools)`，
+  不该再有 `study_*`；新开一个学习教练会话，21 个都在。`test/plugin.test.js` 两条钉着这件事
+  （host 平面注册数必须是 0、预设那一行跑在它自己的 ctx 上注册 21 个），`test/preset.test.js` 钉住那一行
+  的 name 是 `file:` URL 且文件在。
+- 有意的代价：没有 `agentPresets` 注册表的场面（纯 TUI、没装 web-app bundle）里也没有「学习教练」这个模式，
+  工具跟着一起不在。**别**为了这种场面加「host 平面兜底注册」——那等于把越界加回来。
+
 
 
 

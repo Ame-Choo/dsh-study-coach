@@ -17,11 +17,19 @@ const routes = []
 const tools = []
 const disposers = []
 const presets = []
+const provided = new Map()
 const ctx = {
   effect(fn) {
     const d = fn()
     if (typeof d === 'function') disposers.push(d)
     return () => {}
+  },
+  provide(serviceName, value) {
+    provided.set(serviceName, value)
+    return () => provided.delete(serviceName)
+  },
+  get(serviceName) {
+    return provided.get(serviceName)
   },
   webServer: {
     register(route) {
@@ -63,10 +71,41 @@ test('注册了 /study 前缀路由，并且真的落在 profiles/default 里', 
   assert.ok(existsSync(join(home, 'analysis.json')))
 })
 
-test('注册了 21 个工具', () => {
-  assert.equal(tools.length, 21)
-  const names = tools.map((t) => t.name ?? (t.spec && t.spec.name) ?? '').filter(Boolean)
-  assert.equal(names.length, 21, `拿不到工具名，实际 keys: ${JSON.stringify(tools[0] && Object.keys(tools[0]))}`)
+test('host 平面不再注册工具，只把家什递出去', () => {
+  /* 工具挂 host 平面就是全局注册：普通会话的工具目录里也会多出 21 个 study_*（2026-10-02 修掉）。 */
+  assert.equal(tools.length, 0, 'host 平面又注册工具了？那普通会话又会看见 study_*')
+  const host = provided.get('studyCoachHost')
+  assert.ok(host, 'studyCoachHost 没递出去，预设那一行拿不到 store')
+  assert.equal(typeof host.registerTools, 'function')
+  assert.equal(typeof host.defineTool, 'function')
+  assert.ok(host.store, 'store 没递过去，预设那行会自己 new 一份，两份缓存对不上')
+  assert.equal(typeof host.panel.path, 'string')
+})
+
+test('预设那一行注册 21 个工具（跑在它自己的 ctx 上）', async () => {
+  const scopedTools = []
+  const row = await import('../lib/preset-tools.js')
+  const scoped = {
+    get: (serviceName) => provided.get(serviceName),
+    effect(fn) {
+      const d = fn()
+      return () => {
+        if (typeof d === 'function') d()
+      }
+    },
+    tools: {
+      register(tool) {
+        scopedTools.push(tool)
+        return () => {}
+      },
+    },
+  }
+  const dispose = row.apply(scoped)
+  assert.equal(typeof dispose, 'function', '预设这一行要把清理函数交出来')
+
+  assert.equal(scopedTools.length, 21)
+  const names = scopedTools.map((t) => t.name ?? (t.spec && t.spec.name) ?? '').filter(Boolean)
+  assert.equal(names.length, 21, `拿不到工具名，实际 keys: ${JSON.stringify(scopedTools[0] && Object.keys(scopedTools[0]))}`)
   for (const expected of [
     'study_report',
     'study_goal',

@@ -1206,6 +1206,41 @@ html[data-mode="sidebar"] .review-stage svg { width: 820px; }
 .shelf-body { width: 100%; margin-top: 9px; border-top: 1px solid var(--line); padding-top: 9px; }
 .shelf-body .list.tight li { align-items: flex-start; }
 
+/*
+ * 文件夹那一行：一个能折的标题 + 份数 + 改名/删掉。
+ * 跟 h3.sub 长得像，但里头有按钮，所以单独一条、不套 h3 的排字规则。
+ * 名字长的夹子（「必刷题·必修二与选必」这种）要把标题压扁、不能让右边两颗按钮被挤出卡片：
+ * button.mini 全局是 flex:none，这里必须覆盖成可缩，配 .fold-t 省略号；
+ * 窄到实在放不下时整行换行，按钮掉到第二行，也比被切掉强。
+ */
+.folder-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+  font-size: var(--fs-label);
+  color: var(--dim);
+  letter-spacing: .3px;
+}
+.folder-head:first-child { margin-top: 2px; }
+.folder-head > .dim { flex: none; }
+.folder-head .row-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: 8px; }
+.folder-head .fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: inherit;
+}
+.folder-head .fold .fold-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-head .caret { font-size: 10px; opacity: .8; flex: none; }
+.folder-head + .list.shelf { margin-top: 2px; }
+
 /* 一段区间下面那排页码。拆出来的页给链接，没拆的是灰的，不给人点空。 */
 .pg-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .pg-btn {

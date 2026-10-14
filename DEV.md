@@ -19,13 +19,13 @@
 这个包同时交付两样东西，缺一样都不成立：
 
 1. **代码那一半**——给 DSH 宿主和浏览器跑的：
-   - `index.js`：host 半边入口，注册 `/study` 路由前缀、独立端口、21 个工具、学习教练预设。
+   - `index.js`：host 半边入口，注册 `/study` 路由前缀、独立端口、登记学习教练预设，并把工具那半边的家什（同一个 `store`、面板地址）用服务 `studyCoachHost` 递给预设里的工具行。**它自己不再注册工具**。
    - `lib/`：服务端。HTTP 层（`handler.js` / `routes.js`）、领域层（`map.js` / `memory.js` / `student.js` / `toolbox.js` / `review.js` / `analysis.js` / `material-tree.js`）、落盘层（`store.js` / `schema.js` / `paths.js` / `library.js`）、外挂集成（`bridge.js` / `chat.js` / `preset.js` / `memes.js` / `events.js` / `pages.js`）。
    - `assets/`：面板前端。`panel.js` 一个文件就是全部界面，`style.css` 是唯一视觉事实来源，`graph.js` 是知识图谱那份 SVG，`md.js` 是唯一的正文渲染器。
 2. **agent 那一半**——给对话里的模型读的，三层，别记混：
    - **persona**（`lib/preset.js` 的 `PERSONA_PREFIX`）：每一轮都占上下文，只写「最小交代」。
    - **SKILL.md**（随包 `skills/study-coach/SKILL.md`）：进这个模式后按需加载，全部方法论在这。
-   - **工具**（`lib/tools.js`）：名字 + 描述 + schema + execute，21 个，是 agent 唯一能碰数据的通道。
+   - **工具**（`lib/tools.js`）：名字 + 描述 + schema + execute，21 个，是 agent 唯一能碰数据的通道。**只挂在预设作用域里**（`lib/preset-tools.js` 那一行），host 平面不注册——挂 host 平面就是全局注册，别的会话也会看见这 21 个。
 
 判断该写哪一层，只看一句话：**「每轮都得知道吗」→ persona；「做事的方法」→ SKILL.md；「机器要校验的形状」→ 工具 schema。**
 
@@ -59,8 +59,9 @@ cordis.patch.yml            只放一行 insert（插件声明）。**别把预�
 lib/
   handler.js   HTTP 层最外层：页面 / 静态资源 / 文件出口 / 上传落盘，再交给 router
   routes.js    API 路由表：52 条正则，按注册顺序匹配
-  tools.js     21 个 study_* 工具（buildTools 出 spec，registerTools 补 schema 再注册）
-  preset.js    学习教练预设：persona + skill-filesystem 指向包内 skills/
+  tools.js     21 个 study_* 工具（buildTools 出 spec，registerTools 补 schema 再注册；注册在预设作用域里，不在 host 平面）
+  preset.js    学习教练预设：persona + skill-filesystem 指向包内 skills/ + 工具那一行（指向 preset-tools.js）
+  preset-tools.js  预设作用域里的工具注册行：从服务 studyCoachHost 拿同一个 store / 面板地址，再 registerTools
   session-preset.js  「这个会话是不是学习模式」的唯一切判处
   store.js     档案读写（整份读-改-整份写，tmp + rename）
   schema.js    常量与空档案工厂（STAGES / FILES / emptyProfile()…）零依赖
@@ -182,6 +183,7 @@ router 的出口只有三种（`lib/handler.js:507` 一带）：
 
 1. `lib/tools.js`：加一个 spec（照最全的样板 `study_record`，`:819-940`）。
 2. `index.js:17-26` 的注释里那份 **21 个工具清单**同步（注释是给人看的账本，`buildTools` 的返回数组才是事实）。
+   工具**不在 `index.js` 里注册**：注册在 `lib/preset-tools.js`（预设作用域那一行），`index.js` 只负责把 `store` / 面板地址递过去。
 3. `test/tools.test.js`：结构断言自动覆盖，但**行为测试要手动补**——至少一条成功的、一条被拒的，并断言「被拒不落盘」。
 4. 若写了新的档案 key：在 `lib/schema.js` 的 `FILES` / `emptyProfile()` 与 `Store.default()` 里加上，再补一条落盘-重读测试。
 5. 若它读 `opts.pagesRoot`：测试 harness 要从 `{ panelPath }` 换成补 `pagesRoot`。

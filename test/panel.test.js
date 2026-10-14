@@ -17,9 +17,13 @@ import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { beijingDate } from '../lib/clock.js'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const PANEL = pathToFileURL(join(HERE, '..', 'assets', 'panel.js')).href
+
+/** 今天：跟面板、跟服务端同一套口径（北京时间）。别在测试里另写一份 UTC 的。 */
+const today = () => beijingDate()
 
 function stubDom() {
   const boxes = new Map()
@@ -113,6 +117,8 @@ const PROBE_PATHS = [
   '/study/api/material/tree',
   // 知识地图「看课」问的那一条：缺参数在新代码回 400、旧代码回 404
   '/study/api/point/media',
+  // 资料文件夹（书架分组）：新代码有这条、旧代码 404
+  '/study/api/folders',
   // 这条是 await fileAlive()，排在 Promise.all 之后，所以它在最后
   '/study/file?path=F%3A%5C%E8%AF%BE%E4%BB%B6',
 ]
@@ -667,7 +673,7 @@ function fixture() {  return {
     mastery: { points: { 'M1.1': { stage: '能跟做', confidence: 0.6, evidence: [], nextReview: '2026-10-03' } } },
     tasks: {
       days: {
-        [new Date().toISOString().slice(0, 10)]: [
+        [today()]: [
           { id: 'task-1', title: '看第一节', kind: 'watch', target: 'M1.1', minutes: 40, done: false, note: '边看边记' },
         ],
       },
@@ -1090,7 +1096,7 @@ test('体检卡：挡路的 / 该修的 / 顺手能做的分三档，每条都�
 
 /** 「今天」那栏的多科目版本：两门课各一条，服务端把链接都算好了。 */
 function agendaFixture() {
-  const date = new Date().toISOString().slice(0, 10)
+  const date = today()
   return {
     date,
     profiles: [
@@ -1682,6 +1688,54 @@ test('资料页：书架按类别分组，AI 出题跟教辅平级；AI 卷不�
 
   // 教辅那边不受影响
   assert.match(html, /data-act="shelf-build" data-id="mat-1"/)
+})
+
+test('资料页：有文件夹就按夹子折着铺，没归组的兜在最后，材料能换夹子', async () => {
+  const shelf = {
+    ...SHELF,
+    folders: [
+      { id: 'fld-book', title: '教辅（必修一）' },
+      { id: 'fld-coach', title: '教练产出' },
+    ],
+    groups: {
+      folders: [
+        { id: 'fld-book', title: '教辅（必修一）', items: ['mat-1'] },
+        { id: 'fld-coach', title: '教练产出', items: [] },
+      ],
+      ungrouped: ['mat-ai'],
+    },
+    materials: [
+      { ...SHELF.materials[0], folder: 'fld-book' },
+      { ...SHELF.materials[1], folder: '' },
+    ],
+  }
+  const page = await boot(fixture(), { path: '/study/materials', shelf })
+  const html = page.html()
+
+  // 一颗「新建文件夹」在书架头上（只有认得出新接口才画）
+  assert.match(html, /data-act="folder-new"/)
+
+  // 夹子那一行：名字、几份、改名、删掉
+  assert.match(html, /data-act="folder-toggle" data-id="fld-book"/)
+  // 名字要包一层 .fold-t：长名字靠它上省略号，右边两颗按钮才不会被挤出卡片
+  assert.match(html, /<span class="fold-t">教辅（必修一）<\/span>/)
+  assert.match(html, /教辅（必修一）[\s\S]{0,120}?<span class="dim">1 份<\/span>/)
+  assert.match(html, /data-act="folder-rename" data-id="fld-book"/)
+  assert.match(html, /data-act="folder-remove" data-id="fld-book"/)
+  assert.match(html, /教练产出[\s\S]{0,120}?<span class="dim">0 份<\/span>/)
+
+  // 默认折着：夹子里的那本不铺出来
+  assert.doesNotMatch(html, /data-act="shelf-build" data-id="mat-1"/, '折着的夹子不该把里面的材料摊开')
+
+  // 点开才铺；再点一下收回去
+  await page.clickAct({ act: 'folder-toggle', id: 'fld-book' })
+  assert.match(page.html(), /data-act="shelf-build" data-id="mat-1"/)
+  await page.clickAct({ act: 'folder-toggle', id: 'fld-book' })
+  assert.doesNotMatch(page.html(), /data-act="shelf-build" data-id="mat-1"/)
+
+  // 没归组的兜在最后，那一行有换夹子的入口
+  assert.match(page.html(), /未分组<span class="dim">1 份<\/span>/)
+  assert.match(page.html(), /data-act="mat-move" data-id="mat-ai"/)
 })
 
 test('资料读不动就交给教练：原件不在了有一颗按钮，点了把出处投进对话', async () => {

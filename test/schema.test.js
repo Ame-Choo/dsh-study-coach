@@ -90,7 +90,12 @@ test('宿主的校验器接受每个工具的返回值', async (t) => {
   const { store, root } = makeStore()
   try {
     const tools = {}
-    for (const spec of buildTools(store, { panel: PANEL })) tools[spec.name] = defineTool(spec)
+    // 页级索引那一支要用到 pymupdf 才能真读 PDF，这里换成桩，只验返回值的形状。
+    const spec = buildTools(store, {
+      panel: PANEL,
+      bookInfo: () => ({ ok: true, total: 123, scanned: true, toc: [{ level: 1, title: '第一章', page: 1, pointId: 'M1.1' }] }),
+    })
+    for (const s of spec) tools[s.name] = defineTool(s)
     const exec = { signal: { throwIfAborted() {} } }
     const problems = []
 
@@ -208,6 +213,55 @@ test('宿主的校验器接受每个工具的返回值', async (t) => {
     await call('study_library', { action: 'select', id: 'default' })
     await call('study_library', { action: 'remove', id: madeId })
     await call('study_library', { action: 'list' })
+
+    // 学生画像 / 错题本 / 页级索引 / 记忆卡 / 清单 / 番茄钟：
+    // 这几个以前没进这份清单，于是「返回里带了 schema 没声明的字段」这种坑一直没被测出来
+    // （study_book 的 pageCount/pageDir、study_student 的 updatedAt 与证据上的 mistake 都栽过）。
+    const arc = await call('study_archive', { level: 'point', key: 'M1.1', limit: 5 })
+    const evId = arc.evidence[0].id
+    await call('study_student', { action: 'list' })
+    await call('study_student', { action: 'add', kind: '习惯', text: '换元之后容易忘记回代', evidence: [evId], note: '两次都这样' })
+    // 再记一条带错题的证据：第二条判断引的证据上会挂 mistake，那条分支也要过校验
+    const missed = await call('study_record', {
+      pointId: 'M1.2',
+      kind: 'quiz',
+      note: '2026-10-02 做第 3 题，符号写反',
+      confidence: 0.8,
+      mistake: {
+        origin: '《线性代数辅导讲义》第 1 章第 3 题',
+        step: '两边同乘 −1 之后忘了翻不等号',
+        cause: '等价变形里没盯符号',
+        fix: '先把不等号方向单独写一行再乘',
+        status: '已订正',
+        redoAt: '2026-10-05',
+      },
+    })
+    await call('study_student', { action: 'add', kind: '弱项', text: '等价变形里容易丢符号', evidence: [(await call('study_archive', { level: 'point', key: 'M1.2' })).evidence[0].id] })
+    await call('study_student', { action: 'list', pointId: 'M1.1' })
+    await call('study_student', { action: 'list', limit: 1 })
+    await call('study_mistakes', {})
+    await call('study_mistakes', { pointId: 'M1.2', status: '已订正' })
+    // 页级索引：纸质书一律是扫描件，真拆要几分钟又要 pymupdf，
+    // 所以这里把 bookInfo 换成桩、再喂一个「名字像 PDF」的真文件——
+    // 要验的是返回值形状（pageCount/pageDir/toc/tree 这几个字段曾经没在 schema 里声明）。
+    const bookPath = join(root, '假教材.pdf')
+    writeFileSync(bookPath, 'x')
+    const bookMat = await call('study_material', { action: 'add', kind: 'book', title: '假教材', path: bookPath, note: '只为验形状' })
+    const bookId = bookMat.materials.find((m) => m.title === '假教材').id
+    await call('study_book', { action: 'info', materialId: bookId })
+    await call('study_book', { action: 'pages', pointId: 'M1.1' })
+    await call('study_card', { action: 'add', front: 'contingency', back: '列联表', kind: '单词', pointId: 'M1.1' })
+    await call('study_card', { action: 'list' })
+    await call('study_card', { action: 'due' })
+    await call('study_todo', { action: 'add', text: '背 20 个单词', due: '2026-10-04', pointId: 'M1.1' })
+    const todo = await call('study_todo', {})
+    await call('study_todo', { action: 'toggle', id: todo.items[0].id })
+    await call('study_todo', { action: 'patch', id: todo.items[0].id, text: '背 30 个单词' })
+    await call('study_todo', { action: 'remove', id: todo.items[0].id })
+    await call('study_todo', { status: 'today' })
+    await call('study_focus', { action: 'start', minutes: 20, label: '背单词' })
+    await call('study_focus', {})
+    await call('study_focus', { action: 'stop' })
 
     assert.equal(problems.length, 0, problems.join('\n'))
   } finally {

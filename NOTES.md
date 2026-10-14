@@ -42,6 +42,7 @@ node --test
 | `lib/bridge.js`、`lib/chat.js` | 往 DSH 会话里投递、读会话快照。都是**可选**服务，拿不到就 `available:false` |
 | `lib/pages.js`、`lib/build-pages.mjs` | 把扫描版 PDF 一页一张渲成 `p0007.png`；拆书走子进程，免得把面板进程僵住 |
 | `lib/preset.js` | 「学习教练」这个 agent 预设的定义（直接 `agentPresets.register`，不走 patch） |
+| `lib/preset-tools.js` | 预设作用域里的那一行：21 个 `study_*` 工具注册在这儿，所以只有学习教练会话看得见它们；store 与面板地址由 host 半边用服务 `studyCoachHost` 递进来 |
 | `lib/panel-server.js` | 插件自己起的那个本地小服务器，绕开 DSH 内嵌浏览器「不许开 DSH 自己」的限制 |
 | `assets/` | 面板 `panel.*`、做题页 `practice.*`、读卷页 `read.*`、图谱 `graph.*`、六档表 `stages.js`、URL 规则 `urls.js`、小 markdown 渲染器 `md.js`、启动规则 `boot.js` |
 

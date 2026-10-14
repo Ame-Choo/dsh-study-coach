@@ -123,6 +123,10 @@ const ctx = {
   get(name) {
     return name === 'sessionController' ? sessionController : undefined
   },
+  /* index.js 用 provide 把 store / panel 递给「学习教练」预设里那一行（工具在预设作用域注册）。 */
+  provide() {
+    return () => {}
+  },
   webServer: {
     register(route) {
       routes.push(route)

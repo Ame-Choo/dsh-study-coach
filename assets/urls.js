@@ -60,10 +60,20 @@ export function isStudyPath(target) {
 export function openPath(target, page) {
   const raw = String(target ?? '').trim()
   if (!raw) return ''
-  if (isHttpUrl(raw) || isStudyPath(raw)) return raw
-  const n = pageNumber(page)
-  if (isDocPath(raw)) {
-    return READ_PATH + '?path=' + encodeURIComponent(raw) + (n > 0 ? '#q' + n : '')
+  if (isHttpUrl(raw)) return raw
+  if (isStudyPath(raw)) return raw
+  // 从前这里把整串原样交回去。教练把 `#page=5` 缀在**本地路径**上时
+  // （study_plan 的工具文档里就是这么写的），整串会被 encodeURIComponent 编码进
+  // `?path=`，服务端拿到的文件名里带着 `#page=5` → 报「不在已登记的材料里」。
+  // 所以先把 fragment 劈出来，再分别处理。
+  const hash = raw.search(/[#?]/)
+  const head = hash >= 0 ? raw.slice(0, hash) : raw
+  const frag = hash >= 0 ? raw.slice(hash) : ''
+  const n = pageNumber(page) || pageNumber(frag)
+  if (isDocPath(head)) {
+    return READ_PATH + '?path=' + encodeURIComponent(head) + (n > 0 ? '#q' + n : '')
   }
-  return FILE_PATH + '?path=' + encodeURIComponent(raw) + (n > 0 ? '#page=' + n : '')
+  // 路径里本来就带 `#page=N` 就照抄，别再编码一次
+  const tail = /^#page=\d+$/i.test(frag) ? frag : n > 0 ? '#page=' + n : ''
+  return FILE_PATH + '?path=' + encodeURIComponent(head) + tail
 }

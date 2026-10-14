@@ -39,6 +39,9 @@ test('点开一节课的文件夹，把里面的文件列出来', async () => {
     assert.match(res.body, /01\.观看指南\.mp4/)
     assert.match(res.body, /02\.基础知识与基本例题\.mp4/)
     assert.match(res.body, /\/study\/file\?path=/)
+    // 「上一层」旁边常驻一个回面板的按钮：点开一节网课、翻两层之后得知道回哪。
+    assert.match(res.body, /<a class="back" href="\/study">← 返回主页<\/a>/)
+    assert.match(res.body, /上一层/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

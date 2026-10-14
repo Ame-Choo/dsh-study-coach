@@ -107,7 +107,13 @@ test('buildReview：错题进 error 分支、error_count 对得上、每侧不�
 
     /* 工具层写的 at 是「现在」，跟 DATE 对不上；直接改成 DATE 再摊图。 */
     f.store.update('mastery', (m) => {
-      for (const p of Object.values(m.points)) for (const e of p.evidence || []) e.at = DATE + 'T12:00:00.000Z'
+      /* 错题自带 at（错的那天），摊图按它筛日期、也按它排先后，所以两层都要改成 DATE。 */
+      for (const p of Object.values(m.points)) {
+        for (const e of p.evidence || []) {
+          e.at = DATE + 'T12:00:00.000Z'
+          if (e.mistake) e.mistake.at = DATE + 'T12:00:00.000Z'
+        }
+      }
       return m
     })
 
@@ -209,7 +215,13 @@ test('buildReview：一天超过 6 个单元也只画 6 个，先画有错题的
       mistake: { origin: '第八单元 2', step: '符号看反了' },
     })
     f.store.update('mastery', (m) => {
-      for (const p of Object.values(m.points)) for (const e of p.evidence || []) e.at = DATE + 'T12:00:00.000Z'
+      /* 错题自带 at（错的那天），摊图按它筛日期、也按它排先后，所以两层都要改成 DATE。 */
+      for (const p of Object.values(m.points)) {
+        for (const e of p.evidence || []) {
+          e.at = DATE + 'T12:00:00.000Z'
+          if (e.mistake) e.mistake.at = DATE + 'T12:00:00.000Z'
+        }
+      }
       return m
     })
     const data = buildReview(f.store.snapshot(), { date: DATE })

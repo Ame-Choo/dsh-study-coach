@@ -342,9 +342,9 @@ test('study_report：一次端全，含面板路径与今日任务', async () =>
     await f.call('study_map', { action: 'set', modules: MODULES })
     await f.call('study_record', { pointId: 'M1.2', stage: '见过', confidence: 0.3 })
     await f.call('study_record', { pointId: 'M1.2', stage: '能跟做', confidence: 0.5 })
-    await f.call('study_plan', { action: 'add', date: '2026-10-03', title: '看第2讲' })
+    await f.call('study_plan', { action: 'add', date: '2027-03-05', title: '看第2讲' })
 
-    let r = await f.call('study_report', { date: '2026-10-03' })
+    let r = await f.call('study_report', { date: '2027-03-05' })
     assert.equal(r.mapStatus, 'draft')
     assert.equal(r.moduleCount, 1)
     assert.equal(r.pointCount, 2)
@@ -358,10 +358,12 @@ test('study_report：一次端全，含面板路径与今日任务', async () =>
     assert.equal(r.masterySummary.byStage['没接触过'], 1)
     assert.equal(r.masterySummary.touched, 1)
 
+    // 日期挑一个远得不可能撞上真实「今天」的日子：曾经写的是 2026-10-03，
+    // 等真实日历走到那天，这条断言就会自己炸掉（时间炸弹，已炸过一次）。
     r = await f.call('study_report', {})
     assert.equal(r.tasks.length, 0, '不传日期就是今天，没人排过')
 
-    await assert.rejects(() => f.call('study_report', { date: '2026/10/03' }), /YYYY-MM-DD/)
+    await assert.rejects(() => f.call('study_report', { date: '2027/03/05' }), /YYYY-MM-DD/)
   } finally {
     f.done()
   }
