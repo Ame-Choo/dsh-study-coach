@@ -401,8 +401,41 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
   不该再有 `study_*`；新开一个学习教练会话，21 个都在。`test/plugin.test.js` 两条钉着这件事
   （host 平面注册数必须是 0、预设那一行跑在它自己的 ctx 上注册 21 个），`test/preset.test.js` 钉住那一行
   的 name 是 `file:` URL 且文件在。
-- 有意的代价：没有 `agentPresets` 注册表的场面（纯 TUI、没装 web-app bundle）里也没有「学习教练」这个模式，
+- 有意的代价：没有 `agentPresets` 注册表的场面（纯 TUI、没装 app-web bundle）里也没有「学习教练」这个模式，
   工具跟着一起不在。**别**为了这种场面加「host 平面兜底注册」——那等于把越界加回来。
+
+## 掌握度流水只增不改、档位一律可重算（2026-10-04）
+
+这一段是照 DeepTutor 那套「证据不可变 + 结论由引擎重算」抄过来的（它的 `learning/models.py` 里
+`LearningEvidence` 只增不改）。债的形态是：档位是**写下来的**（`mastery.points[id].stage`），写下的那一刻之后
+就没人再核，一条证据记错单元、或者旧版本绕过门写了档位，账面上一点破绽都看不出来。规矩：
+
+- **证据不许删行**。记错了就盖章：`voidEvidence(mastery, id, reason)` 写 `voidedAt` / `voidReason`，
+  重算时跳过它，档案里照样列出来（带 `voided: true`）。删了的话，上个月的判断为什么那么写就永远查不回来了。
+  工具那半是 `study_record` 的 `voidEvidenceId` + `voidReason`。
+- **档位有两个**：账上写的 `state.stage` 与照着流水重算的 `derivedStage(state)`。**读档位一律走
+  `pointState()`**（它带 `source` / `voidedCount`），要看「凭证据最多到哪一档」再调 `derivedStage()`；
+  两边对不上就是 `driftOf()` 挑出来的那些点，`abilityReport` / `archiveFor` 会把它们端给面板和工具。
+  **面板不去自动改档**——那是学生的进度，只有教练核过才动。
+- **每一处会改档位的路径都必须过 `gateStage`**：这道门只有一份实现（一次一档 + `STAGE_NEEDS` 要够数
+  `WORK_KINDS` 证据）。教练的 `study_record` 和面板上那颗自评按钮走的是同一条，别在哪儿再写一条。
+- **数证据一律 `liveEvidence()` / `workCountOf()`**，别写 `state.evidence.length`——作废的那些不算数。
+- **复习理由只有 `dueReason()` 一份**（`lib/map.js`），`due` 行上的 `why` 就是它写的。别在面板或工具里
+  再拿日期算一遍「为什么今天该复习」。
+- 新增一条证据时 `recordEvidence` 会把「这条之后的档位」（`item.stage`）和「档位是被谁推上来的」
+  （`state.source`）一起写下来——重算全靠这两个字段，缺一个 `derivedStage` 就只能把它算进 `work`。
+
+## 广播通道的帧带 id 和版本，路由表不许有第二条一样的方法 + pattern（2026-10-04）
+
+- `lib/events.js` 是**唯一**的广播实现：所有帧都过内部的 `emit()`，于是每帧都带 `id:` 与 `seq`；
+  `hello` 里带 `protocolVersion`（`PROTOCOL_VERSION`，**加字段不动版本号、语义变了才 +1**）。
+  断线重连带 `Last-Event-ID`（浏览器自己带）或 `?after=N`，`subscribe(res, {after})` 会把断掉的那几帧
+  从 128 帧的环形缓冲里补回来。**别绕过 `emit` 直接 `res.write`**——那样补帧就断了一截。
+- 路由登记走 `createRouter` 里的 `on()`，它每登记一条就 `assertUniqueRoutes()` 一遍：同一个方法 + 同一个
+  pattern 登两遍**启动就炸**（`路由重复登记：…`）。来由是 DeepTutor 的 `api/contracts/export.py`——它导出
+  前端契约时拿 operationId 当键，撞了 `raise RuntimeError`，不把缺陷藏进产物里。匹配是按登记顺序来的，
+  先登的那条会把后面那条整个盖住，两条却都还在表里，看代码看不出来。
+
 
 
 

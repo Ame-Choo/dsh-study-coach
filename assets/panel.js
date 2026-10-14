@@ -467,6 +467,22 @@ function healthReport() {
     })
   }
 
+  /* 账对不上：写下来的档位比证据撑得起的高。作废过证据、或者旧版本绕过闸门写过档位，
+     都会留下这种痕迹。面板不去自动改档——那是学生的进度，得让教练核一眼再动。 */
+  const drift = Number((state && state.ability && state.ability.driftTotal) || 0)
+  if (drift > 0) {
+    const ids = ((state.ability && state.ability.drift) || [])
+      .map((d) => d && d.pointId)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join('、')
+    warn.push({
+      title: `${drift} 个单元的档位比证据撑得起的高`,
+      hint: `${ids}${drift > 3 ? ' 等' : ''}。要么那条证据记错了单元（在对话里让教练用 study_record 传 voidEvidenceId 作废），要么是旧版本绕过闸门写上去的——核一遍，别让它留在账上。`,
+      nav: ['map', '去掌握度'],
+    })
+  }
+
   const day = todayTasks()
   const planned = day.reduce((n, t) => n + (Number(t.minutes) || 0), 0)
   if (target && planned > target) {

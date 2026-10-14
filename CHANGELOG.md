@@ -8,6 +8,22 @@
 
 ## [Unreleased]
 
+### 掌握度账目
+
+- **证据变成只增不改的流水，档位可以重算**：记错的那一条不再「删掉就当没发生」，改用
+  `study_record` 的 **`voidEvidenceId` + `voidReason`** 盖章作废——它不再算数，但行还留在档案里
+  （写清为什么作废）。作废之后档位会照着剩下的证据**重算**；如果那条本来是撑住档位的最后一条，
+  档位会跟着降，返回里的 `stage` 就是降完的。
+- **账对不上会被指出来**：`study_ability` 与 `study_archive` 多返回 `drift` / `driftTotal`
+  （账上写的档位比证据撑得起的高，每行带 `derivedStage` 和 `workCount`），
+  单个点的档案还多给 `stageSource` / `stageSourceKind` / `stageSourceAt`（这个档位是被哪条证据推上来的）、
+  `voidedCount`、`workCount`、`derivedStage`。证据行多了 `voided` / `voidReason`。
+  面板的体检卡也会报这一条（「N 个单元的档位比证据撑得起的高」）。
+- **自述撑不起的档位会说清**：只靠自评推上去的档位，`study_record` 的 `summary` 会追加一句
+  「这一档底下还没有一条做题/作业照片，是自述撑着的」。
+- **复习理由说人话**：`study_ability` / `study_archive` 的 `due` 行每条多一个 `why`，
+  例如「4 天前做过题；现在是『能独立做』；排在 2026-10-01，逾期 2 天；底下有 1 道错题没复做对」。
+
 ### 其他
 
 - **21 个 `study_*` 工具不再出现在别的会话里**：它们以前是在插件自己的 host 平面上注册的，等于全局注册——
@@ -16,6 +32,11 @@
   **这一条动的是 `lib/`，升级后要重启 DSH 才生效。**
 - 副作用（有意的）：没有 `agentPresets` 注册表的场面（纯 TUI、没装 web-app bundle）里本来也没有「学习教练」
   这个模式，工具跟着一起不出现。
+- **面板的广播通道（SSE）带版本号和断线续订**：`GET /study/api/events` 的每一帧多了 `id:` 与 `seq`，
+  `hello` 里带 `protocolVersion`；断线重连（浏览器自动带 `Last-Event-ID`，或手动带 `?after=N`）会把断掉那几帧
+  补回来，最多缓存 128 帧。**动的是 `lib/`，升级后要重启 DSH。**
+- 内部：路由表加了重复登记自检（同一个方法 + 同一个 pattern 登记两遍会在启动时报错，不再让先登的那条
+  悄悄盖住后面那条）。
 
 ### 面板（`/study`）
 

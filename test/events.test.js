@@ -54,14 +54,99 @@ test('接上就写对头、发一帧 hello；断开就退订', () => {
   assert.equal(res.headers.connection, 'keep-alive')
   /* 先一条注释帧：有些代理要看到第一个字节才肯把响应头放出去 */
   assert.match(body(res), /^: 学习教练广播通道\n\n/)
-  assert.match(body(res), /event: hello\n/)
-  assert.match(body(res), /"seq":0/)
+  assert.match(body(res), /id: 1\nevent: hello\n/)
+  assert.match(body(res), /"seq":1/)
+  /* 帧格式带版本号：面板对不上就退回轮询兜底，不用猜。 */
+  assert.match(body(res), /"protocolVersion":1/)
+  assert.equal(events.version, 1)
   assert.equal(events.size(), 1)
 
   off()
   assert.equal(events.size(), 0)
   events.stop()
 })
+
+test('断线重连带 after 回来，把断掉那几帧补上', () => {
+  const events = createEvents({ intervalMs: 60000 })
+  const first = fakeRes()
+  events.subscribe(first) // hello = id 1
+  const hello = first.chunks.join('')
+  const idOf = (text) => Number(/id: (\d+)\nevent: ([a-z]+)/.exec(text)[1])
+
+  events.publish('chat') // id 2
+  events.publish('todo') // id 3
+  first.emit('close')
+
+  /* 断在 id 1 之后：重连要把 2、3 补上，再发一条新的 hello。 */
+  const again = fakeRes()
+  events.subscribe(again, { after: idOf(hello) })
+  const replayed = again.chunks.join('')
+  assert.match(replayed, /"topic":"chat"/)
+  assert.match(replayed, /"topic":"todo"/)
+  /* 补的帧在前、hello 在后 */
+  assert.ok(replayed.indexOf('"topic":"chat"') < replayed.indexOf('event: hello'))
+  assert.equal(frameIds(replayed), '2,3,4')
+
+  /* 乱写的 after 不炸、也补不出东西：第一次连就是这一种。 */
+  const fresh = fakeRes()
+  events.subscribe(fresh, { after: 'abc' })
+  assert.equal(frameIds(fresh.chunks.join('')), '5')
+  events.stop()
+})
+
+test('路由把 after 交给通道：Last-Event-ID 与 ?after= 都认，HEAD 报版本', () => {
+  const root = mkdtempSync(join(tmpdir(), 'study-events-route-'))
+  const store = new Store(root)
+  const events = createEvents({ intervalMs: 60000 })
+  const handle = createRouter(store, { events })
+  try {
+    /* HEAD 探活：`res` 得给（路由先看它有没有），但走不到 subscribe——只回一条 JSON。 */
+    const head = handle({
+      method: 'HEAD',
+      pathname: EVENTS_PATH,
+      query: {},
+      req: { method: 'HEAD', headers: {} },
+      res: fakeRes(),
+    })
+    assert.equal(head.body.version, events.version)
+
+    /* 先接一个，制造一帧 change（id 2），记住它之前那个 id（hello = 1），再断开。 */
+    const a = fakeRes()
+    handle({ method: 'GET', pathname: EVENTS_PATH, query: {}, req: { method: 'GET', headers: {} }, res: a })
+    events.publish('chat')
+    const before = frameIds(a.chunks.join('')).split(',')[0]
+    assert.equal(before, '1')
+    a.emit('close')
+
+    /* 浏览器自己重连会带 Last-Event-ID（SSE 规范），面板手动重连可以带 ?after=。 */
+    const byHeader = fakeRes()
+    handle({
+      method: 'GET',
+      pathname: EVENTS_PATH,
+      query: {},
+      req: { method: 'GET', headers: { 'last-event-id': before } },
+      res: byHeader,
+    })
+    assert.match(byHeader.chunks.join(''), /"topic":"chat"/)
+
+    const byQuery = fakeRes()
+    handle({ method: 'GET', pathname: EVENTS_PATH, query: { after: before }, req: { method: 'GET', headers: {} }, res: byQuery })
+    assert.match(byQuery.chunks.join(''), /"topic":"chat"/)
+
+    /* 什么都不带 = 第一次连：只有一条 hello，没有补发。 */
+    const fresh = fakeRes()
+    handle({ method: 'GET', pathname: EVENTS_PATH, query: {}, req: { method: 'GET', headers: {} }, res: fresh })
+    assert.equal(frameIds(fresh.chunks.join('')).split(',').length, 1)
+  } finally {
+    events.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+/** 一段 SSE 文本里所有帧的 id，按出现顺序拼成 "1,2,3"。 */
+function frameIds(text) {
+  return (text.match(/^id: (\d+)$/gm) || []).map((line) => line.slice(4)).join(',')
+}
 
 test('心跳按节奏推 tick；写操作 publish 立刻推 change', async () => {
   const events = createEvents({ intervalMs: 250 })
