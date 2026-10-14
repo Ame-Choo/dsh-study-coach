@@ -1086,5 +1086,33 @@ window.__ModuleLoader__.load({ id: 'dsh-study-coach', factory: (require) => { �
   点回 materials 不重复拉书架、点 toolbox 才拉番茄钟。全量 `node --test` = **334 pass / 0 fail / 0 skipped**。
 - 只动 `assets/panel.js` + 测试 + 文档 → **刷新页面即可，不用重启 DSH**。
 
+## 补：掌握度账目可重算 + 广播通道带版本（照 DeepTutor 审计抄的那几条）
+
+把 DeepTutor 那套「证据不可变 + 结论由引擎重算」挑出来落了一遍，一条一条对上是哪个文件、哪条测试：
+
+| 抄的是 | 落在哪 | 测试 |
+| --- | --- | --- |
+| 证据只增不改（它的 `learning/models.py` 里 `LearningEvidence`） | `lib/map.js` 的 `voidEvidence` / `liveEvidence`（作废是盖章 `voidedAt`/`voidReason`，不删行） | `test/ledger.test.js` |
+| 结论由引擎重算，不认写下来的那个数 | `derivedStage` / `driftOf` / `pointState`（`abilityReport` 与 `archiveFor` 都端出来） | `test/ledger.test.js` |
+| 掌握度封顶 + 来源（一次一档、`STAGE_NEEDS` 要够数） | `gateStage`（`lib/map.js:30`，全仓只有这一份实现）、`state.source` / `item.stage` | `test/ledger.test.js`、`test/mirrors.test.js` |
+| 自述与证据分开 | `WORK_KINDS = ['quiz','photo']`，`study_record` 那条 `selfOnly` 提示 | `test/ledger.test.js` |
+| 排期带一句人话理由（它的 `learning/scheduler.py:362`） | `dueReason()`（`lib/map.js`）→ `due[].why` | `test/due-reason.test.js` |
+| 契约唯一性自检（它的 `api/contracts/export.py` 撞 operationId 就 `raise`） | `routeKey` / `assertUniqueRoutes`，`createRouter` 的 `on()` 每登一条自检一遍 | `test/routes-guard.test.js` |
+| SSE 带版本与断线重放 | `lib/events.js` 的 `emit()` / `seq` / `protocolVersion` / 128 帧环形缓冲，`Last-Event-ID` 与 `?after=` 都认 | `test/events.test.js` |
+
+- 全量 `node --test` = **376 pass / 0 fail / 0 skipped**，`scripts/ci-test.mjs` 的注解写「测试全绿：376 条」。
+- 规矩都写进了 AGENTS.md 那两节（掌握度流水只增不改 / 广播通道的帧带 id 和版本），教练那半边的用法
+  写进 `skills/study-coach/SKILL.md` 第 4、5 节（判分只判对错分明的题、出题带出处、账记错了作废不删、
+  drift 别自己改档、复习理由读 `why`）。
+- **踩过的两个坑（都是自己的）**：
+  - 写 `dueReason()` 时顺手又写了一个 `daysBetween`，可 `lib/map.js` 里**本来就有**（`briefOf` 之后、
+    `todayString` 之前）→ `SyntaxError: Identifier 'daysBetween' has already been declared`，
+    `lib/map.js` 整个编不出来、43 个测试文件一起红。现在只有一份，并且它吃完整 ISO 串
+    （先 `slice(0, 10)` 再拼 `T00:00:00Z`），算不出来回 `null`。
+  - `recordEvidence()` **不过门**——门（`gateStage`）是调用方的事。第一版 `test/ledger.test.js` 直接拿它
+    造夹具，造出来的是一份「账上写的比证据撑得起的高」的假账，三条断言红。夹具改走
+    `step(mastery, pointId, kind, wanted, note)`（先过门、再把门放行的档位写进流水）才对。
+- 这一批只加测试与文档（`lib/` 是上一批动的）→ **不用重启 DSH**。
+
 
 

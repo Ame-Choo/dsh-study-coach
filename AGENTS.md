@@ -424,6 +424,9 @@ aside 空着（用户后来把地图页那张画像删了：「地图页的删�
   再拿日期算一遍「为什么今天该复习」。
 - 新增一条证据时 `recordEvidence` 会把「这条之后的档位」（`item.stage`）和「档位是被谁推上来的」
   （`state.source`）一起写下来——重算全靠这两个字段，缺一个 `derivedStage` 就只能把它算进 `work`。
+- **写测试要造账，别直接调 `recordEvidence(..., { stage })`**：它不过门（门是调用方的事），拿它造夹具
+  造出来的是一份「账上写的比证据撑得起的高」的假账，`driftOf` 会当场报出来。走
+  `gateStage()` → `recordEvidence()` 两步（`test/ledger.test.js` 里的 `step()` 就是这两步）。
 
 ## 广播通道的帧带 id 和版本，路由表不许有第二条一样的方法 + pattern（2026-10-04）
 
